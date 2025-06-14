@@ -1,0 +1,355 @@
+# 🚀 Professional Trading Bot - .gitignore
+# ==========================================
+
+# 🔐 SEGURIDAD - Archivos de configuración sensibles
+# ==================================================
+.env
+.env.local
+.env.production
+.env.staging
+*.key
+*.pem
+*.p12
+*.pfx
+config.json
+secrets.json
+credentials.json
+api_keys.txt
+
+# 🗄️ BASE DE DATOS
+# ================
+*.db
+*.sqlite
+*.sqlite3
+trading_bot.db
+positions.db
+backups/*.db
+
+# 📊 LOGS Y REPORTES
+# ==================
+logs/
+*.log
+*.log.*
+log_*.txt
+reports/
+output/
+temp/
+tmp/
+
+# 🤖 MACHINE LEARNING - Archivos temporales y cache
+# ==================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 🧠 MODELOS ML - Solo versiones de desarrollo
+# ============================================
+# Mantener modelos de producción pero excluir experimentales
+model_*.h5
+*.pkl
+*.joblib
+*.model
+checkpoints/
+experiments/
+training_data/
+test_models/
+backup_models/
+temp_models/
+
+# ⚠️ PERMITIR modelos de producción específicos
+!models/tcn_final_*.h5
+
+# 💾 ENTORNOS VIRTUALES
+# =====================
+.venv/
+venv/
+ENV/
+env/
+.conda/
+.pyenv/
+
+# 🛠️ IDEs Y EDITORES
+# ==================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# 📦 NODE.JS (si se usa para herramientas frontend)
+# ================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 🧪 TESTING Y COVERAGE
+# =====================
+.coverage
+.pytest_cache/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# 📈 DATOS DE TRADING - Archivos grandes y sensibles
+# ==================================================
+historical_data/
+market_data/
+price_data/
+*.csv
+*.json
+data/raw/
+data/processed/
+downloads/
+exports/
+
+# ⚠️ PERMITIR archivos de configuración de ejemplo
+!config_example.env
+!*_example.*
+!sample_data/
+
+# 🔄 BACKUPS Y ARCHIVOS TEMPORALES
+# ================================
+backups/
+.backup/
+*.bak
+*.tmp
+*.temp
+*~
+.#*
+\#*#
+
+# 🌐 JUPYTER NOTEBOOKS - Checkpoints
+# ==================================
+.ipynb_checkpoints/
+*.ipynb
+
+# 📊 MATPLOTLIB/PLOTTING
+# ======================
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+plots/
+charts/
+figures/
+
+# ⚠️ PERMITIR logos y documentación
+!docs/images/
+!*.md
+!README.md
+
+# 🚀 DEPLOYMENT Y CI/CD
+# =====================
+.github/workflows/secrets.yml
+deployment_keys/
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# 🎯 SISTEMA ESPECÍFICO
+# =====================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# 📱 MOBILE DEVELOPMENT (si aplica)
+# =================================
+*.apk
+*.ipa
+
+# 🔧 HERRAMIENTAS DE DESARROLLO
+# =============================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# 📊 PANDAS/NUMPY CACHE
+# =====================
+.pandas_cache/
+*.npy
+*.npz
+
+# 🎮 GAME ENGINES (no aplica pero por completitud)
+# ================================================
+*.unity3d
+*.unitypackage
+
+# 📝 DOCUMENTACIÓN AUTOGENERADA
+# =============================
+docs/_build/
+docs/build/
+site/
+
+# 🔍 PROFILING Y DEBUGGING
+# ========================
+.prof
+profile_*
+*.trace
+
+# 🎯 ARCHIVOS ESPECÍFICOS DEL PROYECTO
+# ====================================
+# Trading específicos
+positions_backup.json
+orders_history.json
+performance_reports/
+trade_analysis/
+
+# Debug y desarrollo
+debug_*.py
+test_*.json
+mock_data.json
+sandbox/
+
+# Configuraciones locales
+local_config.py
+dev_settings.py
+
+# ⚠️ IMPORTANTE: REVISAR ANTES DE COMMIT
+# ======================================
+# Siempre revisar que no se incluyan:
+# - API keys o credenciales
+# - Datos personales de trading
+# - Balances o información financiera real
+# - Logs con información sensible
+
+# 📖 ARCHIVOS A INCLUIR SIEMPRE
+# =============================
+# README.md
+# requirements.txt
+# config_example.env
+# install.sh
+# LICENSE
+# models/tcn_final_*.h5 (modelos de producción)
+
+# 🪟 WINDOWS ESPECÍFICO - Protecciones adicionales
+# ================================================
+# Archivos de configuración de PowerShell que pueden contener credenciales
+*.ps1.config
+profile.ps1
+Microsoft.PowerShell_profile.ps1
+
+# Archivos de batch que pueden contener variables sensibles
+start_with_credentials.bat
+deploy.bat
+production.bat
+
+# Archivos de configuración de Windows que pueden contener paths sensibles
+*.ini.local
+*.conf.local
+
+# Archivos de respaldo de editores Windows
+*.bak
+*.backup
+*~
+
+# Archivos temporales de Windows
+*.tmp
+*.temp
+~$*
+
+# Archivos de sistema Windows
+desktop.ini
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# Visual Studio Code - configuraciones locales que pueden contener paths
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+
+# PyCharm - configuraciones locales
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/dictionaries/
+.idea/shelf/
+
+# 🔐 CREDENCIALES WINDOWS - Protección extra
+# ==========================================
+# Archivos que pueden contener credenciales en Windows
+credentials.txt
+api_keys.txt
+secrets.txt
+config.local.*
+.env.windows
+.env.win
+.env.production.local
+
+# Archivos de configuración de servicios Windows
+service_config.xml
+app.config
+web.config
+
+# 🗄️ BASES DE DATOS WINDOWS - Protección adicional
+# =================================================
+# SQL Server Express LocalDB
+*.mdf
+*.ldf
+*.ndf
+
+# SQLite con extensiones Windows
+*.db3
+*.s3db
+*.sl3
+
+# 📊 LOGS WINDOWS - Protección adicional
+# ======================================
+# Event logs de Windows
+*.evtx
+*.evt
+
+# IIS logs
+LogFiles/
+*.log
+
+# 🚀 DEPLOYMENT WINDOWS - Protección
+# ==================================
+# Archivos de publicación
+*.pubxml
+*.pubxml.user
+*.publishsettings
+
+# Archivos de instalación
+*.msi
+*.exe
+*.cab
+*.msm
+*.msp 

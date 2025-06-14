@@ -1,0 +1,60 @@
+# =============================================================================
+# 🔑 CONFIGURACIÓN DE APIS - BINANCE
+# =============================================================================
+
+# Binance API Credentials (REQUERIDO)
+BINANCE_API_KEY=your_binance_api_key_here
+BINANCE_SECRET_KEY=your_binance_secret_key_here
+
+# Binance Environment Configuration  
+BINANCE_BASE_URL=https://testnet.binance.vision  # Testnet (seguro para pruebas)
+# BINANCE_BASE_URL=https://api.binance.com      # Production (¡CUIDADO!)
+
+# =============================================================================
+# 🔔 NOTIFICACIONES - DISCORD (OPCIONAL)
+# =============================================================================
+
+# Discord Webhook para notificaciones
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/your_webhook_url_here
+
+# Configuración de notificaciones
+DISCORD_ENABLED=true
+DISCORD_MIN_TRADE_VALUE=12.0  # Solo notificar trades > $12
+DISCORD_MIN_PNL_PERCENT=2.0   # Solo notificar PnL > 2%
+
+# =============================================================================
+# 🛡️ CONFIGURACIÓN DE TRADING Y RIESGO
+# =============================================================================
+
+# Environment Mode
+ENVIRONMENT=testnet  # testnet | production
+TRADE_MODE=live      # live | dry_run
+
+# Position Management
+MAX_POSITION_SIZE_PERCENT=15.0    # 15% máximo por posición
+MAX_SIMULTANEOUS_POSITIONS=2      # 2 posiciones máximo
+MAX_DAILY_LOSS_PERCENT=10.0       # 10% pérdida máxima diaria
+
+# Risk Management
+STOP_LOSS_PERCENT=3.0             # 3% stop loss automático
+TAKE_PROFIT_PERCENT=6.0           # 6% take profit automático
+TRAILING_STOP_ENABLED=true        # Activar trailing stops
+TRAILING_STOP_PERCENT=2.0         # 2% trailing stop
+
+# Emergency Controls
+EMERGENCY_STOP_LOSS_PERCENT=15.0  # 15% emergency stop (circuit breaker)
+MAX_TRADES_PER_HOUR=10            # Límite de trades por hora
+
+# =============================================================================
+# 🤖 CONFIGURACIÓN DE MODELOS TCN
+# =============================================================================
+
+# TCN Model Configuration
+TCN_MODEL_PATH=models/
+TCN_LOOKBACK_WINDOW=50            # 50 timesteps de lookback
+TCN_FEATURE_COUNT=21              # 21 features por timestep
+TCN_CONFIDENCE_THRESHOLD=0.7      # 70% confianza mínima para operar
+
+# Trading Pairs
+ENABLED_PAIRS=BTCUSDT,ETHUSDT,BNBUSDT
+PRIMARY_QUOTE_ASSET=USDT 
