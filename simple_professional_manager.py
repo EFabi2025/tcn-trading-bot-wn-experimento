@@ -20,6 +20,7 @@ import pandas as pd
 from dotenv import load_dotenv
 import numpy as np
 import random
+import logging
 
 # Importar nuestros módulos de risk y database
 from advanced_risk_manager import AdvancedRiskManager, Position, RiskLimits
@@ -70,6 +71,15 @@ class TradingManager:
         self.symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
         self.check_interval = 60  # 1 minuto
         
+        # ✅ CRÍTICO: Inicializar logger
+        self.logger = logging.getLogger(__name__)
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('[%(asctime)s] %(levelname)s %(name)s: %(message)s')
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+            self.logger.setLevel(logging.INFO)
+        
         # Estado del sistema
         self.status = TradingManagerStatus.STOPPED
         self.database = None
@@ -113,7 +123,9 @@ class TradingManager:
             'successful_checks': 0,
             'error_count': 0,
             'active_positions': 0,
-            'session_pnl': 0.0
+            'session_pnl': 0.0,
+            'total_trades': 0,
+            'win_rate': 0.0
         }
         
         # Control de tiempo
@@ -145,7 +157,10 @@ class TradingManager:
             'balance_updates': 0,
             'last_balance_update': None,
             'portfolio_snapshots': 0,
-            'tcn_reports_sent': 0
+            'tcn_reports_sent': 0,
+            'total_trades': 0,
+            'win_rate': 0.0,
+            'session_pnl': 0.0
         }
         
         # ✅ NUEVO: Modelos TCN production
@@ -267,58 +282,42 @@ class TradingManager:
     
     async def initialize(self):
         """🚀 Inicializar todos los componentes del sistema"""
-        print("🚀 Iniciando Simple Professional Trading Manager...")
+        self.logger.info("🚀 Iniciando Simple Professional Trading Manager...")
         self.status = TradingManagerStatus.STARTING
         
         try:
             # 1. Inicializar base de datos
             await self._initialize_database()
             
-            # 2. ✅ CRÍTICO: Inicializar cliente Binance para datos reales
+            # 2. Inicializar cliente Binance
             await self._initialize_binance_client()
             
-            # 3. Obtener balance inicial de Binance - ✅ NUEVO
-            print("💰 Obteniendo balance de Binance...")
-            await self.update_balance_from_binance()
-            if self.current_balance == 0:
-                print("⚠️ No se pudo obtener balance de Binance, usando valor por defecto")
-                self.current_balance = 102.0  # Fallback
-            
-            # 4. ✅ NUEVO: Inicializar Professional Portfolio Manager
-            print("💼 Inicializando Professional Portfolio Manager...")
-            self.portfolio_manager = ProfessionalPortfolioManager(
-                api_key=self.config.api_key,
-                secret_key=self.config.secret_key,
-                base_url=self.config.base_url
-            )
-            print("✅ Portfolio Manager inicializado")
-            
-            # 5. Inicializar Risk Manager
+            # 3. Inicializar Portfolio Manager
+            await self._initialize_portfolio_manager()
+
+            # 4. Inicializar Risk Manager
             await self._initialize_risk_manager()
             
-            # 6. ✅ NUEVO: Inicializar modelos TCN production
+            # 5. Cargar modelos TCN
             await self._initialize_tcn_models()
             
-            # 7. Verificar conectividad
+            # 6. Verificar conectividad final
             await self._verify_connectivity()
             
-            # 8. Configurar monitoreo
+            # 7. Configurar tareas de monitoreo en segundo plano
             await self._setup_monitoring()
             
+            # 8. ¡Listo para operar! Cambiar estado a RUNNING
+            self.status = TradingManagerStatus.RUNNING
             self.start_time = time.time()
             self.last_heartbeat = datetime.now()
-            self.status = TradingManagerStatus.RUNNING
             
-            # Log inicial
-            await self.database.log_event('INFO', 'SYSTEM', 'Simple Trading Manager inicializado correctamente')
-            
-            print("✅ Simple Professional Trading Manager iniciado correctamente")
+            self.logger.info("✅ Sistema inicializado y listo para operar. Estado: RUNNING.")
             
         except Exception as e:
+            self.logger.critical(f"❌ Error fatal durante la inicialización: {e}", exc_info=True)
             self.status = TradingManagerStatus.ERROR
-            print(f"❌ Error inicializando Trading Manager: {e}")
-            if self.database:
-                await self.database.log_event('ERROR', 'SYSTEM', f'Error inicializando: {e}')
+            await self.shutdown()
             raise
     
     async def _initialize_database(self):
@@ -373,7 +372,7 @@ class TradingManager:
     async def _initialize_risk_manager(self):
         """🛡️ Inicializar Risk Manager"""
         self.logger.info("🛡️ Inicializando Advanced Risk Manager...")
-        self.risk_manager = AdvancedRiskManager(self.config, self.database, self.logger)
+        self.risk_manager = AdvancedRiskManager(self.config)
         await self.risk_manager.initialize()
         self.logger.info("✅ Risk Manager configurado y listo.")
     
@@ -382,10 +381,10 @@ class TradingManager:
         self.logger.info("🤖 Cargando modelos TCN de producción...")
         
         # Cargar modelos para cada par de trading
-        trading_pairs = self.risk_manager.get_trading_pairs()
+        trading_pairs = [symbol.replace('USDT', '') for symbol in self.symbols]  # ['BTC', 'ETH', 'BNB']
         
         for pair in trading_pairs:
-            model_path = f"models/tcn_final_{pair.lower()}.h5"
+            model_path = f"models/tcn_final_{pair.lower()}usdt.h5"
             
             if os.path.exists(model_path):
                 try:
@@ -400,7 +399,7 @@ class TradingManager:
                     self.tcn_models[pair] = model
                     self.logger.info(f"✅ Modelo {model_path} cargado exitosamente para {pair}.")
                 except Exception as e:
-                    self.logger.critical(f" MCRITICAL: No se pudo cargar el modelo {model_path} para {pair}. Error: {e}")
+                    self.logger.critical(f"🚨 CRITICAL: No se pudo cargar el modelo {model_path} para {pair}. Error: {e}")
                     self.tcn_models[pair] = None
             else:
                 self.logger.warning(f"⚠️ No se encontró el modelo en la ruta: {model_path}. El bot no operará con ML para el par {pair}.")
@@ -474,7 +473,7 @@ class TradingManager:
     
     async def run(self):
         """🎯 Ejecutar loop principal de trading"""
-        print("🎯 Iniciando loop principal de trading...")
+        self.logger.info("🎯 Iniciando loop principal de trading...")
         
         while self.status == TradingManagerStatus.RUNNING:
             try:
@@ -1677,12 +1676,12 @@ class TradingManager:
             
             # Headers de la petición
             headers = {
-                'X-MBX-APIKEY': self.binance_config.api_key,
+                'X-MBX-APIKEY': self.config.api_key,
                 'Content-Type': 'application/x-www-form-urlencoded'
             }
             
             # URL completa
-            url = f"{self.binance_config.base_url}/api/v3/{endpoint}"
+            url = f"{self.config.base_url}/api/v3/{endpoint}"
             
             # Hacer petición HTTP
             async with aiohttp.ClientSession() as session:
@@ -1709,6 +1708,17 @@ class TradingManager:
         except Exception as e:
             print(f"❌ Error en petición Binance: {e}")
             return None
+
+    async def _initialize_portfolio_manager(self):
+        """💼 Inicializar el gestor de portfolio"""
+        self.logger.info("💼 Inicializando Professional Portfolio Manager...")
+        self.portfolio_manager = ProfessionalPortfolioManager(
+            binance_config=self.config,
+            trading_symbols=self.symbols,
+            logger=self.logger  # Pasar el logger existente
+        )
+        await self.portfolio_manager.initialize()
+        self.logger.info("✅ Portfolio Manager inicializado.")
 
 async def main():
     """🎯 Función principal para testing directo"""

@@ -94,11 +94,18 @@ class PortfolioSnapshot:
 class ProfessionalPortfolioManager:
     """💼 Gestor Profesional de Portafolio"""
     
-    def __init__(self, api_key: str, secret_key: str, base_url: str = "https://testnet.binance.vision"):
-        """🚀 Inicializar Portfolio Manager"""
-        self.api_key = api_key
-        self.secret_key = secret_key
-        self.base_url = base_url
+    def __init__(self, binance_config: object, trading_symbols: List[str], logger: object):
+        """Inicializar el Portfolio Manager.
+
+        Args:
+            binance_config (object): Configuración de la API de Binance.
+            trading_symbols (List[str]): Lista de símbolos a operar.
+            logger (object): Objeto logger para registrar eventos.
+        """
+        self.config = binance_config
+        self.trading_symbols = trading_symbols
+        self.logger = logger
+        self.client = None
         
         # Cache de precios para evitar llamadas innecesarias
         self.price_cache = {}
@@ -119,10 +126,22 @@ class ProfessionalPortfolioManager:
         self.api_calls_count = 0
         self.last_snapshot_time = None
         
+        self.positions: Dict[str, Position] = {}
+        self.trades: List[Trade] = []
+        self.balance: Dict[str, float] = {}
+        self.last_snapshot: Optional[PortfolioSnapshot] = None
+        self.last_update: Optional[datetime] = None
+        
+    async def initialize(self):
+        """🚀 Inicializa el Portfolio Manager."""
+        self.logger.info("✅ ProfessionalPortfolioManager inicializado y listo.")
+        # Aquí podría ir lógica futura como cargar un estado previo desde DB.
+        pass
+
     def _generate_signature(self, params: str) -> str:
         """🔐 Generar firma HMAC SHA256 para Binance"""
         return hmac.new(
-            self.secret_key.encode('utf-8'),
+            self.config.secret_key.encode('utf-8'),
             params.encode('utf-8'),
             hashlib.sha256
         ).hexdigest()
@@ -145,11 +164,11 @@ class ProfessionalPortfolioManager:
         
         # Headers
         headers = {
-            'X-MBX-APIKEY': self.api_key
+            'X-MBX-APIKEY': self.config.api_key
         }
         
         # Realizar petición
-        url = f"{self.base_url}/api/v3/{endpoint}?{query_string}"
+        url = f"{self.config.base_url}/api/v3/{endpoint}?{query_string}"
         
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
@@ -165,7 +184,7 @@ class ProfessionalPortfolioManager:
         """💲 Obtener precio actual de un símbolo"""
         try:
             async with aiohttp.ClientSession() as session:
-                url = f"{self.base_url}/api/v3/ticker/price"
+                url = f"{self.config.base_url}/api/v3/ticker/price"
                 params = {'symbol': symbol}
                 async with session.get(url, params=params) as response:
                     self.api_calls_count += 1
@@ -257,53 +276,24 @@ class ProfessionalPortfolioManager:
                         )
                         orders.append(trade_order)
             else:
-                # ✅ SOLUCIÓN: Filtrar activos válidos antes de consultar órdenes
-                balances = await self.get_account_balances()
+                # En lugar de consultar todos los activos, usamos los símbolos de trading configurados
+                self.logger.info(f"📋 Consultando órdenes para los símbolos de trading: {self.trading_symbols}")
                 
-                # Lista de activos excluidos (conocidos por no tener par USDT o causar problemas)
-                excluded_assets = {
-                    # Liquid Staking Tokens
-                    'LDBNB', 'LDETH', 'LDBTC', 'LDAVA', 'LDFDUSD', 'LDUSDT',
-                    # Ethereum Staking
-                    'BETH', 'WBETH', 'STETH',
-                    # Otras Stablecoins (no necesarias para trading USDT pairs)
-                    'FDUSD', 'BUSD', 'USDC', 'TUSD', 'USDP',
-                    # Tokens problemáticos/delisted
-                    'NFT', 'BTTC', 'RESOLV', 'LUNA', 'LUNC', 'USTC',
-                    # Dust/Rewards tokens específicos
-                    'VEN', 'HOT'  # Tokens históricos/problemáticos
-                }
-                
-                # Solo procesar activos con balance significativo y formato válido
-                valid_assets = []
-                for asset in balances.keys():
-                    if (asset != 'USDT' and 
-                        asset not in excluded_assets and 
-                        len(asset) >= 2 and 
-                        len(asset) <= 12 and  # Longitud típica de símbolos
-                        asset.isalnum() and   # Solo caracteres alfanuméricos
-                        balances[asset]['total'] >= 0.001):  # Balance mínimo
-                        valid_assets.append(asset)
-                
-                print(f"📋 Consultando órdenes para {len(valid_assets)} activos válidos: {valid_assets}")
-                
-                for asset in valid_assets:
+                for symbol_pair in self.trading_symbols:
                     try:
-                        symbol_pair = f"{asset}USDT"
-                        print(f"   🔍 Consultando órdenes para {symbol_pair}...")
+                        self.logger.info(f"   🔍 Consultando órdenes para {symbol_pair}...")
                         symbol_orders = await self.get_order_history(symbol_pair, days_back)
                         if symbol_orders:
-                            print(f"      ✅ Encontradas {len(symbol_orders)} órdenes para {symbol_pair}")
+                            self.logger.info(f"      ✅ Encontradas {len(symbol_orders)} órdenes para {symbol_pair}")
                             orders.extend(symbol_orders)
                         else:
-                            print(f"      📭 Sin órdenes para {symbol_pair}")
+                            self.logger.info(f"      📭 Sin órdenes para {symbol_pair}")
                     except Exception as e:
-                        error_msg = str(e)
-                        if "Invalid symbol" in error_msg or "-1121" in error_msg:
-                            print(f"   ⚠️ Par {asset}USDT no existe en Binance - saltando")
-                        else:
-                            print(f"   ❌ Error obteniendo órdenes para {asset}USDT: {e}")
+                        self.logger.error(f"❌ Error obteniendo historial de órdenes para {symbol_pair}: {e}")
+                        # Continuar con el siguiente símbolo
                         continue
+            
+            self.logger.info(f"   📄 Encontradas {len(orders)} órdenes ejecutadas en total.")
             
             return sorted(orders, key=lambda x: x.time, reverse=True)
             

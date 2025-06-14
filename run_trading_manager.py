@@ -15,7 +15,7 @@ load_dotenv()
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 
 # Importar el manager principal ya refactorizado
-from trading_manager import TradingManager
+from simple_professional_manager import TradingManager
 
 async def main():
     """Función principal para inicializar y correr el bot"""
