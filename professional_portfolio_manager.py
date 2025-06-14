@@ -132,16 +132,27 @@ class ProfessionalPortfolioManager:
         self.last_snapshot: Optional[PortfolioSnapshot] = None
         self.last_update: Optional[datetime] = None
         
-    async def initialize(self):
-        """🚀 Inicializa el Portfolio Manager."""
-        self.logger.info("✅ ProfessionalPortfolioManager inicializado y listo.")
-        # Aquí podría ir lógica futura como cargar un estado previo desde DB.
-        pass
+    async def initialize(self) -> Optional[float]:
+        """
+        🚀 Inicializa el Portfolio Manager, obtiene los balances iniciales de la cuenta
+        y retorna el balance de USDT.
+        """
+        self.logger.info("💼 Obteniendo balance inicial desde Binance...")
+        try:
+            balances = await self.get_account_balances()
+            usdt_balance = balances.get('USDT', {}).get('free', 0.0)
+            
+            self.logger.info(f"✅ Balance USDT inicial obtenido: ${usdt_balance:.2f}")
+            return usdt_balance
+            
+        except Exception as e:
+            self.logger.error(f"❌ No se pudo obtener el balance inicial. Error: {e}")
+            return None
 
     def _generate_signature(self, params: str) -> str:
         """🔐 Generar firma HMAC SHA256 para Binance"""
         return hmac.new(
-            self.config.secret_key.encode('utf-8'),
+            self.config.BINANCE_SECRET_KEY.encode('utf-8'),
             params.encode('utf-8'),
             hashlib.sha256
         ).hexdigest()
@@ -164,11 +175,11 @@ class ProfessionalPortfolioManager:
         
         # Headers
         headers = {
-            'X-MBX-APIKEY': self.config.api_key
+            'X-MBX-APIKEY': self.config.BINANCE_API_KEY
         }
         
         # Realizar petición
-        url = f"{self.config.base_url}/api/v3/{endpoint}?{query_string}"
+        url = f"{self.config.BINANCE_BASE_URL}/api/v3/{endpoint}?{query_string}"
         
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
@@ -184,7 +195,7 @@ class ProfessionalPortfolioManager:
         """💲 Obtener precio actual de un símbolo"""
         try:
             async with aiohttp.ClientSession() as session:
-                url = f"{self.config.base_url}/api/v3/ticker/price"
+                url = f"{self.config.BINANCE_BASE_URL}/api/v3/ticker/price"
                 params = {'symbol': symbol}
                 async with session.get(url, params=params) as response:
                     self.api_calls_count += 1
