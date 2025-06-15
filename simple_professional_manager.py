@@ -8,7 +8,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 # Módulos de configuración y base de datos
 from config import trading_config
@@ -20,9 +20,10 @@ from professional_portfolio_manager import ProfessionalPortfolioManager
 
 # Módulos de predicción y datos
 from real_binance_predictor import BinanceDataProvider, RealTCNPredictor
+from definitivo_tcn_predictor import DefinitivoTCNPredictor
 
 # Módulos de utilidad
-from smart_discord_notifier import SmartDiscordNotifier
+from smart_discord_notifier import SmartDiscordNotifier, NotificationPriority
 
 class TradingManagerStatus:
     """📊 Estados del Trading Manager"""
@@ -43,13 +44,14 @@ class TradingManager:
         # Componentes del sistema (se inicializarán después)
         self.database: TradingDatabase = None
         self.data_provider: BinanceDataProvider = None
-        self.tcn_predictor: RealTCNPredictor = None
+        self.tcn_predictor: DefinitivoTCNPredictor = None
         self.risk_manager: AdvancedRiskManager = None
         self.portfolio_manager: ProfessionalPortfolioManager = None
         self.discord_notifier: SmartDiscordNotifier = None
 
         self.active_positions: Dict[str, any] = {}
         self.symbols: list[str] = self.config.TRADING_SYMBOLS
+        self.last_discord_report_time: Optional[datetime] = None
 
     def _setup_logger(self) -> logging.Logger:
         """Configura un logger estandarizado para el sistema."""
@@ -77,9 +79,9 @@ class TradingManager:
             await self.data_provider.__aenter__() # Inicia la sesión de aiohttp
             self.logger.info("✅ Proveedor de datos de mercado (BinanceDataProvider) listo.")
 
-            # 3. Predictor TCN
-            self.tcn_predictor = RealTCNPredictor()
-            self.logger.info("✅ Predictor TCN (RealTCNPredictor) cargado con modelos.")
+            # 3. Predictor TCN Definitivo
+            self.tcn_predictor = DefinitivoTCNPredictor()
+            self.logger.info("✅ Predictor TCN Definitivo cargado con modelos de 66 features.")
 
             # 4. Gestor de Portfolio (necesita el balance inicial)
             self.portfolio_manager = ProfessionalPortfolioManager(self.config, self.symbols, self.logger)
@@ -100,6 +102,12 @@ class TradingManager:
 
             self.status = TradingManagerStatus.RUNNING
             self.logger.info("🎉 ¡Sistema inicializado y listo para operar! Estado: RUNNING.")
+
+            # Enviar notificación de inicio a Discord
+            await self.discord_notifier.send_system_notification(
+                "🚀 **Bot de Trading TCN Iniciado**\nSistema operativo y monitoreando el mercado.",
+                priority=NotificationPriority.HIGH
+            )
 
         except Exception as e:
             self.logger.critical(f"❌ Error fatal durante la inicialización: {e}", exc_info=True)
@@ -143,6 +151,23 @@ class TradingManager:
             print("\n" + "🔥" * 30 + " REPORTE DE ESTADO " + "🔥" * 30)
             print(report)
             print("🔥" * 79)
+
+            # Enviar el reporte a Discord, pero solo si ha pasado el intervalo configurado
+            now = datetime.now()
+            should_send_report = False
+            if self.last_discord_report_time is None:
+                should_send_report = True
+            else:
+                time_since_last = (now - self.last_discord_report_time).total_seconds()
+                if time_since_last >= self.config.DISCORD_REPORT_INTERVAL_SECONDS:
+                    should_send_report = True
+            
+            if should_send_report:
+                await self.discord_notifier.send_system_notification(
+                    report,
+                    priority=NotificationPriority.LOW
+                )
+                self.last_discord_report_time = now
 
         except Exception as e:
             self.logger.error(f"❌ Error generando el reporte de estado: {e}", exc_info=True)
@@ -252,17 +277,113 @@ class TradingManager:
         for signal_data in signals:
             symbol = signal_data['pair']
             signal_type = signal_data['signal']
+            confidence = signal_data['confidence']
+            current_price = signal_data.get('current_price', 0)
             
-            # Lógica de ejemplo: Por ahora solo se loguea la decisión.
-            # La integración con risk_manager para abrir/cerrar posiciones iría aquí.
             self.logger.info(f"ACTION => Procesando señal de {signal_type} para {symbol}.")
-
-            # TODO: Implementar la lógica de gestión de posiciones.
-            # - Comprobar si ya existe una posición.
-            # - Si es señal de VENTA y hay posición -> considerar cerrar.
-            # - Si es señal de COMPRA y no hay posición -> considerar abrir.
-            # - Llamar a self.risk_manager.check_risk_limits_before_trade(...)
-            # - Llamar a self.risk_manager.open_position(...) o close_position(...)
+            
+            try:
+                # 1. Verificar estado de la posición actual
+                existing_position = await self.portfolio_manager.get_position(symbol)
+                
+                if signal_type == 'BUY':
+                    # Señal de COMPRA
+                    if existing_position and existing_position.get('quantity', 0) > 0:
+                        self.logger.info(f"🔄 {symbol}: Ya existe posición LONG, se ignora señal BUY.")
+                        continue
+                    
+                    # Verificar límites de riesgo antes de abrir posición
+                    risk_check = await self.risk_manager.check_risk_limits_before_trade(
+                        symbol, 'BUY', current_price, confidence
+                    )
+                    
+                    if risk_check['approved']:
+                        # Calcular cantidad a comprar basada en gestión de portafolio
+                        trade_amount = await self.portfolio_manager.calculate_position_size(
+                            symbol, current_price, confidence
+                        )
+                        
+                        if trade_amount and trade_amount > 0:
+                            # Ejecutar compra
+                            self.logger.info(f"💰 EJECUTANDO COMPRA: {symbol} - ${trade_amount:.2f} @ ${current_price:.2f}")
+                            
+                            result = await self.risk_manager.open_position(
+                                symbol=symbol,
+                                side='BUY',
+                                amount=trade_amount,
+                                price=current_price,
+                                confidence=confidence,
+                                signal_data=signal_data
+                            )
+                            
+                            if result and result.get('success'):
+                                self.logger.info(f"✅ COMPRA EXITOSA: {symbol} - {result}")
+                                
+                                # Notificar a Discord
+                                await self.discord_notifier.send_trade_notification(
+                                    f"🟢 **COMPRA EJECUTADA**\n"
+                                    f"**Par:** {symbol}\n"
+                                    f"**Precio:** ${current_price:.2f}\n"
+                                    f"**Cantidad:** ${trade_amount:.2f}\n"
+                                    f"**Confianza:** {confidence:.1%}",
+                                    priority=NotificationPriority.HIGH
+                                )
+                            else:
+                                self.logger.error(f"❌ FALLO EN COMPRA: {symbol} - {result}")
+                        else:
+                            self.logger.warning(f"⚠️ {symbol}: Cantidad de compra calculada es 0 o inválida.")
+                    else:
+                        self.logger.warning(f"🚫 {symbol}: Compra rechazada por gestión de riesgo: {risk_check.get('reason', 'N/A')}")
+                
+                elif signal_type == 'SELL':
+                    # Señal de VENTA
+                    if not existing_position or existing_position.get('quantity', 0) <= 0:
+                        self.logger.info(f"🔄 {symbol}: No hay posición LONG para vender, se ignora señal SELL.")
+                        continue
+                    
+                    # Verificar límites de riesgo antes de cerrar posición
+                    risk_check = await self.risk_manager.check_risk_limits_before_trade(
+                        symbol, 'SELL', current_price, confidence
+                    )
+                    
+                    if risk_check['approved']:
+                        # Ejecutar venta
+                        position_quantity = existing_position.get('quantity', 0)
+                        self.logger.info(f"💸 EJECUTANDO VENTA: {symbol} - {position_quantity} @ ${current_price:.2f}")
+                        
+                        result = await self.risk_manager.close_position(
+                            symbol=symbol,
+                            price=current_price,
+                            confidence=confidence,
+                            signal_data=signal_data
+                        )
+                        
+                        if result and result.get('success'):
+                            self.logger.info(f"✅ VENTA EXITOSA: {symbol} - {result}")
+                            
+                            # Notificar a Discord
+                            profit_loss = result.get('profit_loss', 0)
+                            profit_emoji = "🟢" if profit_loss >= 0 else "🔴"
+                            
+                            await self.discord_notifier.send_trade_notification(
+                                f"{profit_emoji} **VENTA EJECUTADA**\n"
+                                f"**Par:** {symbol}\n"
+                                f"**Precio:** ${current_price:.2f}\n"
+                                f"**P&L:** ${profit_loss:.2f}\n"
+                                f"**Confianza:** {confidence:.1%}",
+                                priority=NotificationPriority.HIGH
+                            )
+                        else:
+                            self.logger.error(f"❌ FALLO EN VENTA: {symbol} - {result}")
+                    else:
+                        self.logger.warning(f"🚫 {symbol}: Venta rechazada por gestión de riesgo: {risk_check.get('reason', 'N/A')}")
+                
+                else:
+                    # Señal HOLD - no hacer nada
+                    self.logger.info(f"🔄 {symbol}: Señal HOLD, mantener posición actual.")
+                    
+            except Exception as e:
+                self.logger.error(f"❌ Error procesando señal {signal_type} para {symbol}: {e}", exc_info=True)
 
     async def shutdown(self):
         """Realiza un apagado controlado del sistema."""
