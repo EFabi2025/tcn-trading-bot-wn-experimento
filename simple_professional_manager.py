@@ -473,7 +473,7 @@ class SimpleProfessionalTradingManager:
     async def run(self):
         """🎯 Ejecutar loop principal de trading"""
         print("🎯 Iniciando loop principal de trading...")
-        
+
         # ✅ NUEVO: Contador de errores por ciclo para reset automático
         consecutive_errors = 0
         max_consecutive_errors = 5  # Reducido de 10 a 5
@@ -535,7 +535,7 @@ class SimpleProfessionalTradingManager:
                 # ✅ MEJORADO: Marcar ciclo exitoso
                 consecutive_errors = 0
                 last_successful_cycle = datetime.now()
-                
+
                 # ✅ NUEVO: Mostrar resumen cada ciclo
                 loop_duration = (datetime.now() - loop_start_time).total_seconds()
                 print(f"⏱️ Ciclo completado en {loop_duration:.1f}s")
@@ -546,7 +546,7 @@ class SimpleProfessionalTradingManager:
             except Exception as e:
                 consecutive_errors += 1
                 await self._handle_error_improved(e, consecutive_errors, max_consecutive_errors)
-                
+
                 # ✅ MEJORADO: Pausa adaptativa basada en el número de errores
                 if consecutive_errors <= 2:
                     await asyncio.sleep(10)  # Pausa corta para errores menores
@@ -559,7 +559,7 @@ class SimpleProfessionalTradingManager:
         """❌ Manejo mejorado de errores del sistema"""
         error_msg = f"Error en loop principal: {error}"
         error_type = type(error).__name__
-        
+
         print(f"❌ {error_msg} (Error #{consecutive_errors})")
         print(f"🔍 Tipo de error: {error_type}")
 
@@ -569,7 +569,7 @@ class SimpleProfessionalTradingManager:
         if "timeout" in str(error).lower() or "connection" in str(error).lower():
             print("🌐 Error de conectividad detectado - continuando con pausa corta")
             return
-        
+
         if "rate limit" in str(error).lower():
             print("⏳ Rate limit detectado - pausando 60 segundos")
             await asyncio.sleep(60)
@@ -579,7 +579,7 @@ class SimpleProfessionalTradingManager:
         if consecutive_errors >= max_consecutive_errors:
             print(f"🚨 {consecutive_errors} errores consecutivos - pausando sistema temporalmente")
             await self.pause_trading_with_reason(f"Demasiados errores consecutivos ({consecutive_errors})")
-            
+
             # ✅ NUEVO: Auto-reanudar después de 10 minutos
             await asyncio.sleep(600)  # 10 minutos
             if self.status == TradingManagerStatus.PAUSED:
@@ -1243,8 +1243,18 @@ class SimpleProfessionalTradingManager:
         symbol = position.symbol
         current_price = await self.get_current_price(symbol)
 
-        # Simular ejecución de la orden de venta (en un sistema real, aquí iría la llamada a la API)
-        print(f"   💸 Ejecutando orden de VENTA simulada para {position.quantity} de {symbol} a ${current_price:.4f}")
+        # Ejecutar orden REAL de venta en Binance
+        print(f"   💸 Ejecutando orden de VENTA REAL para {position.quantity} de {symbol} a ${current_price:.4f}")
+        
+        # ✅ CRÍTICO: Ejecutar orden real de cierre
+        close_order_result = await self._execute_sell_order(position)
+        if close_order_result:
+            print(f"🎉 Orden de cierre ejecutada: ID {close_order_result['orderId']}")
+            # Usar precio real de la orden ejecutada si está disponible
+            if 'fills' in close_order_result and len(close_order_result['fills']) > 0:
+                current_price = float(close_order_result['fills'][0]['price'])
+        else:
+            print(f"⚠️ No se pudo ejecutar orden de cierre, usando precio de mercado")
 
         # Calcular PnL final
         if position.side == 'BUY':

@@ -227,7 +227,8 @@ class AdvancedRiskManager:
         print(f"   🔢 Cantidad: {quantity:.6f}")
         print(f"   ✅ Cumple mínimo Binance: {'Sí' if position_value_usd >= self.limits.min_position_value_usdt else 'No'}")
 
-        return quantity
+        # ✅ CRÍTICO: Retornar valor USD, NO cantidad
+        return position_value_usd
 
     def set_stop_loss_take_profit(self, position: Position) -> Position:
         """🛑 Configurar Stop Loss y Take Profit automáticos"""
@@ -289,7 +290,10 @@ class AdvancedRiskManager:
             return False, f"📉 Confianza muy baja: {confidence:.1%} < {self.limits.min_confidence_threshold:.1%}"
 
         # Verificar pérdida diaria máxima
-        daily_loss_percent = (abs(self.daily_pnl) / self.start_balance) * 100 if self.daily_pnl < 0 else 0
+        daily_loss_percent = 0
+        if self.daily_pnl < 0 and self.start_balance > 0:
+            daily_loss_percent = (abs(self.daily_pnl) / self.start_balance) * 100
+        
         if daily_loss_percent >= self.limits.max_daily_loss_percent:
             await self.activate_circuit_breaker("Pérdida diaria máxima alcanzada", 60)
             return False, f"🚨 Pérdida diaria máxima alcanzada: {daily_loss_percent:.1f}%"
@@ -300,7 +304,9 @@ class AdvancedRiskManager:
 
         # Verificar exposición total
         current_exposure = sum(pos.quantity * pos.current_price for pos in self.active_positions.values())
-        exposure_percent = (current_exposure / self.current_balance) * 100
+        exposure_percent = 0
+        if self.current_balance > 0:
+            exposure_percent = (current_exposure / self.current_balance) * 100
 
         if exposure_percent >= self.limits.max_total_exposure_percent:
             return False, f"💼 Exposición máxima alcanzada: {exposure_percent:.1f}%"
@@ -442,6 +448,12 @@ class AdvancedRiskManager:
             # Calcular tamaño de la posición
             position_size_usd = self.calculate_position_size(symbol, confidence, current_price)
             quantity = position_size_usd / current_price
+            
+            # 🐛 DEBUG: Rastrear conversión USD a cantidad
+            print(f"🐛 DEBUG OPEN_POSITION:")
+            print(f"   position_size_usd: ${position_size_usd:.6f}")
+            print(f"   current_price: ${current_price:.6f}")
+            print(f"   quantity calculada: {quantity:.8f}")
 
             # ✅ NUEVO: Ejecutar orden de compra real en Binance
             order_result = await self._execute_real_order(symbol, side, quantity)
@@ -486,7 +498,20 @@ class AdvancedRiskManager:
         try:
             timestamp = int(time.time() * 1000)
 
-            # TODO: Ajustar cantidad a los filtros del símbolo (stepSize, minQty)
+            # ✅ CRÍTICO: Ajustar cantidad a los filtros del símbolo
+            symbol_filters = await self._get_symbol_filters(symbol)
+            print(f"🔍 Filtros obtenidos para {symbol}: {symbol_filters}")
+            
+            if 'LOT_SIZE' in symbol_filters:
+                original_quantity = quantity
+                quantity = self._adjust_quantity_to_lot_size(quantity, symbol_filters['LOT_SIZE'])
+                print(f"📏 Ajuste de cantidad para {symbol}:")
+                print(f"   Original: {original_quantity:.8f}")
+                print(f"   Ajustada: {quantity:.8f}")
+                print(f"   Filtros LOT_SIZE: {symbol_filters['LOT_SIZE']}")
+            else:
+                print("⚠️ No se encontraron filtros LOT_SIZE")
+            
             params = {
                 'symbol': symbol,
                 'side': side.upper(),
@@ -690,29 +715,15 @@ class AdvancedRiskManager:
         min_qty = lot_size_filter['minQty']
         step_size = lot_size_filter['stepSize']
 
-        # Ajustar a step_size más cercano
-        adjusted_qty = math.floor(quantity / step_size) * step_size
+        # ✅ MEJORA: Usar math.ceil en lugar de floor para mantener valor USD
+        # Esto evita que la cantidad sea demasiado pequeña
+        adjusted_qty = math.ceil(quantity / step_size) * step_size
 
         # Asegurar que cumple el mínimo
         if adjusted_qty < min_qty:
             adjusted_qty = min_qty
 
         # Redondear según precisión del step_size
-        if step_size >= 1:
-            decimals = 0
-        elif step_size >= 0.1:
-            decimals = 1
-        elif step_size >= 0.01:
-            decimals = 2
-        elif step_size >= 0.001:
-            decimals = 3
-        elif step_size >= 0.0001:
-            decimals = 4
-        elif step_size >= 0.00001:
-            decimals = 5
-        elif step_size >= 0.000001:
-            decimals = 6
-        else:
-            decimals = 8
-
+        decimals = max(0, -int(math.floor(math.log10(step_size))))
+        
         return round(adjusted_qty, decimals)

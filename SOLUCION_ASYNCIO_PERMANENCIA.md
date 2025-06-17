@@ -23,7 +23,7 @@ except Exception as e:
 except Exception as e:
     consecutive_errors += 1
     await self._handle_error_improved(e, consecutive_errors, max_consecutive_errors)
-    
+
     # Pausa adaptativa
     if consecutive_errors <= 2:
         await asyncio.sleep(10)  # Pausa corta
@@ -217,4 +217,4 @@ Esta solución transforma un sistema frágil que se interrumpía frecuentemente 
 - **Proporciona visibilidad completa** de su estado
 - **Mantiene la permanencia** del ciclo de trading
 
-El resultado es un sistema de trading que puede funcionar de manera continua y confiable, incluso ante problemas de conectividad o errores temporales. 
+El resultado es un sistema de trading que puede funcionar de manera continua y confiable, incluso ante problemas de conectividad o errores temporales.
