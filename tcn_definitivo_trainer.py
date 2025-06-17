@@ -26,8 +26,8 @@ class DefinitiveTCNTrainer:
 
     def __init__(self):
         self.pairs = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
-        self.lookback_window = 48
-        self.prediction_horizon = 12  # Predecir 12 períodos adelante
+        self.lookback_window = 24
+        self.prediction_horizon = 6
 
         # 🎯 THRESHOLDS BASADOS EN ANÁLISIS DE DATOS REALES
         self.thresholds = {
@@ -51,8 +51,8 @@ class DefinitiveTCNTrainer:
             }
         }
 
-    async def get_real_market_data(self, symbol: str, days: int = 45) -> pd.DataFrame:
-        """📊 Obtener datos reales de mercado de Binance"""
+    async def get_real_market_data(self, symbol: str, days: int = 10) -> pd.DataFrame:
+        """📊 Obtener datos reales de mercado de Binance (versión rápida)"""
 
         print(f"📊 Obteniendo {days} días de datos reales para {symbol}...")
 
@@ -64,7 +64,7 @@ class DefinitiveTCNTrainer:
             url = f"{base_url}/api/v3/klines"
             params = {
                 'symbol': symbol,
-                'interval': '1m',
+                'interval': '5m',  # Usar 5 minutos en lugar de 1 minuto para menos datos
                 'startTime': start_time,
                 'endTime': end_time,
                 'limit': 1000
@@ -506,7 +506,7 @@ class DefinitiveTCNTrainer:
 
         try:
             # 1. Obtener datos reales
-            df = await self.get_real_market_data(symbol, days=45)
+            df = await self.get_real_market_data(symbol, days=10)
 
             # 2. Crear 66 features
             features = self.create_66_features(df)

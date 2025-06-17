@@ -473,6 +473,12 @@ class SimpleProfessionalTradingManager:
     async def run(self):
         """🎯 Ejecutar loop principal de trading"""
         print("🎯 Iniciando loop principal de trading...")
+        
+        # ✅ NUEVO: Contador de errores por ciclo para reset automático
+        consecutive_errors = 0
+        max_consecutive_errors = 5  # Reducido de 10 a 5
+        error_reset_time = 300  # 5 minutos para reset de errores
+        last_successful_cycle = datetime.now()
 
         while self.status == TradingManagerStatus.RUNNING:
             try:
@@ -483,6 +489,13 @@ class SimpleProfessionalTradingManager:
                     await self._handle_pause_state()
                     await asyncio.sleep(10)
                     continue
+
+                # ✅ MEJORADO: Reset automático de contador de errores
+                if consecutive_errors > 0:
+                    time_since_success = (datetime.now() - last_successful_cycle).total_seconds()
+                    if time_since_success > error_reset_time:
+                        consecutive_errors = 0
+                        print(f"🔄 Reset automático de errores después de {error_reset_time/60:.1f} minutos")
 
                 # ✅ NUEVO: Generar reporte TCN cada 5 minutos
                 await self._generate_tcn_report_if_needed()
@@ -519,6 +532,10 @@ class SimpleProfessionalTradingManager:
                 # 6. Guardar estado en DB
                 await self._save_periodic_metrics()
 
+                # ✅ MEJORADO: Marcar ciclo exitoso
+                consecutive_errors = 0
+                last_successful_cycle = datetime.now()
+                
                 # ✅ NUEVO: Mostrar resumen cada ciclo
                 loop_duration = (datetime.now() - loop_start_time).total_seconds()
                 print(f"⏱️ Ciclo completado en {loop_duration:.1f}s")
@@ -527,8 +544,55 @@ class SimpleProfessionalTradingManager:
                 await asyncio.sleep(self.check_interval)
 
             except Exception as e:
-                await self._handle_error(e)
-                await asyncio.sleep(30)  # Pausa en caso de error
+                consecutive_errors += 1
+                await self._handle_error_improved(e, consecutive_errors, max_consecutive_errors)
+                
+                # ✅ MEJORADO: Pausa adaptativa basada en el número de errores
+                if consecutive_errors <= 2:
+                    await asyncio.sleep(10)  # Pausa corta para errores menores
+                elif consecutive_errors <= 4:
+                    await asyncio.sleep(20)  # Pausa media
+                else:
+                    await asyncio.sleep(30)  # Pausa larga solo para errores críticos
+
+    async def _handle_error_improved(self, error: Exception, consecutive_errors: int, max_consecutive_errors: int):
+        """❌ Manejo mejorado de errores del sistema"""
+        error_msg = f"Error en loop principal: {error}"
+        error_type = type(error).__name__
+        
+        print(f"❌ {error_msg} (Error #{consecutive_errors})")
+        print(f"🔍 Tipo de error: {error_type}")
+
+        await self.database.log_event('ERROR', 'SYSTEM', f"{error_msg} | Consecutivos: {consecutive_errors}")
+
+        # ✅ MEJORADO: Manejo inteligente de diferentes tipos de errores
+        if "timeout" in str(error).lower() or "connection" in str(error).lower():
+            print("🌐 Error de conectividad detectado - continuando con pausa corta")
+            return
+        
+        if "rate limit" in str(error).lower():
+            print("⏳ Rate limit detectado - pausando 60 segundos")
+            await asyncio.sleep(60)
+            return
+
+        # ✅ MEJORADO: Solo pausar después de muchos errores críticos
+        if consecutive_errors >= max_consecutive_errors:
+            print(f"🚨 {consecutive_errors} errores consecutivos - pausando sistema temporalmente")
+            await self.pause_trading_with_reason(f"Demasiados errores consecutivos ({consecutive_errors})")
+            
+            # ✅ NUEVO: Auto-reanudar después de 10 minutos
+            await asyncio.sleep(600)  # 10 minutos
+            if self.status == TradingManagerStatus.PAUSED:
+                print("🔄 Auto-reanudando trading después de pausa por errores")
+                await self.resume_trading()
+
+        # Actualizar métricas de errores
+        self.metrics['error_count'] += 1
+        self.metrics['last_error'] = {
+            'type': error_type,
+            'message': str(error)[:100],
+            'timestamp': datetime.now().isoformat()
+        }
 
     async def _generate_tcn_report_if_needed(self):
         """📊 Generar reporte TCN cada 5 minutos"""

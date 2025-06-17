@@ -35,6 +35,8 @@ class Position:
     pnl_percent: float = 0.0
     pnl_usd: float = 0.0
     trade_id: str = ""
+    order_id: str = ""  # ✅ AÑADIDO: ID de orden de Binance para compatibilidad
+    is_active: bool = True  # ✅ AÑADIDO: Estado de la posición
 
 @dataclass
 class RiskLimits:
@@ -461,10 +463,13 @@ class AdvancedRiskManager:
                 side=side,
                 quantity=real_quantity,
                 entry_price=real_entry_price,
+                current_price=real_entry_price,  # ✅ AÑADIDO: Precio actual inicial
                 entry_time=datetime.now(timezone.utc),
                 stop_loss=real_entry_price * (1 - self.limits.stop_loss_percent / 100),
                 take_profit=real_entry_price * (1 + self.limits.take_profit_percent / 100),
-                trade_id=order_id # Usamos el ID de la orden de Binance
+                trade_id=order_id,  # ✅ CORREGIDO: Usar coma
+                order_id=order_id,  # ✅ AÑADIDO: ID de orden para compatibilidad
+                is_active=True  # ✅ AÑADIDO: Estado activo
             )
 
             self.active_positions[order_id] = position
