@@ -53,10 +53,10 @@ class OrderDiagnostic:
 
     async def _check_configuration(self):
         """⚙️ Verificar configuración actual"""
-        
+
         print("1️⃣ VERIFICACIÓN DE CONFIGURACIÓN")
         print("-" * 40)
-        
+
         # Verificar variables críticas
         config_issues = []
 
@@ -64,7 +64,7 @@ class OrderDiagnostic:
             config_issues.append("❌ BINANCE_API_KEY no configurada")
         else:
             print(f"✅ API KEY configurada")
-            
+
         if not self.secret_key or self.secret_key == 'tu_secret_key_de_binance_aqui':
             config_issues.append("❌ BINANCE_SECRET_KEY no configurada")
         else:

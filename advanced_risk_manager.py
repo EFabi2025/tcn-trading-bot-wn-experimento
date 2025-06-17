@@ -293,7 +293,7 @@ class AdvancedRiskManager:
         daily_loss_percent = 0
         if self.daily_pnl < 0 and self.start_balance > 0:
             daily_loss_percent = (abs(self.daily_pnl) / self.start_balance) * 100
-        
+
         if daily_loss_percent >= self.limits.max_daily_loss_percent:
             await self.activate_circuit_breaker("Pérdida diaria máxima alcanzada", 60)
             return False, f"🚨 Pérdida diaria máxima alcanzada: {daily_loss_percent:.1f}%"
@@ -448,7 +448,7 @@ class AdvancedRiskManager:
             # Calcular tamaño de la posición
             position_size_usd = self.calculate_position_size(symbol, confidence, current_price)
             quantity = position_size_usd / current_price
-            
+
             # 🐛 DEBUG: Rastrear conversión USD a cantidad
             print(f"🐛 DEBUG OPEN_POSITION:")
             print(f"   position_size_usd: ${position_size_usd:.6f}")
@@ -501,7 +501,7 @@ class AdvancedRiskManager:
             # ✅ CRÍTICO: Ajustar cantidad a los filtros del símbolo
             symbol_filters = await self._get_symbol_filters(symbol)
             print(f"🔍 Filtros obtenidos para {symbol}: {symbol_filters}")
-            
+
             if 'LOT_SIZE' in symbol_filters:
                 original_quantity = quantity
                 quantity = self._adjust_quantity_to_lot_size(quantity, symbol_filters['LOT_SIZE'])
@@ -511,7 +511,7 @@ class AdvancedRiskManager:
                 print(f"   Filtros LOT_SIZE: {symbol_filters['LOT_SIZE']}")
             else:
                 print("⚠️ No se encontraron filtros LOT_SIZE")
-            
+
             params = {
                 'symbol': symbol,
                 'side': side.upper(),
@@ -725,5 +725,5 @@ class AdvancedRiskManager:
 
         # Redondear según precisión del step_size
         decimals = max(0, -int(math.floor(math.log10(step_size))))
-        
+
         return round(adjusted_qty, decimals)

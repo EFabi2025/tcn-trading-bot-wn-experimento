@@ -1,0 +1,8 @@
+timestamp: 20250614_231738
+symbol: ETHUSDT
+last_price: 2532.5
+data_points: 100
+features_count: 66
+last_rsi_14: 51.76559556496764
+last_macd: -0.17129581977314956
+system: macOS

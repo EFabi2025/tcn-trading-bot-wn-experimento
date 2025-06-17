@@ -1245,7 +1245,7 @@ class SimpleProfessionalTradingManager:
 
         # Ejecutar orden REAL de venta en Binance
         print(f"   💸 Ejecutando orden de VENTA REAL para {position.quantity} de {symbol} a ${current_price:.4f}")
-        
+
         # ✅ CRÍTICO: Ejecutar orden real de cierre
         close_order_result = await self._execute_sell_order(position)
         if close_order_result:
