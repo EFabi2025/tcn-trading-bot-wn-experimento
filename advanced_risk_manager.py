@@ -84,6 +84,14 @@ class AdvancedRiskManager:
             'largest_loss': 0.0
         }
 
+        # ✅ AÑADIDO: daily_stats que faltaba
+        self.daily_stats = {
+            'wins': 0,
+            'losses': 0,
+            'largest_win': 0.0,
+            'largest_loss': 0.0
+        }
+
         print("✅ Risk Manager configurado")
 
     def _load_risk_limits_from_env(self) -> RiskLimits:
@@ -258,7 +266,7 @@ class AdvancedRiskManager:
         if position.side == 'BUY' and current_price > position.entry_price:
             # Solo actualizar si estamos en ganancia
             new_trailing = current_price * (1 - self.limits.trailing_stop_percent / 100)
-            if new_trailing > position.trailing_stop:
+            if position.trailing_stop is not None and new_trailing > position.trailing_stop:
                 old_trailing = position.trailing_stop
                 position.trailing_stop = new_trailing
                 print(f"📈 Trailing Stop actualizado {position.symbol}: ${old_trailing:.4f} → ${new_trailing:.4f}")
@@ -266,7 +274,7 @@ class AdvancedRiskManager:
         elif position.side == 'SELL' and current_price < position.entry_price:
             # Para SHORT, trailing stop baja
             new_trailing = current_price * (1 + self.limits.trailing_stop_percent / 100)
-            if new_trailing < position.trailing_stop:
+            if position.trailing_stop is not None and new_trailing < position.trailing_stop:
                 old_trailing = position.trailing_stop
                 position.trailing_stop = new_trailing
                 print(f"📈 Trailing Stop actualizado {position.symbol}: ${old_trailing:.4f} → ${new_trailing:.4f}")
@@ -281,7 +289,7 @@ class AdvancedRiskManager:
             return False, "🚫 SELL prohibido en Binance Spot - no tienes el activo"
 
         # Verificar si circuit breaker está activo
-        if self.circuit_breaker_active:
+        if self.circuit_breaker_active and self.circuit_breaker_until:
             remaining_time = self.circuit_breaker_until - datetime.now()
             return False, f"🔥 Circuit breaker activo por {remaining_time.seconds//60} minutos"
 
@@ -402,23 +410,23 @@ class AdvancedRiskManager:
                 close_reason = ""
 
                 if position.side == 'BUY':
-                    if current_price <= position.stop_loss:
+                    if position.stop_loss is not None and current_price <= position.stop_loss:
                         should_close = True
                         close_reason = "STOP_LOSS"
-                    elif current_price <= position.trailing_stop:
+                    elif position.trailing_stop is not None and current_price <= position.trailing_stop:
                         should_close = True
                         close_reason = "TRAILING_STOP"
-                    elif current_price >= position.take_profit:
+                    elif position.take_profit is not None and current_price >= position.take_profit:
                         should_close = True
                         close_reason = "TAKE_PROFIT"
                 else:  # SELL
-                    if current_price >= position.stop_loss:
+                    if position.stop_loss is not None and current_price >= position.stop_loss:
                         should_close = True
                         close_reason = "STOP_LOSS"
-                    elif current_price >= position.trailing_stop:
+                    elif position.trailing_stop is not None and current_price >= position.trailing_stop:
                         should_close = True
                         close_reason = "TRAILING_STOP"
-                    elif current_price <= position.take_profit:
+                    elif position.take_profit is not None and current_price <= position.take_profit:
                         should_close = True
                         close_reason = "TAKE_PROFIT"
 

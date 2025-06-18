@@ -27,7 +27,7 @@ class Position:
     """📈 Posición individual en el portafolio"""
     symbol: str
     side: str  # BUY o SELL
-    size: float  # Cantidad del activo
+    quantity: float  # Cantidad del activo (unificado con AdvancedRiskManager)
     entry_price: float
     current_price: float
     market_value: float  # Valor actual en USDT
@@ -354,7 +354,7 @@ class ProfessionalPortfolioManager:
                         new_position = Position(
                             symbol=symbol,
                             side='BUY',
-                            size=qty_from_this_order,
+                            quantity=qty_from_this_order,
                             entry_price=buy_order.price,
                             current_price=current_price,
                             market_value=market_value,
@@ -506,7 +506,7 @@ class ProfessionalPortfolioManager:
                         report += f"**{pos.symbol}: {pos.side}**\n"
                         report += f"└ ${pos.entry_price:,.2f} → ${pos.current_price:,.2f} "
                         report += f"({pnl_sign}{pos.unrealized_pnl_percent:.2f}% = ${pnl_sign}{pos.unrealized_pnl_usd:.2f}) {pnl_color}\n"
-                        report += f"   💰 Cantidad: {pos.size:.6f} | 🕐 {pos.duration_minutes}min"
+                        report += f"   💰 Cantidad: {pos.quantity:.6f} | 🕐 {pos.duration_minutes}min"
 
                         # ✅ NUEVO: Mostrar estado del trailing stop
                         if hasattr(pos, 'trailing_stop_active') and pos.trailing_stop_active:
@@ -527,7 +527,7 @@ class ProfessionalPortfolioManager:
 
                             report += f"├─ **Pos #{i}:** ${pos.entry_price:,.2f} → ${pos.current_price:,.2f} "
                             report += f"({pnl_sign}{pos.unrealized_pnl_percent:.2f}% = ${pnl_sign}{pos.unrealized_pnl_usd:.2f}) {pnl_color}\n"
-                            report += f"│  💰 {pos.size:.6f} | 🕐 {pos.duration_minutes}min"
+                            report += f"│  💰 {pos.quantity:.6f} | 🕐 {pos.duration_minutes}min"
 
                             # ✅ NUEVO: Estado trailing stop por posición
                             if hasattr(pos, 'trailing_stop_active') and pos.trailing_stop_active:
@@ -1025,10 +1025,10 @@ class ProfessionalPortfolioManager:
 
                 # Actualizar precio y valores
                 position.current_price = current_price
-                position.market_value = position.size * current_price
+                position.market_value = position.quantity * current_price
 
                 # Recalcular PnL
-                entry_value = position.size * position.entry_price
+                entry_value = position.quantity * position.entry_price
                 position.unrealized_pnl_usd = position.market_value - entry_value
                 position.unrealized_pnl_percent = (position.unrealized_pnl_usd / entry_value) * 100 if entry_value > 0 else 0
 
