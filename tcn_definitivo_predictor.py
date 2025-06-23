@@ -57,6 +57,14 @@ class TCNDefinitivoPredictor:
             'BNBUSDT': 48   # Modelo antiguo
         }
 
+        # ✅ NUEVO: Cargar modelos automáticamente al inicializar
+        print("🚀 Inicializando TCN Definitivo Predictor...")
+        success = self.load_all_models()
+        if success:
+            print(f"✅ Predictor TCN listo con {len(self.models)} modelos")
+        else:
+            print(f"⚠️ Predictor TCN inicializado con {len(self.models)}/{len(self.symbols)} modelos")
+
         self.n_features = 66
 
         # ✅ CORREGIDO: Cargar modelos automáticamente al inicializar
