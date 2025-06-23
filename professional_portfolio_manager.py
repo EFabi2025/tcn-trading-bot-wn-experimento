@@ -90,6 +90,7 @@ class PortfolioSnapshot:
     position_count: int
     max_positions: int
     total_trades_today: int
+    small_positions: List[Position] = None  # ✅ NUEVO: Posiciones pequeñas filtradas
 
 class ProfessionalPortfolioManager:
     """💼 Gestor Profesional de Portafolio"""
@@ -460,12 +461,26 @@ class ProfessionalPortfolioManager:
             for asset in all_assets:
                 asset.percentage_of_portfolio = (asset.usd_value / total_portfolio_value * 100) if total_portfolio_value > 0 else 0.0
             
-            # 8. ✅ NUEVO: Filtrar posiciones por valor mínimo
-            active_positions = [pos for pos in individual_positions 
-                             if pos.market_value >= self.min_position_value]
+            # 8. ✅ NUEVO: Filtrar posiciones por valor mínimo y separar pequeñas
+            print(f"🔍 DEBUG: Analizando {len(individual_positions)} posiciones antes del filtro:")
+            active_positions = []
+            small_positions = []
             
-            # 9. Calcular PnL total
-            total_unrealized_pnl = sum(pos.unrealized_pnl_usd for pos in active_positions)
+            for i, pos in enumerate(individual_positions, 1):
+                if pos.market_value >= self.min_position_value:
+                    active_positions.append(pos)
+                    status = "✅ INCLUIDA"
+                else:
+                    small_positions.append(pos)
+                    status = "📊 PEQUEÑA"
+                print(f"   {i}. {pos.symbol} Pos #{pos.order_id}: ${pos.market_value:.2f} - {status}")
+            
+            print(f"📊 RESULTADO: {len(active_positions)} activas, {len(small_positions)} pequeñas (mín: ${self.min_position_value})")
+            
+            # 9. Calcular PnL total (incluyendo posiciones pequeñas)
+            all_positions = active_positions + small_positions
+            total_unrealized_pnl = sum(pos.unrealized_pnl_usd for pos in all_positions)
+            total_unrealized_pnl_percent = (total_unrealized_pnl / total_portfolio_value * 100) if total_portfolio_value > 0 else 0.0
             
             # 10. Crear snapshot
             snapshot = PortfolioSnapshot(
@@ -473,16 +488,17 @@ class ProfessionalPortfolioManager:
                 total_balance_usd=total_portfolio_value,
                 free_usdt=free_usdt,
                 total_unrealized_pnl=total_unrealized_pnl,
-                total_unrealized_pnl_percent=(total_unrealized_pnl / total_portfolio_value * 100) if total_portfolio_value > 0 else 0.0,
+                total_unrealized_pnl_percent=total_unrealized_pnl_percent,
                 active_positions=active_positions,
                 all_assets=all_assets,
                 position_count=len(active_positions),
                 max_positions=self.max_positions,
-                total_trades_today=len([o for o in all_orders if o.time.date() == datetime.now().date()])
+                total_trades_today=len([o for o in all_orders if o.time.date() == datetime.now().date()]),
+                small_positions=small_positions
             )
             
             self.last_snapshot_time = datetime.now()
-            print(f"✅ Snapshot obtenido: {len(all_assets)} activos, {len(active_positions)} posiciones individuales")
+            print(f"✅ Snapshot obtenido: {len(all_assets)} activos, {len(active_positions)} posiciones activas, {len(small_positions)} posiciones pequeñas")
             
             return snapshot
             
@@ -567,6 +583,20 @@ class ProfessionalPortfolioManager:
                 report_lines.append(
                     f"   💰 Cantidad: {pos.size:.6f} | 🕐 {pos.duration_minutes}min"
                 )
+        
+        # ✅ NUEVO: Sección de Posiciones Pequeñas
+        small_positions = getattr(snapshot, 'small_positions', [])
+        if small_positions:
+            report_lines.append("")
+            report_lines.append(f"**📊 POSICIONES PEQUEÑAS ({len(small_positions)})** *(< ${self.min_position_value})*")
+            for pos in small_positions:
+                pnl_sign = "🟢" if pos.unrealized_pnl_usd >= 0 else "🔴"
+                report_lines.append(f"**{pos.symbol}: {pos.side}** (${pos.market_value:.2f})")
+                report_lines.append(
+                    f"└ ${pos.entry_price:,.2f} → ${pos.current_price:,.2f} "
+                    f"({pos.unrealized_pnl_percent:+.2f}% = ${pos.unrealized_pnl_usd:+.2f}) {pnl_sign}"
+                )
+        
         report_lines.append("")
 
         # --- RESUMEN RÁPIDO (Sección existente) ---
