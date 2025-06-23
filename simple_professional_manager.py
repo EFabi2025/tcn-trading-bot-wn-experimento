@@ -108,6 +108,10 @@ class SimpleProfessionalTradingManager:
         # Smart Discord Notifier
         self.discord_notifier = SmartDiscordNotifier()
 
+        # 🧠 INICIALIZAR TCN REAL OBLIGATORIO
+        self.tcn_predictor = None
+        self._initialize_tcn_predictor()
+
         # Configurar filtros conservadores para evitar spam
         self.discord_notifier.configure_filters(
             min_trade_value_usd=12.0,          # Solo trades > $12
@@ -154,6 +158,19 @@ class SimpleProfessionalTradingManager:
             'total_trades': 0,
             'profitable_trades': 0
         }
+
+    def _initialize_tcn_predictor(self):
+        """🧠 Inicializar predictor TCN REAL obligatorio"""
+        try:
+            from tcn_definitivo_predictor import TCNDefinitivoPredictor
+            self.tcn_predictor = TCNDefinitivoPredictor()
+            print("🎯 Predictor TCN DEFINITIVO inicializado en constructor")
+            print(f"   📊 Modelos cargados: {len(self.tcn_predictor.models)}")
+            print(f"   🎯 Símbolos: {list(self.tcn_predictor.models.keys())}")
+        except Exception as e:
+            print(f"❌ ERROR CRÍTICO: No se pudo inicializar TCN definitivo en constructor: {e}")
+            print("🚨 SISTEMA REQUIERE TCN REAL - NO PUEDE CONTINUAR SIN ÉL")
+            raise Exception(f"TCN REAL requerido pero falló en constructor: {e}")
 
     def _load_config(self) -> BinanceConfig:
         """⚙️ Cargar configuración desde variables de entorno"""
@@ -970,24 +987,11 @@ class SimpleProfessionalTradingManager:
         if not hasattr(self, 'last_signals'):
             self.last_signals = {}
 
-        # ✅ MANTENER: Inicializar predictor TCN si no existe
-        if not hasattr(self, 'tcn_predictor'):
-            try:
-                from tcn_definitivo_predictor import TCNDefinitivoPredictor
-                self.tcn_predictor = TCNDefinitivoPredictor()
-                print("🎯 Predictor TCN DEFINITIVO inicializado correctamente")
-                print(f"   📊 Modelos cargados: {len(self.tcn_predictor.models)}")
-                print(f"   🎯 Símbolos: {list(self.tcn_predictor.models.keys())}")
-            except Exception as e:
-                print(f"❌ Error inicializando predictor TCN definitivo: {e}")
-                # Fallback al predictor de emergencia
-                try:
-                    from emergency_tcn_predictor import EmergencyTCNPredictor
-                    self.tcn_predictor = EmergencyTCNPredictor()
-                    print("🚨 Usando predictor TCN de emergencia como fallback")
-                except Exception as e2:
-                    print(f"❌ Error con fallback: {e2}")
-                    return signals
+        # ✅ VERIFICAR que TCN está inicializado (debe estar desde constructor)
+        if not hasattr(self, 'tcn_predictor') or self.tcn_predictor is None:
+            print("❌ ERROR CRÍTICO: TCN no está inicializado")
+            print("🚨 SISTEMA REQUIERE TCN REAL - REINTENTANDO INICIALIZACIÓN")
+            self._initialize_tcn_predictor()
 
         # ✅ NUEVO: Analizar contexto de mercado como capa de seguridad
         try:
