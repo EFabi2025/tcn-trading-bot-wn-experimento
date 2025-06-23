@@ -989,6 +989,22 @@ class SimpleProfessionalTradingManager:
                     print(f"❌ Error con fallback: {e2}")
                     return signals
 
+        # ✅ NUEVO: Analizar contexto de mercado como capa de seguridad
+        try:
+            market_context = await self._analyze_market_context(prices)
+            print(f"🌍 CONTEXTO DE MERCADO: {market_context['regime']} (Score: {market_context['score']:.2f}, Confianza: {market_context['confidence']:.1%})")
+        except Exception as e:
+            print(f"⚠️ Error analizando contexto de mercado: {e}")
+            # Usar contexto neutral por defecto
+            market_context = {
+                'regime': 'NEUTRAL',
+                'score': 0.0,
+                'confidence': 0.0,
+                'market_fear_factor': 0.5,
+                'trend_strength': 0.0,
+                'volatility_level': 'MEDIUM'
+            }
+
         # Obtener umbral de confianza
         threshold = float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.70')) * 100  # Convertir a porcentaje
 
@@ -1020,6 +1036,15 @@ class SimpleProfessionalTradingManager:
 
                 signal = prediction['signal']
                 confidence_level = prediction['confidence'] * 100  # Convertir a porcentaje
+
+                # ✅ NUEVO: Aplicar filtro de contexto de mercado
+                filtered_signal, context_reason = self._apply_market_context_filter(
+                    signal, confidence_level, market_context, symbol
+                )
+
+                if filtered_signal != signal:
+                    print(f"🛡️ FILTRO DE CONTEXTO aplicado en {symbol}: {signal} → {filtered_signal} ({context_reason})")
+                    signal = filtered_signal
 
                 # Solo procesar si la señal es nueva o ha cambiado
                 if self.last_signals.get(symbol) != signal:
@@ -1063,7 +1088,10 @@ class SimpleProfessionalTradingManager:
                             'reason': 'TCN_MODEL_PREDICTION',
                             'available_usdt': self.current_balance,
                             'probabilities': prediction.get('probabilities', {}),
-                            'balance_sufficient': self.current_balance >= self.risk_manager.limits.min_position_value_usdt
+                            'balance_sufficient': self.current_balance >= self.risk_manager.limits.min_position_value_usdt,
+                            # ✅ NUEVO: Información del contexto de mercado
+                            'market_context': market_context,
+                            'context_filter_applied': filtered_signal != prediction['signal']
                         }
                         print(f"  ✅ SEÑAL AÑADIDA A LA COLA: {symbol} {signal} ({confidence_level:.1f}%)")
 
@@ -1077,6 +1105,283 @@ class SimpleProfessionalTradingManager:
             print("📊 No se generaron señales TCN válidas en este ciclo")
 
         return signals
+
+    async def _analyze_market_context(self, prices: Dict[str, float]) -> Dict:
+        """
+        🌍 Analizar contexto general de mercado como capa de seguridad adicional
+
+        Evalúa múltiples factores para determinar el régimen de mercado:
+        - Tendencia de dominancia de BTC
+        - Correlación entre activos principales
+        - Índice de miedo/codicia (Fear & Greed simulado)
+        - Volatilidad del mercado
+        - Fortaleza relativa de las altcoins vs BTC
+
+        Returns:
+            Dict con régimen, score, confianza y factores de riesgo
+        """
+        try:
+            print("🔍 Analizando contexto de mercado...")
+
+            # Obtener datos históricos para análisis de tendencia
+            market_data = {}
+            for symbol in ['BTCUSDT', 'ETHUSDT', 'BNBUSDT']:
+                try:
+                    # Obtener últimas 100 velas de 1h para análisis macro
+                    url = f"https://api.binance.com/api/v3/klines"
+                    params = {
+                        'symbol': symbol,
+                        'interval': '1h',
+                        'limit': 100
+                    }
+
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(url, params=params) as response:
+                            if response.status == 200:
+                                klines = await response.json()
+                                market_data[symbol] = [float(k[4]) for k in klines]  # Precios de cierre
+                except Exception as e:
+                    print(f"  ⚠️ Error obteniendo datos para {symbol}: {e}")
+                    market_data[symbol] = [prices.get(symbol, 0)] * 100  # Fallback
+
+            # 1. ANÁLISIS DE TENDENCIA DOMINANTE (BTC como líder)
+            btc_prices = market_data.get('BTCUSDT', [])
+            if len(btc_prices) >= 50:
+                # Tendencia de corto y largo plazo
+                short_avg = sum(btc_prices[-10:]) / 10  # Últimas 10 horas
+                medium_avg = sum(btc_prices[-24:]) / 24  # Últimas 24 horas
+                long_avg = sum(btc_prices[-50:]) / 50   # Últimas 50 horas
+
+                current_btc = btc_prices[-1]
+
+                # Score de tendencia (-1 = muy bearish, +1 = muy bullish)
+                trend_score = 0
+                trend_score += 0.4 * ((current_btc - short_avg) / short_avg)   # 40% peso corto plazo
+                trend_score += 0.35 * ((current_btc - medium_avg) / medium_avg) # 35% peso medio plazo
+                trend_score += 0.25 * ((current_btc - long_avg) / long_avg)     # 25% peso largo plazo
+
+                # Normalizar a rango [-1, 1]
+                trend_score = max(-1, min(1, trend_score * 10))
+            else:
+                trend_score = 0
+
+            # 2. ANÁLISIS DE CORRELACIÓN (Mercado unificado vs disperso)
+            correlation_strength = 0
+            try:
+                if len(market_data) >= 2:
+                    # Calcular correlación entre BTC, ETH y BNB
+                    import numpy as np
+
+                    btc_returns = np.diff(market_data['BTCUSDT']) / market_data['BTCUSDT'][:-1]
+                    eth_returns = np.diff(market_data['ETHUSDT']) / market_data['ETHUSDT'][:-1]
+                    bnb_returns = np.diff(market_data['BNBUSDT']) / market_data['BNBUSDT'][:-1]
+
+                    # Correlación promedio
+                    btc_eth_corr = np.corrcoef(btc_returns, eth_returns)[0, 1]
+                    btc_bnb_corr = np.corrcoef(btc_returns, bnb_returns)[0, 1]
+                    eth_bnb_corr = np.corrcoef(eth_returns, bnb_returns)[0, 1]
+
+                    correlation_strength = np.mean([btc_eth_corr, btc_bnb_corr, eth_bnb_corr])
+                    correlation_strength = max(0, min(1, correlation_strength))  # Clamp [0,1]
+            except Exception as e:
+                print(f"  ⚠️ Error calculando correlación: {e}")
+                correlation_strength = 0.5  # Neutral
+
+            # 3. ÍNDICE DE MIEDO/CODICIA SIMULADO
+            try:
+                # Basado en volatilidad y momentum
+                btc_volatility = np.std(np.diff(btc_prices[-24:]) / btc_prices[-25:-1]) if len(btc_prices) >= 25 else 0
+
+                # Convertir volatilidad a fear factor (alta vol = miedo, baja vol = codicia)
+                fear_factor = min(1, btc_volatility * 100)  # Escalar volatilidad
+                fear_factor = max(0, min(1, fear_factor))   # Clamp [0,1]
+            except Exception as e:
+                fear_factor = 0.5  # Neutral
+
+            # 4. FORTALEZA DE ALTCOINS vs BTC (Dominancia)
+            altcoin_strength = 0
+            try:
+                # Comparar rendimiento de ETH y BNB vs BTC en últimas 24h
+                if len(market_data['BTCUSDT']) >= 24 and len(market_data['ETHUSDT']) >= 24:
+                    btc_change_24h = (btc_prices[-1] - btc_prices[-24]) / btc_prices[-24]
+                    eth_change_24h = (market_data['ETHUSDT'][-1] - market_data['ETHUSDT'][-24]) / market_data['ETHUSDT'][-24]
+                    bnb_change_24h = (market_data['BNBUSDT'][-1] - market_data['BNBUSDT'][-24]) / market_data['BNBUSDT'][-24]
+
+                    # Altcoins superando a BTC = bullish, underperformance = bearish
+                    eth_relative = eth_change_24h - btc_change_24h
+                    bnb_relative = bnb_change_24h - btc_change_24h
+
+                    altcoin_strength = (eth_relative + bnb_relative) / 2
+                    altcoin_strength = max(-0.5, min(0.5, altcoin_strength))  # Clamp [-0.5, 0.5]
+            except Exception as e:
+                altcoin_strength = 0
+
+            # 5. SCORE COMPUESTO FINAL
+            # Pesos: Tendencia BTC (50%), Correlación (20%), Fear (15%), Altcoins (15%)
+            composite_score = (
+                0.50 * trend_score +           # Tendencia dominante
+                0.20 * (correlation_strength - 0.5) * 2 +  # Correlación (centralizada en 0)
+                0.15 * (0.5 - fear_factor) * 2 +           # Fear invertido (bajo miedo = bullish)
+                0.15 * altcoin_strength * 2                # Fortaleza altcoins
+            )
+
+            # 6. CLASIFICACIÓN DE RÉGIMEN
+            if composite_score > 0.15:
+                regime = 'BULLISH'
+                confidence = min(0.95, 0.5 + abs(composite_score))
+            elif composite_score < -0.15:
+                regime = 'BEARISH'
+                confidence = min(0.95, 0.5 + abs(composite_score))
+            else:
+                regime = 'NEUTRAL'
+                confidence = 0.5 + (0.15 - abs(composite_score)) / 0.15 * 0.3
+
+            # 7. NIVEL DE VOLATILIDAD
+            if fear_factor > 0.7:
+                volatility_level = 'HIGH'
+            elif fear_factor < 0.3:
+                volatility_level = 'LOW'
+            else:
+                volatility_level = 'MEDIUM'
+
+            context = {
+                'regime': regime,
+                'score': composite_score,
+                'confidence': confidence,
+                'market_fear_factor': fear_factor,
+                'trend_strength': abs(trend_score),
+                'volatility_level': volatility_level,
+                'correlation_strength': correlation_strength,
+                'altcoin_strength': altcoin_strength,
+                'btc_trend_score': trend_score,
+                'components': {
+                    'btc_trend': trend_score,
+                    'correlation': correlation_strength,
+                    'fear_greed': 1 - fear_factor,  # Invertir para mostrar greed
+                    'altcoin_performance': altcoin_strength
+                }
+            }
+
+            print(f"  📊 Tendencia BTC: {trend_score:.3f}")
+            print(f"  🔗 Correlación mercado: {correlation_strength:.3f}")
+            print(f"  😨 Factor miedo: {fear_factor:.3f}")
+            print(f"  🚀 Fortaleza altcoins: {altcoin_strength:.3f}")
+            print(f"  ⚡ Volatilidad: {volatility_level}")
+
+            return context
+
+        except Exception as e:
+            print(f"❌ Error en análisis de contexto: {e}")
+            # Contexto neutral por defecto
+            return {
+                'regime': 'NEUTRAL',
+                'score': 0.0,
+                'confidence': 0.0,
+                'market_fear_factor': 0.5,
+                'trend_strength': 0.0,
+                'volatility_level': 'MEDIUM',
+                'correlation_strength': 0.5,
+                'altcoin_strength': 0.0,
+                'btc_trend_score': 0.0,
+                'components': {}
+            }
+
+    def _apply_market_context_filter(self, signal: str, confidence: float, market_context: Dict, symbol: str) -> tuple:
+        """
+        🛡️ Aplicar filtro de contexto de mercado como capa de seguridad adicional
+
+        Args:
+            signal: Señal original del modelo TCN ('BUY', 'SELL', 'HOLD')
+            confidence: Confianza de la señal (0-100)
+            market_context: Contexto de mercado analizado
+            symbol: Símbolo siendo analizado
+
+        Returns:
+            tuple: (señal_filtrada, razón_del_filtro)
+        """
+        try:
+            regime = market_context['regime']
+            market_score = market_context['score']
+            market_confidence = market_context['confidence']
+            fear_factor = market_context['market_fear_factor']
+            volatility = market_context['volatility_level']
+
+            original_signal = signal
+            filter_reason = ""
+
+            # 🔴 FILTROS BEARISH - Restricciones de seguridad en mercado bajista
+            if regime == 'BEARISH' and market_confidence > 0.7:
+                if signal == 'BUY':
+                    # En mercado muy bearish, solo permitir BUY con confianza extrema
+                    if confidence < 85:  # Subir umbral de 70% a 85%
+                        signal = 'HOLD'
+                        filter_reason = f"Mercado BEARISH fuerte (score: {market_score:.2f}) - BUY requiere >85% confianza"
+                    else:
+                        # Permitir pero con advertencia
+                        filter_reason = f"BUY permitido en BEARISH por alta confianza ({confidence:.1f}%)"
+
+                elif signal == 'SELL':
+                    # En bearish, SELL es más seguro - reducir umbral ligeramente
+                    if confidence < 60:  # Reducir de 70% a 60% para SELL en bearish
+                        signal = 'HOLD'
+                        filter_reason = f"SELL en BEARISH requiere >60% confianza"
+                    else:
+                        filter_reason = f"SELL favorecido en mercado BEARISH"
+
+            # 🟢 FILTROS BULLISH - Aprovechar momentum alcista
+            elif regime == 'BULLISH' and market_confidence > 0.7:
+                if signal == 'BUY':
+                    # En bullish fuerte, relajar ligeramente el umbral para BUY
+                    if confidence < 65:  # Reducir de 70% a 65% para BUY en bullish
+                        signal = 'HOLD'
+                        filter_reason = f"BUY en BULLISH requiere >65% confianza"
+                    else:
+                        filter_reason = f"BUY favorecido en mercado BULLISH"
+
+                elif signal == 'SELL':
+                    # En bullish, ser más cauteloso con SELL
+                    if confidence < 80:  # Subir umbral para SELL en bullish
+                        signal = 'HOLD'
+                        filter_reason = f"Mercado BULLISH (score: {market_score:.2f}) - SELL requiere >80% confianza"
+
+            # 🟡 FILTROS DE VOLATILIDAD - Ajustar según volatilidad del mercado
+            if volatility == 'HIGH' and fear_factor > 0.8:
+                # Mercado muy volátil y con miedo - ser más conservador
+                if signal == 'BUY' and confidence < 80:
+                    signal = 'HOLD'
+                    filter_reason = f"Alta volatilidad (miedo: {fear_factor:.2f}) - BUY requiere >80% confianza"
+                elif signal == 'SELL' and confidence < 75:
+                    signal = 'HOLD'
+                    filter_reason = f"Alta volatilidad - SELL requiere >75% confianza"
+
+            # 🔵 FILTROS ESPECÍFICOS POR ACTIVO
+            if symbol == 'BTCUSDT':
+                # BTC como líder - ser más conservador
+                btc_trend = market_context.get('btc_trend_score', 0)
+                if signal == 'BUY' and btc_trend < -0.3:  # BTC en tendencia bajista fuerte
+                    if confidence < 82:
+                        signal = 'HOLD'
+                        filter_reason = f"BTC en tendencia bajista fuerte - BUY requiere >82% confianza"
+
+            elif symbol in ['ETHUSDT', 'BNBUSDT']:
+                # Altcoins - considerar dominancia de BTC
+                altcoin_strength = market_context.get('altcoin_strength', 0)
+                if signal == 'BUY' and altcoin_strength < -0.2:  # Altcoins underperforming
+                    if confidence < 75:
+                        signal = 'HOLD'
+                        filter_reason = f"Altcoins underperforming vs BTC - BUY requiere >75% confianza"
+
+            # 📊 LOG DEL FILTRO APLICADO
+            if signal != original_signal:
+                print(f"  🛡️ FILTRO CONTEXTO: {symbol} {original_signal}→{signal}")
+                print(f"      Régimen: {regime} (conf: {market_confidence:.1%})")
+                print(f"      Razón: {filter_reason}")
+
+            return signal, filter_reason
+
+        except Exception as e:
+            print(f"❌ Error aplicando filtro de contexto: {e}")
+            return signal, f"Error en filtro: {str(e)}"
 
     async def _process_signal(self, symbol: str, signal_data: Dict):
         """⚡ Procesar una señal individual"""
