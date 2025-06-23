@@ -328,6 +328,29 @@ class SmartDiscordNotifier:
         print(f"   ❌ Errores: {stats['errors']}")
         print(f"   📅 Hoy: {stats['notifications_today']}")
 
+    async def send_report(self, report_message: str) -> bool:
+        """
+        📄 Envía un reporte pre-formateado directamente a Discord.
+        Este método no aplica ningún formato adicional.
+        """
+        if not self._check_rate_limits():
+            self.stats['rate_limited'] += 1
+            return False
+        
+        # ✅ NUEVO: Verificar mensajes similares para reportes
+        report_key = "status_report"
+        if self._is_similar_recent(report_key):
+            self._log_filtered(f"Reporte similar reciente: {report_key}")
+            return False
+        
+        success = await self._send_notification(report_message, NotificationPriority.LOW)
+        
+        # ✅ NUEVO: Registrar la notificación si fue exitosa
+        if success:
+            self._record_notification(report_key)
+        
+        return success
+
 # Ejemplo de uso
 async def test_smart_notifier():
     """🧪 Test del notificador inteligente"""

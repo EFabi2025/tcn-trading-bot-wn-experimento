@@ -127,7 +127,7 @@ class ProfessionalPortfolioManager:
         self.last_snapshot_time = None
         
         self.positions: Dict[str, Position] = {}
-        self.trades: List[Trade] = []
+        self.trades: List[TradeOrder] = []
         self.balance: Dict[str, float] = {}
         self.last_snapshot: Optional[PortfolioSnapshot] = None
         self.last_update: Optional[datetime] = None
@@ -490,104 +490,106 @@ class ProfessionalPortfolioManager:
             print(f"❌ Error obteniendo snapshot: {e}")
             raise
     
-    def format_tcn_style_report(self, snapshot: PortfolioSnapshot) -> str:
-        """🎨 Formatear reporte estilo TCN para Discord"""
+    async def get_position(self, symbol: str) -> Optional[Position]:
+        """🔍 Obtener posición específica por símbolo"""
         try:
-            now = snapshot.timestamp
+            # Obtener snapshot actual
+            snapshot = await self.get_portfolio_snapshot()
             
-            # Header
-            report = f"**🚀 TCN SIGNALS - {now.strftime('%H:%M:%S')}**\n"
-            report += f"📊 **Recomendaciones del Modelo Profesional**\n\n"
+            # Buscar posición para el símbolo
+            for position in snapshot.active_positions:
+                if position.symbol == symbol:
+                    return position
             
-            # Posiciones activas - ✅ MEJORADO: Mostrar posiciones individuales
-            if snapshot.active_positions:
-                report += f"**📈 POSICIONES ACTIVAS ({len(snapshot.active_positions)})**\n"
-                
-                # Agrupar por símbolo para mejor visualización
-                positions_by_symbol = {}
-                for pos in snapshot.active_positions:
-                    if pos.symbol not in positions_by_symbol:
-                        positions_by_symbol[pos.symbol] = []
-                    positions_by_symbol[pos.symbol].append(pos)
-                
-                for symbol, positions in positions_by_symbol.items():
-                    if len(positions) == 1:
-                        # Una sola posición para este símbolo
-                        pos = positions[0]
-                        pnl_sign = "+" if pos.unrealized_pnl_usd >= 0 else ""
-                        pnl_color = "🟢" if pos.unrealized_pnl_usd >= 0 else "🔴"
-                        
-                        report += f"**{pos.symbol}: {pos.side}**\n"
-                        report += f"└ ${pos.entry_price:,.2f} → ${pos.current_price:,.2f} "
-                        report += f"({pnl_sign}{pos.unrealized_pnl_percent:.2f}% = ${pnl_sign}{pos.unrealized_pnl_usd:.2f}) {pnl_color}\n"
-                        report += f"   💰 Cantidad: {pos.size:.6f} | 🕐 {pos.duration_minutes}min"
-                        
-                        # ✅ NUEVO: Mostrar estado del trailing stop
-                        if hasattr(pos, 'trailing_stop_active') and pos.trailing_stop_active:
-                            report += f" | 📈 Trail: ${pos.trailing_stop_price:.2f}"
-                        
-                        report += "\n\n"
-                    else:
-                        # Múltiples posiciones para este símbolo
-                        report += f"**{symbol}: MÚLTIPLES POSICIONES ({len(positions)})**\n"
-                        
-                        total_pnl = sum(p.unrealized_pnl_usd for p in positions)
-                        total_pnl_sign = "+" if total_pnl >= 0 else ""
-                        total_pnl_color = "🟢" if total_pnl >= 0 else "🔴"
-                        
-                        for i, pos in enumerate(positions, 1):
-                            pnl_sign = "+" if pos.unrealized_pnl_usd >= 0 else ""
-                            pnl_color = "🟢" if pos.unrealized_pnl_usd >= 0 else "🔴"
-                            
-                            report += f"├─ **Pos #{i}:** ${pos.entry_price:,.2f} → ${pos.current_price:,.2f} "
-                            report += f"({pnl_sign}{pos.unrealized_pnl_percent:.2f}% = ${pnl_sign}{pos.unrealized_pnl_usd:.2f}) {pnl_color}\n"
-                            report += f"│  💰 {pos.size:.6f} | 🕐 {pos.duration_minutes}min"
-                            
-                            # ✅ NUEVO: Estado trailing stop por posición
-                            if hasattr(pos, 'trailing_stop_active') and pos.trailing_stop_active:
-                                report += f" | 📈 Trail: ${pos.trailing_stop_price:.2f}"
-                            
-                            report += "\n"
-                        
-                        report += f"└─ **TOTAL:** ${total_pnl_sign}{total_pnl:.2f} {total_pnl_color}\n\n"
-            else:
-                report += "**📈 POSICIONES ACTIVAS (0)**\n"
-                report += "└ Sin posiciones activas\n\n"
-            
-            # Resumen rápido
-            report += "**⚡ RESUMEN RÁPIDO**\n"
-            report += f"💰 **USDT Libre:** ${snapshot.free_usdt:,.2f}\n"
-            
-            pnl_sign = "+" if snapshot.total_unrealized_pnl >= 0 else ""
-            pnl_emoji = "📈" if snapshot.total_unrealized_pnl >= 0 else "📉"
-            report += f"{pnl_emoji} **P&L No Realizado:** ${pnl_sign}{snapshot.total_unrealized_pnl:.2f}\n"
-            
-            report += f"🎯 **Posiciones:** {snapshot.position_count}/{snapshot.max_positions}\n"
-            report += f"📊 **Trades Totales:** {snapshot.total_trades_today}\n\n"
-            
-            # Detalle del portafolio
-            report += "**💼 DETALLE DEL PORTAFOLIO**\n"
-            
-            # Ordenar activos por valor USD (mayor a menor)
-            sorted_assets = sorted(snapshot.all_assets, key=lambda x: x.usd_value, reverse=True)
-            
-            for asset in sorted_assets:
-                if asset.usd_value >= 0.01:  # Solo mostrar activos con valor > $0.01
-                    if asset.symbol == 'USDT':
-                        report += f"💵 **{asset.symbol}:** ${asset.total:,.2f}\n"
-                    else:
-                        report += f"🪙 **{asset.symbol}:** {asset.total:.6f} (${asset.usd_value:,.2f})\n"
-            
-            report += f"\n💎 **VALOR TOTAL: ${snapshot.total_balance_usd:,.2f}**\n"
-            
-            # Footer
-            report += f"\n🔄 *Actualización cada 5 min • {now.strftime('%d/%m/%y, %H:%M')}*"
-            
-            return report
+            return None
             
         except Exception as e:
-            print(f"❌ Error formateando reporte: {e}")
-            return f"❌ Error generando reporte: {e}"
+            self.logger.error(f"❌ Error obteniendo posición para {symbol}: {e}")
+            return None
+    
+    def format_tcn_style_report(
+        self, 
+        snapshot: PortfolioSnapshot, 
+        market_regime: Optional[str] = None, 
+        tcn_predictions: Optional[List[Dict]] = None
+    ) -> str:
+        """
+        Formatea un reporte de estado completo al estilo TCN, ahora con contexto de mercado.
+
+        Args:
+            snapshot (PortfolioSnapshot): El snapshot del portafolio.
+            market_regime (Optional[str]): El régimen de mercado actual.
+            tcn_predictions (Optional[List[Dict]]): Lista de predicciones de los modelos.
+
+        Returns:
+            str: El reporte formateado como un string.
+        """
+        report_lines = [
+            "**🚀 TCN SIGNALS - {time}**".format(time=snapshot.timestamp.strftime('%H:%M:%S')),
+            "📊 **Recomendaciones del Modelo Profesional**",
+            ""
+        ]
+
+        # --- CONTEXTO DE MERCADO (NUEVA SECCIÓN) ---
+        if market_regime:
+            report_lines.append("**🏛️ CONTEXTO DE MERCADO**")
+            report_lines.append(f"**Régimen:** {market_regime}")
+            report_lines.append("")
+
+        # --- ESTADO DE MODELOS TCN (NUEVA SECCIÓN) ---
+        if tcn_predictions:
+            report_lines.append("**🤖 ESTADO DE MODELOS TCN**")
+            for pred in tcn_predictions:
+                signal = pred.get('signal', 'N/A')
+                confidence = pred.get('confidence', 0) * 100
+                price = pred.get('current_price', 0)
+                
+                emoji = "🟢" if signal == "BUY" else "🔴" if signal == "SELL" else "⚪"
+                
+                report_lines.append(
+                    f"{emoji} **{pred['pair']}**: {signal} ({confidence:.1f}%)"
+                )
+                report_lines.append(f"   └ Precio: ${price:,.4f}")
+            report_lines.append("")
+
+        # --- POSICIONES ACTIVAS (Sección existente) ---
+        report_lines.append(f"**📈 POSICIONES ACTIVAS ({snapshot.position_count})**")
+        if not snapshot.active_positions:
+            report_lines.append("   *(No hay posiciones activas)*")
+        else:
+            for pos in snapshot.active_positions:
+                pnl_sign = "🟢" if pos.unrealized_pnl_usd >= 0 else "🔴"
+                report_lines.append(f"**{pos.symbol}: {pos.side}**")
+                report_lines.append(
+                    f"└ ${pos.entry_price:,.2f} → ${pos.current_price:,.2f} "
+                    f"({pos.unrealized_pnl_percent:+.2f}% = ${pos.unrealized_pnl_usd:+.2f}) {pnl_sign}"
+                )
+                report_lines.append(
+                    f"   💰 Cantidad: {pos.size:.6f} | 🕐 {pos.duration_minutes}min"
+                )
+        report_lines.append("")
+
+        # --- RESUMEN RÁPIDO (Sección existente) ---
+        report_lines.append("**⚡ RESUMEN RÁPIDO**")
+        report_lines.append(f"💰 **USDT Libre:** ${snapshot.free_usdt:,.2f}")
+        report_lines.append(f"📉 **P&L No Realizado:** ${snapshot.total_unrealized_pnl:,.2f}")
+        report_lines.append(f"🎯 **Posiciones:** {snapshot.position_count}/{snapshot.max_positions}")
+        report_lines.append(f"📊 **Trades Totales:** {snapshot.total_trades_today}")
+        report_lines.append("")
+
+        # --- DETALLE DEL PORTAFOLIO (Sección existente) ---
+        report_lines.append("**💼 DETALLE DEL PORTAFOLIO**")
+        top_assets = sorted([a for a in snapshot.all_assets if a.symbol != 'USDT'], key=lambda x: x.usd_value, reverse=True)[:3]
+        for asset in top_assets:
+            report_lines.append(f"🪙 **{asset.symbol}:** {asset.total:,.6f} (${asset.usd_value:,.2f})")
+        report_lines.append(f"💵 **USDT:** ${snapshot.free_usdt:,.2f}")
+        report_lines.append("")
+        
+        report_lines.append(f"💎 **VALOR TOTAL: ${snapshot.total_balance_usd:,.2f}**")
+        report_lines.append("")
+        report_lines.append(f"🔄 *Actualización cada {self.config.DISCORD_REPORT_INTERVAL_SECONDS // 60} min • {snapshot.timestamp.strftime('%d/%m/%y, %H:%M')}*")
+
+        return "\n".join(report_lines)
     
     def format_compact_report(self, snapshot: PortfolioSnapshot) -> str:
         """📱 Formatear reporte compacto para notificaciones"""
