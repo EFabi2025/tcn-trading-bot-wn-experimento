@@ -1801,8 +1801,12 @@ class SimpleProfessionalTradingManager:
                         position, current_price
                     )
 
-                    # ✅ CRÍTICO: Actualizar la posición en el snapshot con el estado del trailing stop
+                    # ✅ CRÍTICO: Actualizar la posición en el snapshot Y en el registry
                     snapshot.active_positions[i] = updated_position
+
+                    # ✅ PERSISTENCIA: Actualizar también en el registry para mantener estado
+                    if updated_position.order_id and updated_position.order_id in self.portfolio_manager.position_registry:
+                        self.portfolio_manager.position_registry[updated_position.order_id] = updated_position
 
                     # Si se actualiza el trailing, registrar el cambio
                     if hasattr(updated_position, 'trailing_stop_active') and updated_position.trailing_stop_active:

@@ -200,17 +200,46 @@ class ProfessionalPortfolioManager:
         return 0.0
 
     async def update_all_prices(self, symbols: List[str]) -> Dict[str, float]:
-        """💲 Actualizar precios de múltiples símbolos en paralelo"""
-        tasks = [self.get_current_price(symbol) for symbol in symbols]
-        prices = await asyncio.gather(*tasks)
+        """💲 Actualizar precios de múltiples símbolos con validación de frescura"""
+        try:
+            current_time = datetime.now()
+            price_dict = {}
+            symbols_to_fetch = []
 
-        price_dict = {}
-        for symbol, price in zip(symbols, prices):
-            if price > 0:
-                price_dict[symbol] = price
+            # Verificar precios cacheados primero
+            for symbol in symbols:
+                last_update = self.last_price_update.get(symbol)
+                cached_price = self.price_cache.get(symbol)
 
-        self.last_price_update = datetime.now()
-        return price_dict
+                if (last_update and cached_price and
+                    (current_time - last_update).total_seconds() < 30):
+                    # Usar precio cacheado si es reciente (< 30 segundos)
+                    price_dict[symbol] = cached_price
+                else:
+                    symbols_to_fetch.append(symbol)
+
+            # Obtener precios frescos para símbolos que lo necesiten
+            if symbols_to_fetch:
+                tasks = [self.get_current_price(symbol) for symbol in symbols_to_fetch]
+                fresh_prices = await asyncio.gather(*tasks)
+
+                for symbol, price in zip(symbols_to_fetch, fresh_prices):
+                    if price > 0:
+                        price_dict[symbol] = price
+                        self.price_cache[symbol] = price
+                        self.last_price_update[symbol] = current_time
+                    elif symbol in self.price_cache:
+                        # Fallback al precio cacheado si falla la API
+                        price_dict[symbol] = self.price_cache[symbol]
+                        print(f"⚠️ {symbol}: Usando precio cacheado por error API")
+
+            return price_dict
+
+        except Exception as e:
+            print(f"❌ Error actualizando precios: {e}")
+            # Fallback a precios cacheados disponibles
+            return {symbol: self.price_cache.get(symbol, 0) for symbol in symbols
+                   if self.price_cache.get(symbol, 0) > 0}
 
     async def get_account_balances(self) -> Dict[str, Dict]:
         """💰 Obtener balances de la cuenta"""
@@ -604,8 +633,13 @@ class ProfessionalPortfolioManager:
                     'highest_price_since_entry': position.highest_price_since_entry,
                     'lowest_price_since_entry': position.lowest_price_since_entry,
                     'trailing_movements': position.trailing_movements,
-                    'last_trailing_update': position.last_trailing_update
+                    'last_trailing_update': position.last_trailing_update.isoformat() if position.last_trailing_update else None,
+                    'symbol': position.symbol,  # Para debugging
+                    'entry_price': position.entry_price  # Para validación
                 }
+
+                # ✅ PERSISTENCIA: Guardar inmediatamente en archivo
+                self._save_trailing_cache()
 
                 # ✅ NUEVO: Logging detallado para debugging
                 if position.trailing_stop_active:
@@ -634,7 +668,16 @@ class ProfessionalPortfolioManager:
                 position.highest_price_since_entry = cached_state.get('highest_price_since_entry', position.entry_price)
                 position.lowest_price_since_entry = cached_state.get('lowest_price_since_entry', position.entry_price)
                 position.trailing_movements = cached_state.get('trailing_movements', 0)
-                position.last_trailing_update = cached_state.get('last_trailing_update', None)
+                # Restaurar timestamp
+                last_update_str = cached_state.get('last_trailing_update')
+                if last_update_str:
+                    try:
+                        from datetime import datetime
+                        position.last_trailing_update = datetime.fromisoformat(last_update_str)
+                    except:
+                        position.last_trailing_update = datetime.now()
+                else:
+                    position.last_trailing_update = None
 
                 # ✅ NUEVO: Logging detallado para debugging
                 if position.trailing_stop_active:
@@ -715,6 +758,22 @@ class ProfessionalPortfolioManager:
             stop_triggered = False
             trigger_reason = ""
 
+            # ✅ VALIDACIÓN: Verificar que el precio sea válido
+            if current_price <= 0:
+                print(f"⚠️ Precio inválido para {position.symbol}: ${current_price:.4f} - Saltando trailing stop")
+                return position, False, ""
+
+            # ✅ VALIDACIÓN: Verificar que el precio no sea demasiado diferente del último conocido
+            if hasattr(position, 'current_price') and position.current_price > 0:
+                price_change_percent = abs((current_price - position.current_price) / position.current_price) * 100
+                if price_change_percent > 10:  # Cambio > 10% podría ser error
+                    print(f"⚠️ Cambio de precio sospechoso para {position.symbol}: {price_change_percent:.2f}% - Verificando...")
+                    # Usar el precio más conservador para trailing stops
+                    if position.side == 'BUY':
+                        current_price = min(current_price, position.current_price)
+                    else:
+                        current_price = max(current_price, position.current_price)
+
             # Usar valores fijos de la posición para predictibilidad
             activation_pnl_percent = position.trailing_activation_threshold
             trailing_percent = position.trailing_stop_percent
@@ -722,9 +781,11 @@ class ProfessionalPortfolioManager:
             if position.side == 'BUY':
                 # --- LÓGICA PARA POSICIONES LONG ---
 
-                # 1. Actualizar el precio más alto desde la entrada
+                # 1. ✅ CRÍTICO: Actualizar el precio más alto desde la entrada SIEMPRE
                 if position.highest_price_since_entry is None or current_price > position.highest_price_since_entry:
+                    old_highest = position.highest_price_since_entry
                     position.highest_price_since_entry = current_price
+                    print(f"🏔️ NUEVO MÁXIMO {position.symbol}: ${old_highest:.4f} → ${current_price:.4f}")
 
                 # 2. Calcular PnL actual
                 current_pnl_percent = ((current_price - position.entry_price) / position.entry_price) * 100
@@ -732,24 +793,59 @@ class ProfessionalPortfolioManager:
                 # 3. Activar el trailing stop si se alcanza el umbral de ganancia
                 if not position.trailing_stop_active and current_pnl_percent >= activation_pnl_percent:
                     position.trailing_stop_active = True
-                    # Calcular el precio inicial del trailing stop
-                    new_trailing_price = position.highest_price_since_entry * (1 - trailing_percent / 100)
 
-                    # Asegurarse de que el stop inicial al menos cubra el punto de entrada (break-even)
-                    position.trailing_stop_price = max(new_trailing_price, position.entry_price)
+                    # ✅ CÁLCULO INTELIGENTE MEJORADO: Protección proporcional
+                    current_gain_percent = ((position.highest_price_since_entry - position.entry_price) / position.entry_price) * 100
+
+                    # ✅ PROTECCIÓN PROPORCIONAL INTELIGENTE (80% de la ganancia actual)
+                    if current_gain_percent >= 2.0:
+                        # Proteger el 80% de la ganancia actual
+                        min_profit_protection = current_gain_percent * 0.8
+                    else:
+                        # Protección mínima base del 0.5% para ganancias menores a 2%
+                        min_profit_protection = 0.5
+
+                    min_trailing_price = position.entry_price * (1 + min_profit_protection / 100)
+
+                    # Calcular trailing stop desde el máximo histórico
+                    trailing_from_peak = position.highest_price_since_entry * (1 - trailing_percent / 100)
+
+                    # Usar el mayor entre: protección progresiva o trailing desde pico
+                    position.trailing_stop_price = max(trailing_from_peak, min_trailing_price)
+
                     position.last_trailing_update = datetime.now()
                     self._save_trailing_state(position)
 
+                    protection_percent = ((position.trailing_stop_price - position.entry_price) / position.entry_price) * 100
                     print(f"📈 TRAILING STOP ACTIVADO para {position.symbol} Pos #{position.order_id}:")
+                    print(f"   📍 Precio entrada: ${position.entry_price:.4f}")
+                    print(f"   💰 Precio actual: ${current_price:.4f}")
+                    print(f"   🏔️ Precio máximo: ${position.highest_price_since_entry:.4f}")
                     print(f"   🎯 Ganancia actual: +{current_pnl_percent:.2f}% (Umbral: {activation_pnl_percent}%)")
-                    print(f"   🚀 Stop inicial en: ${position.trailing_stop_price:.4f}")
+                    print(f"   🚀 Stop inicial en: ${position.trailing_stop_price:.4f} (+{protection_percent:.2f}%)")
 
-                # 4. Actualizar el trailing stop si ya está activo y el precio sube
+                # 4. ✅ CORREGIDO: Actualizar el trailing stop si ya está activo
                 elif position.trailing_stop_active:
-                    # Calcular nuevo precio potencial de stop
-                    new_trailing_price = position.highest_price_since_entry * (1 - trailing_percent / 100)
+                    # ✅ CÁLCULO INTELIGENTE MEJORADO: Protección proporcional
+                    current_gain_percent = ((position.highest_price_since_entry - position.entry_price) / position.entry_price) * 100
 
-                    # Mover el stop solo si el nuevo precio es más alto que el anterior
+                    # ✅ PROTECCIÓN PROPORCIONAL INTELIGENTE (80% de la ganancia actual)
+                    if current_gain_percent >= 2.0:
+                        # Proteger el 80% de la ganancia actual
+                        min_profit_protection = current_gain_percent * 0.8
+                    else:
+                        # Protección mínima base del 0.5% para ganancias menores a 2%
+                        min_profit_protection = 0.5
+
+                    min_trailing_price = position.entry_price * (1 + min_profit_protection / 100)
+
+                    # Calcular trailing stop desde el máximo histórico
+                    trailing_from_peak = position.highest_price_since_entry * (1 - trailing_percent / 100)
+
+                    # Usar el mayor entre: protección progresiva o trailing desde pico
+                    new_trailing_price = max(trailing_from_peak, min_trailing_price)
+
+                    # ✅ MOVER el stop solo si el nuevo precio es más alto que el anterior
                     if new_trailing_price > position.trailing_stop_price:
                         old_price = position.trailing_stop_price
                         position.trailing_stop_price = new_trailing_price
@@ -759,8 +855,17 @@ class ProfessionalPortfolioManager:
 
                         profit_protection_percent = ((position.trailing_stop_price - position.entry_price) / position.entry_price) * 100
                         print(f"📈 TRAILING STOP MOVIDO para {position.symbol} Pos #{position.order_id}:")
-                        print(f"   🔄 ${old_price:.4f} → ${new_trailing_price:.4f}")
+                        print(f"   📍 Precio entrada: ${position.entry_price:.4f}")
+                        print(f"   💰 Precio actual: ${current_price:.4f}")
+                        print(f"   🏔️ Precio máximo: ${position.highest_price_since_entry:.4f}")
+                        print(f"   🔄 Stop: ${old_price:.4f} → ${new_trailing_price:.4f}")
                         print(f"   🛡️ Protegiendo ganancia de: +{profit_protection_percent:.2f}%")
+                        print(f"   📊 Protección proporcional: +{min_profit_protection:.1f}% (80% de +{current_gain_percent:.2f}%)")
+                    else:
+                        # ✅ NUEVO: Log detallado cuando el trailing no se mueve
+                        current_protection = ((position.trailing_stop_price - position.entry_price) / position.entry_price) * 100
+                        print(f"📊 TRAILING STOP MANTIENE {position.symbol}: ${position.trailing_stop_price:.4f} (+{current_protection:.2f}%)")
+                        print(f"   💡 Calculado: ${new_trailing_price:.4f} | Desde pico: ${trailing_from_peak:.4f} | Mín: ${min_trailing_price:.4f}")
 
                 # 5. Verificar si el precio actual ha caído por debajo del trailing stop
                 if position.trailing_stop_active and current_price <= position.trailing_stop_price:
