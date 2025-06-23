@@ -695,6 +695,37 @@ class SimpleProfessionalTradingManager:
                 models_section += "⚠️ **Sin datos de precios para análisis**\n"
                 return models_section
 
+            # ✅ NUEVO: Analizar contexto de mercado para Discord
+            try:
+                market_context = await self._analyze_market_context(current_prices)
+                regime = market_context['regime']
+                regime_confidence = market_context['confidence']
+                market_score = market_context['score']
+                volatility = market_context['volatility_level']
+
+                # Emoji según régimen
+                regime_emoji = {
+                    'BULLISH': '🟢',
+                    'BEARISH': '🔴',
+                    'NEUTRAL': '🟡'
+                }.get(regime, '⚪')
+
+                # Emoji según volatilidad
+                vol_emoji = {
+                    'HIGH': '⚡',
+                    'MEDIUM': '📊',
+                    'LOW': '😴'
+                }.get(volatility, '📊')
+
+                models_section += f"""
+🌍 **RÉGIMEN DE MERCADO**
+{regime_emoji} **{regime}** (Conf: {regime_confidence:.1%}) {vol_emoji} Vol: {volatility}
+📊 Score: {market_score:+.3f} | 🔗 Correlación: {market_context.get('correlation_strength', 0):.2f}
+
+"""
+            except Exception as e:
+                models_section += f"⚠️ **Contexto de mercado**: Error al analizar ({str(e)[:30]}...)\n\n"
+
             # Generar predicciones para cada símbolo
             for symbol in self.symbols:
                 try:
