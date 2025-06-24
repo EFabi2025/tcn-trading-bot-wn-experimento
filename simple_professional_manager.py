@@ -2007,11 +2007,27 @@ class SimpleProfessionalTradingManager:
             # Obtener precio actual para la orden
             current_price = await self.get_current_price(position.symbol)
 
+            # ✅ NUEVO: Verificar balance real antes de ejecutar
+            asset_symbol = position.symbol.replace('USDT', '')  # BTC, ETH, BNB
+            available_balance = await self._get_available_balance(asset_symbol)
+
+            if available_balance <= 0:
+                print(f"❌ No hay balance disponible de {asset_symbol} para vender")
+                return None
+
+            # ✅ CORREGIDO: Usar el menor entre la cantidad de la posición y el balance disponible
+            max_sellable = min(position.quantity, available_balance)
+
+            print(f"📊 Verificación de balance {asset_symbol}:")
+            print(f"   Posición: {position.quantity:.8f}")
+            print(f"   Disponible: {available_balance:.8f}")
+            print(f"   A vender: {max_sellable:.8f}")
+
             # Preparar parámetros de orden
             timestamp = int(time.time() * 1000)
 
             # Ajustar cantidad según filtros del símbolo
-            adjusted_quantity = await self._adjust_quantity_for_symbol(position.symbol, position.quantity)
+            adjusted_quantity = await self._adjust_quantity_for_symbol(position.symbol, max_sellable)
 
             params = {
                 'symbol': position.symbol,
@@ -2079,18 +2095,52 @@ class SimpleProfessionalTradingManager:
                                     step_size = float(filter_info['stepSize'])
                                     min_qty = float(filter_info['minQty'])
 
-                                    # Ajustar cantidad al step size
-                                    adjusted_qty = max(min_qty, quantity)
-                                    adjusted_qty = round(adjusted_qty / step_size) * step_size
+                                    # ✅ CORREGIDO: Ajustar cantidad correctamente al step size
+                                    if quantity < min_qty:
+                                        print(f"⚠️ Cantidad {quantity:.8f} menor que mínimo {min_qty:.8f}")
+                                        return 0.0  # No se puede vender cantidad menor al mínimo
 
+                                    # Redondear hacia abajo para no exceder la cantidad disponible
+                                    adjusted_qty = (quantity // step_size) * step_size
+
+                                    # Verificar que sigue siendo >= mínimo después del ajuste
+                                    if adjusted_qty < min_qty:
+                                        print(f"⚠️ Cantidad ajustada {adjusted_qty:.8f} menor que mínimo {min_qty:.8f}")
+                                        return 0.0
+
+                                    print(f"🔧 Cantidad ajustada: {quantity:.8f} → {adjusted_qty:.8f} (step: {step_size:.8f})")
                                     return adjusted_qty
 
             # Si no se puede obtener filtros, usar cantidad original
+            print(f"⚠️ No se pudieron obtener filtros para {symbol}, usando cantidad original")
             return quantity
 
         except Exception as e:
             print(f"❌ Error ajustando cantidad para {symbol}: {e}")
             return quantity
+
+    async def _get_available_balance(self, asset: str) -> float:
+        """💰 Obtener balance disponible de un activo específico"""
+        try:
+            # Obtener información de cuenta
+            account_info = await self.get_account_info()
+            if not account_info:
+                print(f"❌ No se pudo obtener información de cuenta para {asset}")
+                return 0.0
+
+            # Buscar el balance del activo
+            for asset_symbol, balance_info in account_info.balances.items():
+                if asset_symbol == asset:
+                    available = balance_info.get('free', 0.0) if isinstance(balance_info, dict) else 0.0
+                    print(f"💰 Balance disponible {asset}: {available:.8f}")
+                    return available
+
+            print(f"⚠️ No se encontró balance para {asset}")
+            return 0.0
+
+        except Exception as e:
+            print(f"❌ Error obteniendo balance de {asset}: {e}")
+            return 0.0
 
     async def _daily_loss_exceeds_limit(self, max_daily_loss_percent: float = None) -> bool:
         """🚨 Verificar si se ha excedido la pérdida máxima diaria"""
