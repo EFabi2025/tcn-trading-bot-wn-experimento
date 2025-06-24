@@ -785,7 +785,8 @@ class ProfessionalPortfolioManager:
                 if position.highest_price_since_entry is None or current_price > position.highest_price_since_entry:
                     old_highest = position.highest_price_since_entry
                     position.highest_price_since_entry = current_price
-                    print(f"🏔️ NUEVO MÁXIMO {position.symbol}: ${old_highest:.4f} → ${current_price:.4f}")
+                    old_highest_str = f"${old_highest:.4f}" if old_highest is not None else "N/A"
+                    print(f"🏔️ NUEVO MÁXIMO {position.symbol}: {old_highest_str} → ${current_price:.4f}")
 
                 # 2. Calcular PnL actual
                 current_pnl_percent = ((current_price - position.entry_price) / position.entry_price) * 100

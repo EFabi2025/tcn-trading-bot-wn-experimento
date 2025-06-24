@@ -57,18 +57,33 @@ class TCNDefinitivoPredictor:
             'BNBUSDT': 48   # Modelo antiguo
         }
 
-        # ✅ NUEVO: Cargar modelos automáticamente al inicializar
-        print("🚀 Inicializando TCN Definitivo Predictor...")
-        success = self.load_all_models()
-        if success:
-            print(f"✅ Predictor TCN listo con {len(self.models)} modelos")
-        else:
-            print(f"⚠️ Predictor TCN inicializado con {len(self.models)}/{len(self.symbols)} modelos")
-
         self.n_features = 66
 
-        # ✅ CORREGIDO: Cargar modelos automáticamente al inicializar
-        self.load_all_models()
+        # ✅ OPTIMIZADO: Inicialización rápida sin cargar modelos
+        print("🚀 TCN Definitivo Predictor inicializado (carga lazy)")
+        print(f"📊 Modelos disponibles: {self.symbols}")
+        print("⚡ Los modelos se cargarán bajo demanda para mayor velocidad")
+
+        # ✅ NUEVO: Flag para tracking de modelos cargados
+        self.models_loaded = set()
+        self.models_loading = set()  # Para evitar carga duplicada
+
+        # ✅ OPTIMIZADO: Pre-cargar solo BTC para arranque rápido
+        self._preload_critical_models()
+
+    def _preload_critical_models(self):
+        """⚡ Pre-cargar modelos críticos en background"""
+        # ✅ CORREGIDO: Cargar sincrónicamente para evitar conflictos de threading
+        try:
+            logger.info("⚡ Pre-cargando BTC sincrónicamente...")
+            success = self._load_model_for_symbol('BTCUSDT')
+            if success:
+                self.models_loaded.add('BTCUSDT')
+                logger.info("✅ BTC pre-cargado exitosamente")
+            else:
+                logger.warning("⚠️ No se pudo pre-cargar BTC, se cargará bajo demanda")
+        except Exception as e:
+            logger.error(f"❌ Error pre-cargando BTC: {e}")
 
     def load_all_models(self) -> bool:
         """Cargar todos los modelos definitivos"""
@@ -429,9 +444,14 @@ class TCNDefinitivoPredictor:
     def predict_symbol(self, symbol: str) -> Optional[Dict]:
         """
         Método de compatibilidad para integración con sistema principal
-        Obtiene datos de Binance y realiza predicción
+        Obtiene datos de Binance y realiza predicción con carga lazy
         """
         try:
+            # ✅ OPTIMIZADO: Carga lazy del modelo
+            if not self._load_model_lazy(symbol):
+                logger.error(f"No se pudo cargar modelo para {symbol}")
+                return None
+
             # Importar cliente de Binance
             import requests
 
@@ -443,7 +463,7 @@ class TCNDefinitivoPredictor:
                 'limit': 100
             }
 
-            response = requests.get(url, params=params)
+            response = requests.get(url, params=params, timeout=5)
             if response.status_code != 200:
                 logger.error(f"Error obteniendo datos de Binance para {symbol}")
                 return None
@@ -463,9 +483,6 @@ class TCNDefinitivoPredictor:
 
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             df.set_index('timestamp', inplace=True)
-
-            # ✅ DIAGNÓSTICO: Guardar datos de entrada para ETH
-
 
             # Realizar predicción
             return self.predict(symbol, df)
@@ -728,6 +745,48 @@ class TCNDefinitivoPredictor:
         except Exception as e:
             logger.error(f"Error calculando features para {symbol}: {e}")
             return None
+
+    def _load_model_lazy(self, symbol: str) -> bool:
+        """🚀 Cargar modelo bajo demanda (lazy loading)"""
+        if symbol in self.models_loaded:
+            return True  # Ya está cargado
+
+        if symbol in self.models_loading:
+            logger.warning(f"⏳ {symbol} ya se está cargando, esperando...")
+            # Esperar hasta 5 segundos para que termine la carga
+            import time
+            for _ in range(50):  # 50 * 0.1 = 5 segundos
+                time.sleep(0.1)
+                if symbol in self.models_loaded:
+                    return True
+                if symbol not in self.models_loading:
+                    break
+            logger.error(f"❌ Timeout esperando carga de {symbol}")
+            return False
+
+        if symbol not in self.symbols:
+            logger.error(f"❌ {symbol} no está en la lista de símbolos soportados")
+            return False
+
+        try:
+            self.models_loading.add(symbol)
+            logger.info(f"⚡ Carga lazy iniciada para {symbol}...")
+
+            success = self._load_model_for_symbol(symbol)
+
+            if success:
+                self.models_loaded.add(symbol)
+                logger.info(f"✅ {symbol} cargado exitosamente (lazy)")
+                return True
+            else:
+                logger.error(f"❌ Error cargando {symbol}")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ Error en carga lazy de {symbol}: {e}")
+            return False
+        finally:
+            self.models_loading.discard(symbol)
 
 # Función de utilidad para testing
 def test_definitivo_predictor():

@@ -37,7 +37,7 @@ class NotificationFilter:
 class SmartDiscordNotifier:
     """🤖 Notificador Discord inteligente"""
 
-    def __init__(self, webhook_url: str = None):
+    def __init__(self, webhook_url: Optional[str] = None):
         self.webhook_url = webhook_url or os.getenv('DISCORD_WEBHOOK_URL')
         self.filters = NotificationFilter()
 

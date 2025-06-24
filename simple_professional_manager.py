@@ -83,12 +83,12 @@ class SimpleProfessionalTradingManager:
 
         # Estado del sistema
         self.status = TradingManagerStatus.STOPPED
-        self.database = None
-        self.risk_manager = None
+        self.database: Optional[TradingDatabase] = None
+        self.risk_manager: Optional[AdvancedRiskManager] = None
         self.client = None
 
         # ✅ NUEVO: Professional Portfolio Manager
-        self.portfolio_manager = None
+        self.portfolio_manager: Optional[ProfessionalPortfolioManager] = None
 
         # ✅ NUEVO: Portfolio Diversification Manager
         self.diversification_manager = PortfolioDiversificationManager()
@@ -167,6 +167,7 @@ class SimpleProfessionalTradingManager:
             print("🎯 Predictor TCN DEFINITIVO inicializado en constructor")
             print(f"   📊 Modelos cargados: {len(self.tcn_predictor.models)}")
             print(f"   🎯 Símbolos: {list(self.tcn_predictor.models.keys())}")
+            return True
         except Exception as e:
             print(f"❌ ERROR CRÍTICO: No se pudo inicializar TCN definitivo en constructor: {e}")
             print("🚨 SISTEMA REQUIERE TCN REAL - NO PUEDE CONTINUAR SIN ÉL")
@@ -174,9 +175,15 @@ class SimpleProfessionalTradingManager:
 
     def _load_config(self) -> BinanceConfig:
         """⚙️ Cargar configuración desde variables de entorno"""
+        api_key = os.getenv('BINANCE_API_KEY')
+        secret_key = os.getenv('BINANCE_SECRET_KEY')
+
+        if not api_key or not secret_key:
+            raise ValueError("❌ BINANCE_API_KEY y BINANCE_SECRET_KEY son requeridos en .env")
+
         return BinanceConfig(
-            api_key=os.getenv('BINANCE_API_KEY'),
-            secret_key=os.getenv('BINANCE_SECRET_KEY'),
+            api_key=api_key,
+            secret_key=secret_key,
             base_url=os.getenv('BINANCE_BASE_URL', 'https://testnet.binance.vision'),
             environment=os.getenv('ENVIRONMENT', 'testnet')
         )
@@ -189,7 +196,7 @@ class SimpleProfessionalTradingManager:
             hashlib.sha256
         ).hexdigest()
 
-    async def get_account_info(self) -> AccountInfo:
+    async def get_account_info(self) -> Optional[AccountInfo]:
         """💰 Obtener información completa de la cuenta de Binance"""
         try:
             params = {
@@ -330,7 +337,8 @@ class SimpleProfessionalTradingManager:
             self.status = TradingManagerStatus.RUNNING
 
             # Log inicial
-            await self.database.log_event('INFO', 'SYSTEM', 'Simple Trading Manager inicializado correctamente')
+            if self.database:
+                await self.database.log_event('INFO', 'SYSTEM', 'Simple Trading Manager inicializado correctamente')
 
             print("✅ Simple Professional Trading Manager iniciado correctamente")
 
@@ -345,6 +353,11 @@ class SimpleProfessionalTradingManager:
         """🔄 Sincronizar estado de posiciones activas al arrancar."""
         print("🔄 Sincronizando posiciones existentes al inicio...")
         try:
+            # Verificar que portfolio_manager esté inicializado
+            if not self.portfolio_manager:
+                print("   ⚠️ Portfolio manager no inicializado, saltando sincronización")
+                return
+
             # Obtener el estado real del portafolio desde el exchange
             snapshot = await self.portfolio_manager.get_portfolio_snapshot()
             if not snapshot or not snapshot.active_positions:
@@ -352,6 +365,11 @@ class SimpleProfessionalTradingManager:
                 return
 
             print(f"   🔍 Encontradas {len(snapshot.active_positions)} posiciones en el exchange. Sincronizando con DB...")
+
+            # Verificar que database esté inicializado
+            if not self.database:
+                print("   ❌ Database no inicializado, no se puede sincronizar")
+                return
 
             # Reconstruir el estado interno de self.active_positions
             synced_count = 0
@@ -525,7 +543,7 @@ class SimpleProfessionalTradingManager:
                 if self.last_balance_update:
                     time_since_balance_update = (datetime.now() - self.last_balance_update).total_seconds()
 
-                if not self.last_balance_update or time_since_balance_update > 300:  # 5 minutos
+                if not self.last_balance_update or (time_since_balance_update is not None and time_since_balance_update > 300):  # 5 minutos
                     print("🔄 Actualizando balance desde Binance...")
                     await self.update_balance_from_binance()
 
@@ -580,7 +598,8 @@ class SimpleProfessionalTradingManager:
         print(f"❌ {error_msg} (Error #{consecutive_errors})")
         print(f"🔍 Tipo de error: {error_type}")
 
-        await self.database.log_event('ERROR', 'SYSTEM', f"{error_msg} | Consecutivos: {consecutive_errors}")
+        if self.database:
+            await self.database.log_event('ERROR', 'SYSTEM', f"{error_msg} | Consecutivos: {consecutive_errors}")
 
         # ✅ MEJORADO: Manejo inteligente de diferentes tipos de errores
         if "timeout" in str(error).lower() or "connection" in str(error).lower():
@@ -628,6 +647,11 @@ class SimpleProfessionalTradingManager:
 
             if should_generate:
                 print("📊 Generando reporte TCN profesional...")
+
+                # Verificar que portfolio_manager esté inicializado
+                if not self.portfolio_manager:
+                    print("⚠️ Portfolio manager no inicializado para reporte TCN")
+                    return
 
                 # Obtener snapshot del portafolio
                 snapshot = await self.portfolio_manager.get_portfolio_snapshot()
@@ -851,6 +875,11 @@ class SimpleProfessionalTradingManager:
     async def _display_professional_info(self):
         """📺 Mostrar información profesional mejorada"""
         try:
+            # Verificar que start_time esté inicializado
+            if not self.start_time:
+                print("⚠️ Start time no inicializado")
+                return
+
             uptime_minutes = (time.time() - self.start_time) / 60
 
             # Obtener snapshot actualizado del portafolio
@@ -998,7 +1027,8 @@ class SimpleProfessionalTradingManager:
             except Exception as e:
                 print(f"   ❌ Error obteniendo precio {symbol}: {e}")
                 self.metrics['error_count'] += 1
-                await self.database.log_event('ERROR', 'MARKET_DATA', f'Error precio {symbol}: {e}', symbol)
+                if self.database:
+                    await self.database.log_event('ERROR', 'MARKET_DATA', f'Error precio {symbol}: {e}', symbol)
 
         self.last_check_time = datetime.now()
         self.metrics['api_calls_count'] += len(self.symbols)
@@ -1053,17 +1083,13 @@ class SimpleProfessionalTradingManager:
                 print(f"🔍 Analizando {symbol} con modelo TCN...")
 
                 # Generar predicción TCN
-                if hasattr(self.tcn_predictor, 'predict_symbol'):
+                prediction = None
+                if self.tcn_predictor and hasattr(self.tcn_predictor, 'predict_symbol'):
                     prediction = self.tcn_predictor.predict_symbol(symbol)
                 else:
-                    # Fallback al método de emergencia
-                    from emergency_tcn_predictor import AdvancedBinanceData
-                    async with AdvancedBinanceData() as binance_data:
-                        market_data = await binance_data.get_comprehensive_data(symbol)
-                        if not market_data or not market_data.get('klines_1m'):
-                            print(f"  ❌ Sin datos suficientes para {symbol}")
-                            continue
-                        prediction = await self.tcn_predictor.predict_enhanced(symbol, market_data)
+                    # Fallback - sin predicción
+                    print(f"  ❌ TCN predictor no disponible para {symbol}")
+                    continue
 
                 if not prediction:
                     print(f"  ❌ No se pudo generar predicción para {symbol}")
@@ -1102,7 +1128,11 @@ class SimpleProfessionalTradingManager:
                                 continue
 
                             # Verificar balance suficiente
-                            if self.current_balance < self.risk_manager.limits.min_position_value_usdt:
+                            min_position_value = 11.0  # Valor por defecto si risk_manager no está disponible
+                            if self.risk_manager and hasattr(self.risk_manager, 'limits'):
+                                min_position_value = self.risk_manager.limits.min_position_value_usdt
+
+                            if self.current_balance < min_position_value:
                                 print(f"  💰 Señal BUY generada (solo análisis) - Balance insuficiente para trade")
                                 continue
 
@@ -1123,7 +1153,7 @@ class SimpleProfessionalTradingManager:
                             'reason': 'TCN_MODEL_PREDICTION',
                             'available_usdt': self.current_balance,
                             'probabilities': prediction.get('probabilities', {}),
-                            'balance_sufficient': self.current_balance >= self.risk_manager.limits.min_position_value_usdt,
+                            'balance_sufficient': self.current_balance >= (self.risk_manager.limits.min_position_value_usdt if self.risk_manager and self.risk_manager.limits else 11.0),
                             # ✅ NUEVO: Información del contexto de mercado
                             'market_context': market_context,
                             'context_filter_applied': filtered_signal != prediction['signal']
@@ -1431,6 +1461,10 @@ class SimpleProfessionalTradingManager:
             return
 
         # Verificar si el balance es suficiente para nuevas posiciones BUY
+        min_position_value = 11.0  # Valor por defecto
+        if self.risk_manager and hasattr(self.risk_manager, 'limits'):
+            min_position_value = self.risk_manager.limits.min_position_value_usdt
+
         if signal == 'BUY' and not balance_sufficient:
             print(f"  💰 Señal BUY {symbol} no ejecutada - Balance insuficiente")
             return
@@ -1465,17 +1499,29 @@ class SimpleProfessionalTradingManager:
                 # Continuar con el trade si es un error técnico
 
         # Verificar límites de riesgo
-        can_trade, reason = await self.risk_manager.check_risk_limits_before_trade(
-            symbol, signal, confidence
-        )
+        can_trade = True
+        reason = ""
+
+        if self.risk_manager:
+            can_trade, reason = await self.risk_manager.check_risk_limits_before_trade(
+                symbol, signal, confidence
+            )
+        else:
+            print("⚠️ Risk manager no disponible, usando verificaciones básicas")
 
         if not can_trade:
             print(f"❌ Trade rechazado {symbol}: {reason}")
-            await self.database.log_event('WARNING', 'RISK', f'Trade rechazado {symbol}: {reason}', symbol)
+            if self.database:
+                await self.database.log_event('WARNING', 'RISK', f'Trade rechazado {symbol}: {reason}', symbol)
             return
 
         # Abrir nueva posición
-        position = await self.risk_manager.open_position(symbol, signal, confidence, current_price)
+        position = None
+        if self.risk_manager:
+            position = await self.risk_manager.open_position(symbol, signal, confidence, current_price)
+        else:
+            print("⚠️ Risk manager no disponible, no se puede abrir posición")
+            return
 
         if position:
             # ✅ CORREGIDO: Usar trade_id (que ahora es el order_id) como clave
@@ -1501,16 +1547,20 @@ class SimpleProfessionalTradingManager:
             }
 
             # El ID interno de la DB se genera automáticamente, no necesitamos guardarlo aquí.
-            await self.database.save_trade(trade_data)
+            if self.database:
+                await self.database.save_trade(trade_data)
+            else:
+                print("⚠️ Database no disponible, trade no guardado en DB")
 
             self.trade_count += 1
 
             # Log del trade
-            await self.database.log_event(
-                'INFO', 'TRADING',
-                f'Nueva posición: {signal} {symbol} @ ${current_price:.4f}',
-                symbol
-            )
+            if self.database:
+                await self.database.log_event(
+                    'INFO', 'TRADING',
+                    f'Nueva posición: {signal} {symbol} @ ${current_price:.4f}',
+                    symbol
+                )
 
             # Enviar notificación Discord si está configurado
             trade_notification_data = {
