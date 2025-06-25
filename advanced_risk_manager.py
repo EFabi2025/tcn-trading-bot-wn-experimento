@@ -198,8 +198,9 @@ class AdvancedRiskManager:
         # Kelly Criterion básico: f = (bp - q) / b
         base_size_percent = self.limits.max_position_size_percent
 
-        # Ajustar según confianza (más confianza = más posición)
-        confidence_multiplier = min(confidence / 0.5, 2.0)  # Max 2x
+        # ✅ CORRECCIÓN CRÍTICA: Confianza viene en formato % (79.8), no decimal (0.798)
+        confidence_decimal = confidence / 100.0  # Convertir a decimal
+        confidence_multiplier = min(confidence_decimal / 0.5, 2.0)  # Max 2x
 
         # Ajustar según volatilidad histórica (simplificado)
         volatility_adjustment = 0.8  # Reducir en mercados volátiles
