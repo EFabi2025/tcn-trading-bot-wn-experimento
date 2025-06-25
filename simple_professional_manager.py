@@ -426,7 +426,8 @@ class SimpleProfessionalTradingManager:
 
     def _get_positions_for_symbol(self, symbol: str) -> List[Position]:
         """Helper: Obtiene todas las posiciones activas para un símbolo específico."""
-        return [pos for pos in self.active_positions.values() if pos.symbol == symbol]
+        # ✅ CORREGIDO: Usar portfolio_manager.position_registry en lugar de active_positions
+        return [pos for pos in self.portfolio_manager.position_registry.values() if pos.symbol == symbol]
 
     async def _initialize_database(self):
         """🗄️ Inicializar sistema de base de datos"""
@@ -485,11 +486,11 @@ class SimpleProfessionalTradingManager:
 
             # ✅ NUEVO: Monitoreo de posiciones con trailing stops cada 30 segundos
             async def _position_monitor_loop():
-                """Loop de monitoreo de posiciones con trailing stops"""
+                """Loop de monitoreo de posiciones con trailing stops - ALTA FRECUENCIA"""
                 while self.status == TradingManagerStatus.RUNNING:
                     try:
                         await self._position_monitor()
-                        await asyncio.sleep(30)  # Cada 30 segundos
+                        await asyncio.sleep(30)  # ✅ ALTA FRECUENCIA: Cada 30 segundos para TCN
                     except Exception as e:
                         print(f"❌ Error en monitor de posiciones: {e}")
                         await asyncio.sleep(60)
@@ -506,7 +507,14 @@ class SimpleProfessionalTradingManager:
             raise
 
     async def run(self):
-        """🎯 Ejecutar loop principal de trading"""
+        """🎯 Ejecutar loop principal de trading
+
+        ✅ ALTA FRECUENCIA TCN: Actualizaciones frecuentes para trading en tiempo real
+        - Bucle principal: cada 60 segundos (genera señales TCN, updates balance)
+        - Monitor de posiciones: cada 30 segundos (máxima frecuencia TCN)
+        - Reporte TCN: cada 5 minutos (completo)
+        - PRIORIDAD: Datos frescos > logs limpios
+        """
         print("🎯 Iniciando loop principal de trading...")
 
         # ✅ NUEVO: Contador de errores por ciclo para reset automático
@@ -938,7 +946,7 @@ class SimpleProfessionalTradingManager:
                             for i, pos in enumerate(positions, 1):
                                 pos_pnl_sign = "+" if pos.unrealized_pnl_usd >= 0 else ""
                                 duration_str = f"{pos.duration_minutes}min" if pos.duration_minutes < 60 else f"{pos.duration_minutes//60}h"
-                                print(f"      #{i}: {pos.size:.6f} @ ${pos.entry_price:,.2f} ({pos_pnl_sign}{pos.unrealized_pnl_percent:.1f}%) {duration_str}")
+                                print(f"      #{i}: {pos.quantity:.6f} @ ${pos.entry_price:,.2f} ({pos_pnl_sign}{pos.unrealized_pnl_percent:.1f}%) {duration_str}")
 
                 # Mostrar principales activos
                 print("🪙 ACTIVOS PRINCIPALES:")
@@ -1107,58 +1115,58 @@ class SimpleProfessionalTradingManager:
                     print(f"🛡️ FILTRO DE CONTEXTO aplicado en {symbol}: {signal} → {filtered_signal} ({context_reason})")
                     signal = filtered_signal
 
-                # Solo procesar si la señal es nueva o ha cambiado
-                if self.last_signals.get(symbol) != signal:
-                    self.last_signals[symbol] = signal
-                    print(f"💡 Señal TCN para {symbol}: {signal} (Confianza: {confidence_level:.2f}%) (Umbral: {threshold:.1f}%)")
+                # ✅ CORREGIDO: Procesar señales válidas independientemente de si han cambiado
+                # Actualizar registro de última señal
+                self.last_signals[symbol] = signal
+                print(f"💡 Señal TCN para {symbol}: {signal} (Confianza: {confidence_level:.2f}%) (Umbral: {threshold:.1f}%)")
 
-                    # 💡 **CORRECCIÓN DE LÓGICA CRÍTICA** - Inspirada en sugerencia de Gemini
-                    # Esta lógica asegura que AMBAS señales (BUY y SELL) sean correctamente procesadas
-                    if (signal == 'BUY' and confidence_level >= threshold) or signal == 'SELL':
-                        log_emoji = "📈" if signal == "BUY" else "📉"
-                        log_action = "COMPRA" if signal == "BUY" else "VENTA"
-                        print(f"{log_emoji} Oportunidad de {log_action} detectada para {symbol}. Preparando para posible operación.")
+                # 💡 **CORRECCIÓN DE LÓGICA CRÍTICA** - Procesar señales con confianza suficiente
+                # Esta lógica asegura que AMBAS señales (BUY y SELL) sean correctamente procesadas
+                if (signal == 'BUY' and confidence_level >= threshold) or signal == 'SELL':
+                    log_emoji = "📈" if signal == "BUY" else "📉"
+                    log_action = "COMPRA" if signal == "BUY" else "VENTA"
+                    print(f"{log_emoji} Oportunidad de {log_action} detectada para {symbol}. Preparando para posible operación.")
 
-                        # Verificaciones adicionales específicas para BUY
-                        if signal == 'BUY':
-                            # Verificar si ya tenemos posición
-                            existing_positions = self._get_positions_for_symbol(symbol)
-                            if len(existing_positions) > 0:
-                                print(f"  ⏸️ Señal BUY ignorada - Ya existe(n) {len(existing_positions)} posición(es) en {symbol}")
-                                continue
+                    # Verificaciones adicionales específicas para BUY
+                    if signal == 'BUY':
+                        # ✅ CORREGIDO: Verificar límite de 3 posiciones por símbolo
+                        existing_positions = self._get_positions_for_symbol(symbol)
+                        if len(existing_positions) >= 3:
+                            print(f"  ⏸️ Señal BUY ignorada - Máximo 3 posiciones alcanzado para {symbol} (actual: {len(existing_positions)})")
+                            continue
 
-                            # Verificar balance suficiente
-                            min_position_value = 11.0  # Valor por defecto si risk_manager no está disponible
-                            if self.risk_manager and hasattr(self.risk_manager, 'limits'):
-                                min_position_value = self.risk_manager.limits.min_position_value_usdt
+                        # Verificar balance suficiente
+                        min_position_value = 11.0  # Valor por defecto si risk_manager no está disponible
+                        if self.risk_manager and hasattr(self.risk_manager, 'limits'):
+                            min_position_value = self.risk_manager.limits.min_position_value_usdt
 
-                            if self.current_balance < min_position_value:
-                                print(f"  💰 Señal BUY generada (solo análisis) - Balance insuficiente para trade")
-                                continue
+                        if self.current_balance < min_position_value:
+                            print(f"  💰 Señal BUY generada (solo análisis) - Balance insuficiente para trade")
+                            continue
 
-                        elif signal == 'SELL':
-                            # Verificar si tenemos posición para vender
-                            existing_positions = self._get_positions_for_symbol(symbol)
-                            if len(existing_positions) == 0:
-                                print(f"  ⏸️ Señal SELL ignorada - No hay posición que vender en {symbol}")
-                                continue
+                    elif signal == 'SELL':
+                        # Verificar si tenemos posición para vender
+                        existing_positions = self._get_positions_for_symbol(symbol)
+                        if len(existing_positions) == 0:
+                            print(f"  ⏸️ Señal SELL ignorada - No hay posición que vender en {symbol}")
+                            continue
 
-                        # ✅ SEÑAL VÁLIDA - Este bloque ahora se ejecuta para ambas señales
-                        signals[symbol] = {
-                            'signal': signal,
-                            'price': current_price,
-                            'confidence': confidence_level,
-                            'timestamp': datetime.utcnow(),
-                            'current_price': current_price,
-                            'reason': 'TCN_MODEL_PREDICTION',
-                            'available_usdt': self.current_balance,
-                            'probabilities': prediction.get('probabilities', {}),
-                            'balance_sufficient': self.current_balance >= (self.risk_manager.limits.min_position_value_usdt if self.risk_manager and self.risk_manager.limits else 11.0),
-                            # ✅ NUEVO: Información del contexto de mercado
-                            'market_context': market_context,
-                            'context_filter_applied': filtered_signal != prediction['signal']
-                        }
-                        print(f"  ✅ SEÑAL AÑADIDA A LA COLA: {symbol} {signal} ({confidence_level:.1f}%)")
+                    # ✅ SEÑAL VÁLIDA - Este bloque ahora se ejecuta para ambas señales
+                    signals[symbol] = {
+                        'signal': signal,
+                        'price': current_price,
+                        'confidence': confidence_level,
+                        'timestamp': datetime.utcnow(),
+                        'current_price': current_price,
+                        'reason': 'TCN_MODEL_PREDICTION',
+                        'available_usdt': self.current_balance,
+                        'probabilities': prediction.get('probabilities', {}),
+                        'balance_sufficient': self.current_balance >= (self.risk_manager.limits.min_position_value_usdt if self.risk_manager and self.risk_manager.limits else 11.0),
+                        # ✅ NUEVO: Información del contexto de mercado
+                        'market_context': market_context,
+                        'context_filter_applied': filtered_signal != prediction['signal']
+                    }
+                    print(f"  ✅ SEÑAL AÑADIDA A LA COLA: {symbol} {signal} ({confidence_level:.1f}%)")
 
             except Exception as e:
                 print(f"  ❌ Error procesando {symbol}: {e}")
@@ -1374,16 +1382,21 @@ class SimpleProfessionalTradingManager:
             original_signal = signal
             filter_reason = ""
 
-            # 🔴 FILTROS BEARISH - Restricciones de seguridad en mercado bajista
+            # 🔴 FILTROS BEARISH - Restricciones de seguridad en mercado bajista (OPTIMIZADO INTEGRAL)
             if regime == 'BEARISH' and market_confidence > 0.7:
                 if signal == 'BUY':
-                    # En mercado muy bearish, solo permitir BUY con confianza extrema
-                    if confidence < 85:  # Subir umbral de 70% a 85%
-                        signal = 'HOLD'
-                        filter_reason = f"Mercado BEARISH fuerte (score: {market_score:.2f}) - BUY requiere >85% confianza"
+                    # ✅ UMBRALES DIFERENCIADOS POR ACTIVO EN BEARISH
+                    required_confidence = {
+                        'BTCUSDT': 85,   # BTC líder - umbral moderado
+                        'ETHUSDT': 82,   # ETH principal altcoin - umbral medio
+                        'BNBUSDT': 80    # BNB exchange token - umbral más bajo
+                    }.get(symbol, 88)  # Otros activos: 88%
+
+                    if confidence >= required_confidence:
+                        filter_reason = f"{symbol.replace('USDT', '')} permitido en BEARISH por alta confianza ({confidence:.1f}% > {required_confidence}%)"
                     else:
-                        # Permitir pero con advertencia
-                        filter_reason = f"BUY permitido en BEARISH por alta confianza ({confidence:.1f}%)"
+                        signal = 'HOLD'
+                        filter_reason = f"Mercado BEARISH fuerte (score: {market_score:.2f}) - {symbol} BUY requiere >{required_confidence}% confianza"
 
                 elif signal == 'SELL':
                     # En bearish, SELL es más seguro - reducir umbral ligeramente
@@ -1409,32 +1422,52 @@ class SimpleProfessionalTradingManager:
                         signal = 'HOLD'
                         filter_reason = f"Mercado BULLISH (score: {market_score:.2f}) - SELL requiere >80% confianza"
 
-            # 🟡 FILTROS DE VOLATILIDAD - Ajustar según volatilidad del mercado
+            # 🟡 FILTROS DE VOLATILIDAD - Ajustar según volatilidad del mercado (OPTIMIZADO INTEGRAL)
             if volatility == 'HIGH' and fear_factor > 0.8:
-                # Mercado muy volátil y con miedo - ser más conservador
-                if signal == 'BUY' and confidence < 80:
+                # ✅ UMBRALES DIFERENCIADOS POR ACTIVO EN ALTA VOLATILIDAD
+                volatility_thresholds = {
+                    'BTCUSDT': 78,   # BTC más estable - umbral menor
+                    'ETHUSDT': 75,   # ETH volátil - umbral medio
+                    'BNBUSDT': 72    # BNB exchange - umbral menor
+                }
+
+                if signal == 'BUY':
+                    required_vol_confidence = volatility_thresholds.get(symbol, 80)
+                    if confidence < required_vol_confidence:
+                        signal = 'HOLD'
+                        filter_reason = f"Alta volatilidad (miedo: {fear_factor:.2f}) - {symbol} BUY requiere >{required_vol_confidence}% confianza"
+                elif signal == 'SELL' and confidence < 70:  # Reducido de 75% a 70%
                     signal = 'HOLD'
-                    filter_reason = f"Alta volatilidad (miedo: {fear_factor:.2f}) - BUY requiere >80% confianza"
-                elif signal == 'SELL' and confidence < 75:
-                    signal = 'HOLD'
-                    filter_reason = f"Alta volatilidad - SELL requiere >75% confianza"
+                    filter_reason = f"Alta volatilidad - SELL requiere >70% confianza"
 
             # 🔵 FILTROS ESPECÍFICOS POR ACTIVO
             if symbol == 'BTCUSDT':
-                # BTC como líder - ser más conservador
+                # ✅ OPTIMIZADO: BTC como líder - permitir señales fuertes
                 btc_trend = market_context.get('btc_trend_score', 0)
-                if signal == 'BUY' and btc_trend < -0.3:  # BTC en tendencia bajista fuerte
-                    if confidence < 82:
+                if signal == 'BUY' and btc_trend < -0.4:  # Solo en tendencia MUY bajista
+                    if confidence < 80:  # Reducido de 82% a 80%
                         signal = 'HOLD'
-                        filter_reason = f"BTC en tendencia bajista fuerte - BUY requiere >82% confianza"
+                        filter_reason = f"BTC en tendencia muy bajista fuerte (trend: {btc_trend:.2f}) - BUY requiere >80% confianza"
+                    else:
+                        filter_reason = f"BTC BUY permitido pese a tendencia bajista por alta confianza ({confidence:.1f}%)"
 
             elif symbol in ['ETHUSDT', 'BNBUSDT']:
-                # Altcoins - considerar dominancia de BTC
+                # ✅ ALTCOINS OPTIMIZADO - Umbrales diferenciados por underperformance
                 altcoin_strength = market_context.get('altcoin_strength', 0)
                 if signal == 'BUY' and altcoin_strength < -0.2:  # Altcoins underperforming
-                    if confidence < 75:
+                    # Umbrales específicos para cada altcoin
+                    altcoin_thresholds = {
+                        'ETHUSDT': 73,   # ETH principal altcoin - umbral medio
+                        'BNBUSDT': 72    # BNB exchange token - umbral menor
+                    }
+
+                    required_alt_confidence = altcoin_thresholds.get(symbol, 75)
+
+                    if confidence >= required_alt_confidence:
+                        filter_reason = f"{symbol.replace('USDT', '')} permitido por alta confianza ({confidence:.1f}% > {required_alt_confidence}%) pese a underperformance"
+                    else:
                         signal = 'HOLD'
-                        filter_reason = f"Altcoins underperforming vs BTC - BUY requiere >75% confianza"
+                        filter_reason = f"Altcoins underperforming vs BTC - {symbol} BUY requiere >{required_alt_confidence}% confianza"
 
             # 📊 LOG DEL FILTRO APLICADO
             if signal != original_signal:
@@ -1449,15 +1482,18 @@ class SimpleProfessionalTradingManager:
             return signal, f"Error en filtro: {str(e)}"
 
     async def _process_signal(self, symbol: str, signal_data: Dict):
-        """⚡ Procesar una señal individual"""
+        """⚡ Procesar una señal individual - CON DEBUG DETALLADO"""
 
         signal = signal_data['signal']
         confidence = signal_data['confidence']
         current_price = signal_data['current_price']
         balance_sufficient = signal_data.get('balance_sufficient', True)
 
+        print(f"🔍 PROCESANDO SEÑAL: {symbol} {signal} ({confidence:.1f}%)")
+
         # Skip si es HOLD
         if signal == 'HOLD':
+            print(f"  ⏸️ Señal HOLD ignorada para {symbol}")
             return
 
         # Verificar si el balance es suficiente para nuevas posiciones BUY
@@ -1465,67 +1501,101 @@ class SimpleProfessionalTradingManager:
         if self.risk_manager and hasattr(self.risk_manager, 'limits'):
             min_position_value = self.risk_manager.limits.min_position_value_usdt
 
+        print(f"  💰 Balance check: ${self.current_balance:.2f} vs min ${min_position_value:.2f}")
+
         if signal == 'BUY' and not balance_sufficient:
-            print(f"  💰 Señal BUY {symbol} no ejecutada - Balance insuficiente")
+            print(f"  ❌ Señal BUY {symbol} BLOQUEADA - Balance insuficiente")
             return
 
-        # Verificar si ya tenemos posición en este símbolo
-        if self._get_positions_for_symbol(symbol):
+        # ✅ CORREGIDO: Verificar posiciones existentes para múltiples posiciones por símbolo
+        existing_positions = self._get_positions_for_symbol(symbol)
+        print(f"  📊 Posiciones existentes en {symbol}: {len(existing_positions)}/3")
+
+        # Si es señal SELL, gestionar posiciones existentes
+        if signal == 'SELL' and existing_positions:
+            print(f"  🔄 Señal SELL - Gestionando {len(existing_positions)} posición(es) existente(s) para {symbol}")
             await self._manage_existing_position(symbol, signal_data)
-        else:
-            await self._consider_new_position(symbol, signal_data)
+
+        # Si es señal BUY, considerar nueva posición (independiente de posiciones existentes)
+        elif signal == 'BUY':
+            if len(existing_positions) >= 3:
+                print(f"  ❌ Señal BUY BLOQUEADA - Máximo 3 posiciones alcanzado para {symbol} ({len(existing_positions)}/3)")
+                return
+            else:
+                print(f"  📈 Señal BUY - Considerando nueva posición para {symbol} (será {len(existing_positions)+1}/3)")
+                await self._consider_new_position(symbol, signal_data)
 
     async def _consider_new_position(self, symbol: str, signal_data: Dict):
-        """📈 Considerar nueva posición con diversificación"""
+        """📈 Considerar nueva posición con diversificación - CON DEBUG DETALLADO"""
 
         signal = signal_data['signal']
         confidence = signal_data['confidence']
         current_price = signal_data['current_price']
 
+        print(f"    🚀 EVALUANDO NUEVA POSICIÓN: {symbol} {signal} ({confidence:.1f}%)")
+
         # 🔧 CORRECCIÓN: SELL no debe crear nuevas posiciones
         if signal == 'SELL':
-            print(f"  ⚠️ Señal SELL ignorada - No hay posición existente que vender en {symbol}")
+            print(f"    ❌ BLOQUEADO: Señal SELL - No hay posición existente que vender en {symbol}")
             return
 
         # ✅ NUEVO: Verificar diversificación del portafolio ANTES de risk management
+        print(f"    🎯 PASO 1: Verificando diversificación para {symbol}...")
         try:
             await self._check_portfolio_diversification_before_trade(symbol, signal_data)
+            print(f"    ✅ PASO 1: Diversificación OK para {symbol}")
         except Exception as e:
             if "Trade bloqueado por diversificación" in str(e):
-                print(f"🚫 {symbol}: {str(e)}")
+                print(f"    ❌ PASO 1: DIVERSIFICACIÓN BLOQUEÓ: {symbol}: {str(e)}")
+                await self._send_discord_notification(f"❌ **DIVERSIFICACIÓN BLOQUEÓ**: {symbol}: {str(e)}")
                 return  # Salir sin ejecutar el trade
             else:
-                print(f"⚠️ Error verificando diversificación para {symbol}: {e}")
+                print(f"    ⚠️ PASO 1: Error verificando diversificación para {symbol}: {e}")
                 # Continuar con el trade si es un error técnico
 
         # Verificar límites de riesgo
+        print(f"    🛡️ PASO 2: Verificando límites de riesgo para {symbol}...")
         can_trade = True
         reason = ""
 
         if self.risk_manager:
+            print(f"    🛡️ PASO 2: Risk manager disponible, ejecutando check_risk_limits_before_trade...")
             can_trade, reason = await self.risk_manager.check_risk_limits_before_trade(
                 symbol, signal, confidence
             )
+            print(f"    🛡️ PASO 2: Risk Manager resultado: can_trade={can_trade}, reason='{reason}'")
         else:
-            print("⚠️ Risk manager no disponible, usando verificaciones básicas")
+            print("    ⚠️ PASO 2: Risk manager no disponible, usando verificaciones básicas")
 
         if not can_trade:
-            print(f"❌ Trade rechazado {symbol}: {reason}")
+            print(f"    ❌ PASO 2: RISK MANAGER BLOQUEÓ: {symbol}: {reason}")
+            await self._send_discord_notification(f"❌ **RISK MANAGER BLOQUEÓ**: {symbol}: {reason}")
             if self.database:
                 await self.database.log_event('WARNING', 'RISK', f'Trade rechazado {symbol}: {reason}', symbol)
             return
 
         # Abrir nueva posición
+        print(f"    💰 PASO 3: Intentando abrir posición para {symbol}...")
         position = None
         if self.risk_manager:
+            print(f"    💰 PASO 3: Risk manager disponible, ejecutando open_position...")
             position = await self.risk_manager.open_position(symbol, signal, confidence, current_price)
+            if position:
+                print(f"    ✅ PASO 3: POSICIÓN CREADA: {symbol} - Order ID: {position.order_id}")
+            else:
+                print(f"    ❌ PASO 3: NO SE PUDO CREAR POSICIÓN: {symbol} - Risk manager devolvió None")
+                await self._send_discord_notification(f"❌ **NO SE PUDO CREAR POSICIÓN**: {symbol} - Risk manager falló")
         else:
-            print("⚠️ Risk manager no disponible, no se puede abrir posición")
+            print("    ❌ PASO 3: Risk manager no disponible, no se puede abrir posición")
+            await self._send_discord_notification(f"❌ **RISK MANAGER NO DISPONIBLE**: {symbol}")
             return
 
         if position:
+            print(f"    ✅ PASO 4: Posición creada exitosamente, guardando en registros...")
+
             # ✅ CORREGIDO: Usar trade_id (que ahora es el order_id) como clave
             self.active_positions[position.order_id] = position
+            print(f"    ✅ PASO 4: Posición guardada en active_positions con ID: {position.order_id}")
 
             # Guardar en base de datos, incluyendo el order_id de Binance
             trade_data = {
@@ -1545,14 +1615,17 @@ class SimpleProfessionalTradingManager:
                 },
                 'order_id': position.order_id # ✅ CRÍTICO: Guardar el ID de la orden de Binance
             }
+            print(f"    ✅ PASO 4: Trade data preparado para DB")
 
             # El ID interno de la DB se genera automáticamente, no necesitamos guardarlo aquí.
             if self.database:
                 await self.database.save_trade(trade_data)
+                print(f"    ✅ PASO 4: Trade guardado en base de datos")
             else:
-                print("⚠️ Database no disponible, trade no guardado en DB")
+                print("    ⚠️ PASO 4: Database no disponible, trade no guardado en DB")
 
             self.trade_count += 1
+            print(f"    ✅ PASO 4: Trade count incrementado a: {self.trade_count}")
 
             # Log del trade
             if self.database:
@@ -1577,12 +1650,18 @@ class SimpleProfessionalTradingManager:
             # Usar Smart Discord Notifier para trades
             if hasattr(self, 'discord_notifier'):
                 await self.discord_notifier.send_trade_notification(trade_notification_data)
+                print(f"    ✅ PASO 5: Notificación enviada vía Smart Discord Notifier")
             else:
                 await self._send_discord_notification(f"🟢 **NUEVA POSICIÓN**\n"
                                                      f"📊 {symbol}: {signal}\n"
                                                      f"💰 Precio: ${current_price:.4f}\n"
                                                      f"🎯 Confianza: {confidence:.1%}\n"
                                                      f"📈 Cantidad: {position.quantity:.6f}")
+                print(f"    ✅ PASO 5: Notificación enviada vía Discord básico")
+
+            print(f"    🎉 ÉXITO TOTAL: Nueva posición creada para {symbol} - Proceso completado exitosamente")
+        else:
+            print(f"    ❌ FALLO FINAL: position es None después de todos los pasos - INVESTIGAR RISK MANAGER")
 
     async def _manage_existing_position(self, symbol: str, signal_data: Dict):
         """🔄 Gestionar posición existente"""
@@ -1620,17 +1699,19 @@ class SimpleProfessionalTradingManager:
     async def _close_position(self, order_id: str, reason: str):
         """📉 Cerrar posición específica por ID de orden"""
 
-        # ✅ **LA SOLUCIÓN**: Comprobación robusta al inicio.
-        # Buscar la posición y verificar que esté activa.
-        position = self.active_positions.get(order_id)
-        if not position or not position.is_active:
-            # Si no se encuentra o ya está inactiva, es probable que ya se esté procesando.
-            print(f"ℹ️ Intento de cerrar posición {order_id} omitido. No encontrada o ya marcada para cierre.")
+        # ✅ CORREGIDO: Buscar en portfolio_manager.position_registry
+        position = self.portfolio_manager.position_registry.get(order_id)
+        if not position:
+            print(f"ℹ️ Intento de cerrar posición {order_id} omitido. No encontrada en registry.")
             return
 
-        # ✅ **CRÍTICO**: Marcar la posición como inactiva INMEDIATAMENTE.
-        # Esto previene cualquier intento de doble cierre en el mismo ciclo.
-        position.is_active = False
+        # ✅ NUEVO: Verificar que no esté ya marcada para cierre
+        if hasattr(position, 'is_closing') and position.is_closing:
+            print(f"ℹ️ Posición {order_id} ya está siendo cerrada.")
+            return
+
+        # ✅ CRÍTICO: Marcar como en proceso de cierre
+        position.is_closing = True
 
         print(f"👇 Iniciando cierre para {position.symbol} (ID Orden: {order_id}) por motivo: {reason}")
 
@@ -1673,10 +1754,10 @@ class SimpleProfessionalTradingManager:
             }
             await self.database.update_trade_exit(position.position_id, exit_data)
 
-        # Remover de posiciones activas
-        # La clave es el order_id, lo que es correcto.
-        if order_id in self.active_positions:
-            del self.active_positions[order_id]
+        # ✅ CORREGIDO: Remover del portfolio_manager.position_registry
+        if order_id in self.portfolio_manager.position_registry:
+            del self.portfolio_manager.position_registry[order_id]
+            print(f"🗑️ Posición {order_id} eliminada del registry")
 
         # Log y notificación
         color = "🟢" if pnl_usd > 0 else "🔴"
@@ -1716,16 +1797,18 @@ class SimpleProfessionalTradingManager:
                 if pos.symbol not in positions_by_symbol:
                     positions_by_symbol[pos.symbol] = []
                 positions_by_symbol[pos.symbol].append(pos)
-                total_exposure_usd += pos.market_value
+                # ✅ CORREGIDO: Usar valor de entrada (inversión original), no market_value actual
+                entry_value = pos.quantity * pos.entry_price
+                total_exposure_usd += entry_value
 
             # ✅ REGLAS SIMPLIFICADAS PARA POCOS PARES:
 
-            # 1. Máximo 2 posiciones por símbolo (en lugar de 1)
+            # 1. Máximo 3 posiciones por símbolo (configuración correcta)
             existing_positions_count = len(positions_by_symbol.get(symbol, []))
-            if existing_positions_count >= 2:
-                print(f"🚫 DIVERSIFICACIÓN: Máximo 2 posiciones por símbolo alcanzado para {symbol}")
+            if existing_positions_count >= 3:
+                print(f"🚫 DIVERSIFICACIÓN: Máximo 3 posiciones por símbolo alcanzado para {symbol}")
                 print(f"   📊 Posiciones actuales en {symbol}: {existing_positions_count}")
-                raise Exception(f"Trade bloqueado por diversificación: Máximo 2 posiciones por símbolo en {symbol}")
+                raise Exception(f"Trade bloqueado por diversificación: Máximo 3 posiciones por símbolo en {symbol}")
 
             # 2. Lógica inteligente de exposición basada en contexto
             confidence = signal_data['confidence']
@@ -1751,6 +1834,9 @@ class SimpleProfessionalTradingManager:
                 print(f"🚫 DIVERSIFICACIÓN: Exposición total muy alta")
                 print(f"   📊 Exposición actual: {(total_exposure_usd/self.current_balance)*100:.1f}%")
                 print(f"   📊 Nueva exposición: {exposure_percent:.1f}% > {max_exposure:.0f}%")
+                print(f"   💰 Balance actual: ${self.current_balance:.2f}")
+                print(f"   💰 Inversión total: ${total_exposure_usd:.2f}")
+                print(f"   💰 Nueva inversión: ${position_size_usd:.2f}")
                 print(f"   🎯 Confianza: {confidence:.1f}% | Pares activos: {total_symbols_with_positions}/3")
                 raise Exception(f"Trade bloqueado por diversificación: Exposición total > {max_exposure:.0f}%")
 
@@ -1759,7 +1845,7 @@ class SimpleProfessionalTradingManager:
 
             # ✅ INFORMACIÓN: Solo mostrar estado sin bloquear
             print(f"✅ DIVERSIFICACIÓN: Trade permitido para {symbol}")
-            print(f"   📊 Posiciones en {symbol}: {existing_positions_count}/2")
+            print(f"   📊 Posiciones en {symbol}: {existing_positions_count}/3")
             print(f"   💰 Exposición total: {exposure_percent:.1f}%/{max_exposure:.0f}%")
             print(f"   🎯 Tamaño propuesto: ${position_size_usd:.2f} ({position_size_percent:.1f}%)")
             print(f"   🔥 Confianza: {confidence:.1f}% | Pares activos: {len(positions_by_symbol)}/3")
@@ -1774,7 +1860,7 @@ class SimpleProfessionalTradingManager:
 
         except Exception as e:
             if "Trade bloqueado por diversificación" in str(e):
-                # Solo bloquear en casos extremos (>2 posiciones por par o >70% exposición)
+                # Solo bloquear en casos extremos (>3 posiciones por par o >90% exposición)
                 print(f"🚫 {str(e)}")
                 await self.database.log_event('WARNING', 'DIVERSIFICATION', str(e), symbol)
 
@@ -1812,9 +1898,9 @@ class SimpleProfessionalTradingManager:
                 await asyncio.sleep(60)
 
     async def _position_monitor(self):
-        """🔍 Monitoreo continuo de posiciones y gestión de riesgo"""
+        """🔍 Monitoreo continuo de posiciones y gestión de riesgo - ALTA FRECUENCIA"""
         try:
-            # 1. Obtener posiciones actuales
+            # ✅ MÁXIMA FRECUENCIA: Datos frescos cada 30 segundos para TCN
             snapshot = await self.portfolio_manager.get_portfolio_snapshot()
 
             if not snapshot.active_positions:
@@ -1823,7 +1909,7 @@ class SimpleProfessionalTradingManager:
 
             print(f"🔍 Monitoreando {len(snapshot.active_positions)} posición(es)...")
 
-            # 2. Actualizar precios para cada posición
+            # 2. Actualizar precios para cada posición - FRECUENCIA MÁXIMA
             symbols_to_update = list(set([pos.symbol for pos in snapshot.active_positions]))
             current_prices = await self.portfolio_manager.update_all_prices(symbols_to_update)
 

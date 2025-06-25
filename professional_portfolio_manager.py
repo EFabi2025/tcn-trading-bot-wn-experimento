@@ -803,8 +803,8 @@ class ProfessionalPortfolioManager:
                         # Proteger el 80% de la ganancia actual
                         min_profit_protection = current_gain_percent * 0.8
                     else:
-                        # Protección mínima base del 0.5% para ganancias menores a 2%
-                        min_profit_protection = 0.5
+                        # Protección mínima base del 0.75% para ganancias menores a 2%
+                        min_profit_protection = 0.75
 
                     min_trailing_price = position.entry_price * (1 + min_profit_protection / 100)
 
@@ -835,8 +835,8 @@ class ProfessionalPortfolioManager:
                         # Proteger el 80% de la ganancia actual
                         min_profit_protection = current_gain_percent * 0.8
                     else:
-                        # Protección mínima base del 0.5% para ganancias menores a 2%
-                        min_profit_protection = 0.5
+                        # Protección mínima base del 0.75% para ganancias menores a 2%
+                        min_profit_protection = 0.75
 
                     min_trailing_price = position.entry_price * (1 + min_profit_protection / 100)
 
