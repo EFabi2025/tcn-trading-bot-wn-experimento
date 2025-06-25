@@ -1120,9 +1120,10 @@ class SimpleProfessionalTradingManager:
                 self.last_signals[symbol] = signal
                 print(f"💡 Señal TCN para {symbol}: {signal} (Confianza: {confidence_level:.2f}%) (Umbral: {threshold:.1f}%)")
 
-                # 💡 **CORRECCIÓN DE LÓGICA CRÍTICA** - Procesar señales con confianza suficiente
-                # Esta lógica asegura que AMBAS señales (BUY y SELL) sean correctamente procesadas
-                if (signal == 'BUY' and confidence_level >= threshold) or signal == 'SELL':
+                # 🔧 **CORRECCIÓN CRÍTICA** - SELL también requiere confianza mínima
+                # Aplicar umbral de confianza tanto para BUY como para SELL
+                sell_threshold = max(60.0, threshold * 0.85)  # SELL requiere al menos 60% o 85% del umbral BUY
+                if (signal == 'BUY' and confidence_level >= threshold) or (signal == 'SELL' and confidence_level >= sell_threshold):
                     log_emoji = "📈" if signal == "BUY" else "📉"
                     log_action = "COMPRA" if signal == "BUY" else "VENTA"
                     print(f"{log_emoji} Oportunidad de {log_action} detectada para {symbol}. Preparando para posible operación.")
@@ -1150,6 +1151,10 @@ class SimpleProfessionalTradingManager:
                         if len(existing_positions) == 0:
                             print(f"  ⏸️ Señal SELL ignorada - No hay posición que vender en {symbol}")
                             continue
+
+                        # ✅ NUEVO: Información sobre umbral SELL aplicado
+                        print(f"  📊 Señal SELL con confianza {confidence_level:.1f}% (umbral: {sell_threshold:.1f}%)")
+                        print(f"  📋 {len(existing_positions)} posición(es) existente(s) serán evaluadas para cierre")
 
                     # ✅ SEÑAL VÁLIDA - Este bloque ahora se ejecuta para ambas señales
                     signals[symbol] = {
@@ -1399,12 +1404,12 @@ class SimpleProfessionalTradingManager:
                         filter_reason = f"Mercado BEARISH fuerte (score: {market_score:.2f}) - {symbol} BUY requiere >{required_confidence}% confianza"
 
                 elif signal == 'SELL':
-                    # En bearish, SELL es más seguro - reducir umbral ligeramente
-                    if confidence < 60:  # Reducir de 70% a 60% para SELL en bearish
+                    # ✅ CORRECCIÓN: SELL en bearish requiere confianza razonable, no baja
+                    if confidence < 70:  # Mantener umbral estándar para SELL en bearish
                         signal = 'HOLD'
-                        filter_reason = f"SELL en BEARISH requiere >60% confianza"
+                        filter_reason = f"SELL en BEARISH requiere >70% confianza (actual: {confidence:.1f}%)"
                     else:
-                        filter_reason = f"SELL favorecido en mercado BEARISH"
+                        filter_reason = f"SELL favorecido en mercado BEARISH con confianza {confidence:.1f}%"
 
             # 🟢 FILTROS BULLISH - Aprovechar momentum alcista
             elif regime == 'BULLISH' and market_confidence > 0.7:
@@ -1417,10 +1422,10 @@ class SimpleProfessionalTradingManager:
                         filter_reason = f"BUY favorecido en mercado BULLISH"
 
                 elif signal == 'SELL':
-                    # En bullish, ser más cauteloso con SELL
-                    if confidence < 80:  # Subir umbral para SELL en bullish
+                    # ✅ CORRECCIÓN: En bullish, SELL requiere confianza muy alta para evitar pérdidas
+                    if confidence < 85:  # SELL en bullish requiere confianza extrema
                         signal = 'HOLD'
-                        filter_reason = f"Mercado BULLISH (score: {market_score:.2f}) - SELL requiere >80% confianza"
+                        filter_reason = f"Mercado BULLISH (score: {market_score:.2f}) - SELL requiere >85% confianza (actual: {confidence:.1f}%)"
 
             # 🟡 FILTROS DE VOLATILIDAD - Ajustar según volatilidad del mercado (OPTIMIZADO INTEGRAL)
             if volatility == 'HIGH' and fear_factor > 0.8:
@@ -1436,9 +1441,9 @@ class SimpleProfessionalTradingManager:
                     if confidence < required_vol_confidence:
                         signal = 'HOLD'
                         filter_reason = f"Alta volatilidad (miedo: {fear_factor:.2f}) - {symbol} BUY requiere >{required_vol_confidence}% confianza"
-                elif signal == 'SELL' and confidence < 70:  # Reducido de 75% a 70%
+                elif signal == 'SELL' and confidence < 75:  # Volver a umbral estándar
                     signal = 'HOLD'
-                    filter_reason = f"Alta volatilidad - SELL requiere >70% confianza"
+                    filter_reason = f"Alta volatilidad - SELL requiere >75% confianza (actual: {confidence:.1f}%)"
 
             # 🔵 FILTROS ESPECÍFICOS POR ACTIVO
             if symbol == 'BTCUSDT':
@@ -1683,18 +1688,45 @@ class SimpleProfessionalTradingManager:
                 position.pnl_percent = ((position.entry_price - current_price) / position.entry_price) * 100
             position.pnl_usd = (position.pnl_percent / 100) * (position.quantity * position.entry_price)
 
-        # Si la señal es de venta, cerrar TODAS las posiciones para este símbolo
+        # Si la señal es de venta, evaluar cada posición individualmente (NO cerrar automáticamente)
         if signal == 'SELL':
-            print(f"🔥 Señal de VENTA para {symbol}. Cerrando {len(existing_positions)} posición(es).")
-            for position in existing_positions:
-                await self._close_position(position.order_id, "SIGNAL_SELL")
+            print(f"📊 Señal de VENTA para {symbol} con {confidence:.1f}% confianza. Evaluando {len(existing_positions)} posición(es).")
 
-        # Lógica de reversión (ej. de BUY a SELL con alta confianza)
-        reversal_threshold = float(os.getenv('SIGNAL_REVERSAL_THRESHOLD', '0.85'))
-        if confidence > reversal_threshold:
+            # ✅ CORRECCIÓN CRÍTICA: Evaluar cada posición según su rentabilidad actual
+            for position in existing_positions:
+                should_close = False
+                close_reason = ""
+
+                # Solo cerrar si cumple criterios estrictos
+                if confidence >= 75.0:  # Confianza alta
+                    if position.pnl_percent > 2.0:  # Si está en ganancia > 2%
+                        should_close = True
+                        close_reason = "SIGNAL_SELL_HIGH_CONF_PROFIT"
+                    elif position.pnl_percent < -1.5:  # O pérdida > 1.5%
+                        should_close = True
+                        close_reason = "SIGNAL_SELL_HIGH_CONF_LOSS"
+                elif confidence >= 85.0:  # Confianza muy alta
+                    should_close = True  # Cerrar independientemente del PnL
+                    close_reason = "SIGNAL_SELL_VERY_HIGH_CONF"
+
+                if should_close:
+                    print(f"  🔥 Cerrando posición {position.order_id}: PnL {position.pnl_percent:.1f}% - {close_reason}")
+                    await self._close_position(position.order_id, close_reason)
+                else:
+                    print(f"  ⏸️ Manteniendo posición {position.order_id}: PnL {position.pnl_percent:.1f}% - Confianza SELL insuficiente")
+
+        # ✅ CORRECCIÓN: Lógica de reversión más estricta (solo para confianza extrema)
+        reversal_threshold = float(os.getenv('SIGNAL_REVERSAL_THRESHOLD', '0.90'))  # Aumentado de 85% a 90%
+        if confidence >= reversal_threshold:
+            print(f"🔄 Evaluando reversión de señal con confianza extrema: {confidence:.1f}%")
             for position in existing_positions:
                 if (position.side == 'BUY' and signal == 'SELL') or (position.side == 'SELL' and signal == 'BUY'):
-                    await self._close_position(position.order_id, "SIGNAL_REVERSAL")
+                    # ✅ ADICIONAL: Solo si la posición no está en buena ganancia (>3%)
+                    if position.pnl_percent <= 3.0:
+                        print(f"  🔄 Reversión ejecutada para {position.order_id}: PnL {position.pnl_percent:.1f}%")
+                        await self._close_position(position.order_id, "SIGNAL_REVERSAL")
+                    else:
+                        print(f"  ⏸️ Reversión omitida para {position.order_id}: PnL muy positivo {position.pnl_percent:.1f}%")
 
     async def _close_position(self, order_id: str, reason: str):
         """📉 Cerrar posición específica por ID de orden"""
@@ -1786,20 +1818,29 @@ class SimpleProfessionalTradingManager:
             # ✅ NUEVO: Con solo 3 pares, usar lógica simplificada
             print(f"🎯 Verificación de diversificación simplificada para {symbol}")
 
+            # ✅ CRÍTICO: Actualizar balance antes de verificar diversificación
+            await self.update_balance_from_binance()
+
             # Obtener posiciones actuales solo para información
             snapshot = await self.portfolio_manager.get_portfolio_snapshot()
 
-            # Contar posiciones por símbolo
+            # ✅ DEBUG: Información del balance
+            print(f"🔍 DEBUG DIVERSIFICACIÓN:")
+            print(f"   💰 Balance actual: ${self.current_balance:.2f}")
+            print(f"   📊 Posiciones en snapshot: {len(snapshot.active_positions)}")
+
+            # Contar posiciones por símbolo y calcular exposición correctamente
             positions_by_symbol = {}
-            total_exposure_usd = 0.0
+            total_invested_usd = 0.0  # Total invertido originalmente
 
             for pos in snapshot.active_positions:
                 if pos.symbol not in positions_by_symbol:
                     positions_by_symbol[pos.symbol] = []
                 positions_by_symbol[pos.symbol].append(pos)
-                # ✅ CORREGIDO: Usar valor de entrada (inversión original), no market_value actual
-                entry_value = pos.quantity * pos.entry_price
-                total_exposure_usd += entry_value
+                # ✅ CORREGIDO: Solo contar la inversión inicial (dinero gastado en comprar)
+                invested_value = pos.quantity * pos.entry_price
+                total_invested_usd += invested_value
+                print(f"   📍 {pos.symbol}: {pos.quantity:.6f} x ${pos.entry_price:.4f} = ${invested_value:.2f}")
 
             # ✅ REGLAS SIMPLIFICADAS PARA POCOS PARES:
 
@@ -1810,13 +1851,50 @@ class SimpleProfessionalTradingManager:
                 print(f"   📊 Posiciones actuales en {symbol}: {existing_positions_count}")
                 raise Exception(f"Trade bloqueado por diversificación: Máximo 3 posiciones por símbolo en {symbol}")
 
-            # 2. Lógica inteligente de exposición basada en contexto
+            # 2. ✅ CORRECCIÓN CRÍTICA: Calcular exposición correctamente
             confidence = signal_data['confidence']
-            position_size_percent = min(15.0, confidence * 20)
-            position_size_usd = (self.current_balance * position_size_percent / 100)
+            # ✅ NUEVO: Calcular balance inicial primero para usar en todos los cálculos
+            initial_balance = self.current_balance + total_invested_usd
 
-            new_total_exposure = total_exposure_usd + position_size_usd
-            exposure_percent = (new_total_exposure / self.current_balance) * 100 if self.current_balance > 0 else 0
+            # ✅ CORRECCIÓN CRÍTICA: Ponderar por dinero realmente disponible
+            # El tamaño de posición debe calcularse sobre el dinero disponible, no el balance inicial
+            available_balance = self.current_balance  # Dinero realmente disponible
+
+            # ✅ LÓGICA INTELIGENTE: Ajustar porcentaje según dinero disponible vs balance inicial
+            if initial_balance > 0:
+                available_ratio = available_balance / initial_balance  # Qué % del capital inicial queda libre
+
+                # Si queda poco dinero disponible, usar porcentaje más alto del disponible
+                if available_ratio < 0.3:  # Si queda menos del 30% disponible
+                    max_position_size = min(90.0, 15.0 / available_ratio)  # Escalar hasta 90% del disponible
+                else:
+                    max_position_size = 15.0  # Usar 15% normal si hay suficiente dinero
+
+                position_size_percent = min(max_position_size, (confidence/100) * 18.0)
+                new_position_size_usd = (available_balance * position_size_percent / 100)
+            else:
+                new_position_size_usd = 0
+
+            # ✅ CÁLCULO CORRECTO:
+            # - Balance inicial = balance actual + dinero ya invertido
+            # - Exposición = (dinero invertido + nueva inversión) / balance inicial * 100
+            new_total_invested = total_invested_usd + new_position_size_usd
+            exposure_percent = (new_total_invested / initial_balance) * 100 if initial_balance > 0 else 0
+            current_exposure_percent = (total_invested_usd / initial_balance) * 100 if initial_balance > 0 else 0
+
+            # ✅ DEBUG: Mostrar cálculos detallados
+            print(f"🔍 CÁLCULOS DE EXPOSICIÓN:")
+            print(f"   💰 Total ya invertido: ${total_invested_usd:.2f}")
+            print(f"   💰 Balance inicial calculado: ${initial_balance:.2f}")
+            print(f"   💰 Dinero disponible: ${available_balance:.2f}")
+            if initial_balance > 0:
+                available_ratio = available_balance / initial_balance
+                print(f"   📊 % dinero libre: {available_ratio*100:.1f}%")
+                print(f"   🎯 Max posición ajustado: {max_position_size:.1f}%")
+            print(f"   💰 Nueva posición (USD): ${new_position_size_usd:.2f}")
+            print(f"   💰 Nueva posición (%): {position_size_percent:.1f}%")
+            print(f"   📊 Exposición actual: {current_exposure_percent:.1f}%")
+            print(f"   📊 Nueva exposición: {exposure_percent:.1f}%")
 
             # ✅ LÓGICA INTELIGENTE: Límite dinámico basado en confianza y número de pares
             max_exposure = 90.0  # Base: 90%
@@ -1832,11 +1910,12 @@ class SimpleProfessionalTradingManager:
 
             if exposure_percent > max_exposure:
                 print(f"🚫 DIVERSIFICACIÓN: Exposición total muy alta")
-                print(f"   📊 Exposición actual: {(total_exposure_usd/self.current_balance)*100:.1f}%")
+                print(f"   📊 Exposición actual: {current_exposure_percent:.1f}%")
                 print(f"   📊 Nueva exposición: {exposure_percent:.1f}% > {max_exposure:.0f}%")
                 print(f"   💰 Balance actual: ${self.current_balance:.2f}")
-                print(f"   💰 Inversión total: ${total_exposure_usd:.2f}")
-                print(f"   💰 Nueva inversión: ${position_size_usd:.2f}")
+                print(f"   💰 Balance inicial: ${initial_balance:.2f}")
+                print(f"   💰 Ya invertido: ${total_invested_usd:.2f}")
+                print(f"   💰 Nueva inversión: ${new_position_size_usd:.2f}")
                 print(f"   🎯 Confianza: {confidence:.1f}% | Pares activos: {total_symbols_with_positions}/3")
                 raise Exception(f"Trade bloqueado por diversificación: Exposición total > {max_exposure:.0f}%")
 
@@ -1846,8 +1925,9 @@ class SimpleProfessionalTradingManager:
             # ✅ INFORMACIÓN: Solo mostrar estado sin bloquear
             print(f"✅ DIVERSIFICACIÓN: Trade permitido para {symbol}")
             print(f"   📊 Posiciones en {symbol}: {existing_positions_count}/3")
-            print(f"   💰 Exposición total: {exposure_percent:.1f}%/{max_exposure:.0f}%")
-            print(f"   🎯 Tamaño propuesto: ${position_size_usd:.2f} ({position_size_percent:.1f}%)")
+            print(f"   💰 Exposición actual: {current_exposure_percent:.1f}%")
+            print(f"   💰 Nueva exposición: {exposure_percent:.1f}%/{max_exposure:.0f}%")
+            print(f"   🎯 Tamaño propuesto: ${new_position_size_usd:.2f} ({position_size_percent:.1f}%)")
             print(f"   🔥 Confianza: {confidence:.1f}% | Pares activos: {len(positions_by_symbol)}/3")
 
             # ✅ OPCIONAL: Análisis informativo cada 5 trades (no bloquea)

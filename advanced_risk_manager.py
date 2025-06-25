@@ -229,7 +229,7 @@ class AdvancedRiskManager:
         quantity = position_value_usd / price
 
         print(f"📊 Position sizing para {symbol}:")
-        print(f"   🎯 Confianza: {confidence:.1%}")
+        print(f"   🎯 Confianza: {confidence:.1f}%")  # Corregido: ya está en formato %
         print(f"   📈 Size %: {final_size_percent:.2f}%")
         print(f"   💵 Valor USD: ${position_value_usd:.2f}")
         print(f"   🔢 Cantidad: {quantity:.6f}")
@@ -295,7 +295,7 @@ class AdvancedRiskManager:
 
         # Verificar confianza mínima
         if confidence < self.limits.min_confidence_threshold:
-            return False, f"📉 Confianza muy baja: {confidence:.1%} < {self.limits.min_confidence_threshold:.1%}"
+            return False, f"📉 Confianza muy baja: {confidence:.1f}% < {self.limits.min_confidence_threshold:.1%}"
 
         # Verificar pérdida diaria máxima
         daily_loss_percent = 0

@@ -55,7 +55,7 @@ class TradingConfig:
     PORTFOLIO_DIVERSIFICATION = {
         # Límites de concentración por símbolo
         'MAX_SYMBOL_CONCENTRATION_PERCENT': 50.0,  # Máximo 40% del portafolio en un símbolo
-        'MAX_POSITIONS_PER_SYMBOL': 3,             # Máximo 3 posiciones por símbolo
+        'MAX_POSITIONS_PER_SYMBOL': 4,             # Máximo 3 posiciones por símbolo
         'MIN_SYMBOLS_IN_PORTFOLIO': 2,             # Mínimo 2 símbolos diferentes
 
         # Diversificación por sectores/categorías
@@ -115,7 +115,7 @@ class ConfigManager:
             take_profit_percent=float(os.getenv('TAKE_PROFIT_PERCENT', '6.0')),
             trailing_stop_percent=float(os.getenv('TRAILING_STOP_PERCENT', '2.0')),
 
-            max_concurrent_positions=int(os.getenv('MAX_CONCURRENT_POSITIONS', '2')),
+            max_concurrent_positions=int(os.getenv('MAX_CONCURRENT_POSITIONS', '3')),
             correlation_limit=float(os.getenv('CORRELATION_LIMIT', '0.7')),
 
             min_confidence_threshold=float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.70')),
@@ -143,6 +143,10 @@ class ConfigManager:
         """📋 Obtener configuración actual"""
         if self._config is None:
             self._load_config()
+
+        if self._config is None:
+            raise RuntimeError("Failed to load trading configuration")
+
         return self._config
 
     def reload_config(self):

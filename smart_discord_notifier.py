@@ -189,7 +189,7 @@ class SmartDiscordNotifier:
         message += f"📊 {data.get('symbol', 'UNKNOWN')}: {data.get('side', 'UNKNOWN')}\n"
         message += f"💰 Valor: ${data.get('value_usd', 0):.2f}\n"
         message += f"💲 Precio: ${data.get('price', 0):.4f}\n"
-        message += f"🎯 Confianza: {data.get('confidence', 0):.1%}\n"
+        message += f"🎯 Confianza: {data.get('confidence', 0):.1f}%\n"
         message += f"⏰ {datetime.now().strftime('%H:%M:%S')}"
 
         return message
@@ -297,8 +297,12 @@ class SmartDiscordNotifier:
                     if response.status == 200:
                         print(f"✅ Discord enviado: {message[:50]}...")
                         return True
+                    elif response.status == 204:
+                        print(f"✅ Discord enviado (204 No Content - normal para webhooks): {message[:50]}...")
+                        return True  # 204 es éxito para webhooks
                     else:
-                        print(f"❌ Discord error: {response.status}")
+                        response_text = await response.text()
+                        print(f"❌ Discord error {response.status}: {response_text[:100]}...")
                         self.stats['errors'] += 1
                         return False
 
