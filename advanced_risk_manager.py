@@ -310,11 +310,17 @@ class AdvancedRiskManager:
         if len(self.active_positions) >= self.limits.max_concurrent_positions:
             return False, f"📊 Máximo de posiciones alcanzado: {len(self.active_positions)}/{self.limits.max_concurrent_positions}"
 
-        # Verificar exposición total
-        current_exposure = sum(pos.quantity * pos.current_price for pos in self.active_positions.values())
+        # ✅ CORRECCIÓN CRÍTICA: Verificar exposición total usando balance inicial
+        # Calcular valor total invertido (dinero gastado originalmente)
+        total_invested_usd = sum(pos.quantity * pos.entry_price for pos in self.active_positions.values())
+        
+        # Calcular balance inicial (balance actual + dinero ya invertido)
+        initial_balance = self.current_balance + total_invested_usd
+        
+        # Calcular exposición correcta sobre balance inicial
         exposure_percent = 0
-        if self.current_balance > 0:
-            exposure_percent = (current_exposure / self.current_balance) * 100
+        if initial_balance > 0:
+            exposure_percent = (total_invested_usd / initial_balance) * 100
 
         if exposure_percent >= self.limits.max_total_exposure_percent:
             return False, f"💼 Exposición máxima alcanzada: {exposure_percent:.1f}%"

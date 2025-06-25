@@ -1122,7 +1122,8 @@ class SimpleProfessionalTradingManager:
 
                 # 🔧 **CORRECCIÓN CRÍTICA** - SELL también requiere confianza mínima
                 # Aplicar umbral de confianza tanto para BUY como para SELL
-                sell_threshold = max(60.0, threshold * 0.85)  # SELL requiere al menos 60% o 85% del umbral BUY
+                min_sell_confidence = float(os.getenv('MIN_SELL_CONFIDENCE_THRESHOLD', '0.75')) * 100
+                sell_threshold = max(min_sell_confidence, threshold * 0.85)  # SELL requiere al menos config% o 85% del umbral BUY
                 if (signal == 'BUY' and confidence_level >= threshold) or (signal == 'SELL' and confidence_level >= sell_threshold):
                     log_emoji = "📈" if signal == "BUY" else "📉"
                     log_action = "COMPRA" if signal == "BUY" else "VENTA"
@@ -1405,9 +1406,10 @@ class SimpleProfessionalTradingManager:
 
                 elif signal == 'SELL':
                     # ✅ CORRECCIÓN: SELL en bearish requiere confianza razonable, no baja
-                    if confidence < 70:  # Mantener umbral estándar para SELL en bearish
+                    min_sell_conf = float(os.getenv('MIN_SELL_CONFIDENCE_THRESHOLD', '0.75')) * 100
+                    if confidence < min_sell_conf:  # Usar configuración dinámica
                         signal = 'HOLD'
-                        filter_reason = f"SELL en BEARISH requiere >70% confianza (actual: {confidence:.1f}%)"
+                        filter_reason = f"SELL en BEARISH requiere >{min_sell_conf:.0f}% confianza (actual: {confidence:.1f}%)"
                     else:
                         filter_reason = f"SELL favorecido en mercado BEARISH con confianza {confidence:.1f}%"
 
@@ -1441,9 +1443,11 @@ class SimpleProfessionalTradingManager:
                     if confidence < required_vol_confidence:
                         signal = 'HOLD'
                         filter_reason = f"Alta volatilidad (miedo: {fear_factor:.2f}) - {symbol} BUY requiere >{required_vol_confidence}% confianza"
-                elif signal == 'SELL' and confidence < 75:  # Volver a umbral estándar
-                    signal = 'HOLD'
-                    filter_reason = f"Alta volatilidad - SELL requiere >75% confianza (actual: {confidence:.1f}%)"
+                elif signal == 'SELL':
+                    min_sell_vol_conf = float(os.getenv('MIN_SELL_CONFIDENCE_THRESHOLD', '0.75')) * 100
+                    if confidence < min_sell_vol_conf:  # Usar configuración dinámica
+                        signal = 'HOLD'
+                        filter_reason = f"Alta volatilidad - SELL requiere >{min_sell_vol_conf:.0f}% confianza (actual: {confidence:.1f}%)"
 
             # 🔵 FILTROS ESPECÍFICOS POR ACTIVO
             if symbol == 'BTCUSDT':
