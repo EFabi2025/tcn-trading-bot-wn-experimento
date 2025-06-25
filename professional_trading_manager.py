@@ -20,7 +20,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 # Importar nuestros módulos
-from advanced_risk_manager import AdvancedRiskManager, Position, RiskLimits
+from advanced_risk_manager import AdvancedRiskManager
 from trading_database import TradingDatabase
 from final_real_binance_predictor import OptimizedTCNPredictor, OptimizedBinanceData
 

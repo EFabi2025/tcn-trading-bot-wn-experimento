@@ -488,7 +488,7 @@ class TradingManager:
                 existing_position = await self.portfolio_manager.get_position(symbol)
                 
                 if signal_type == 'BUY':
-                    if existing_position and existing_position.get('quantity', 0) > 0:
+                    if existing_position and hasattr(existing_position, 'quantity') and existing_position.quantity > 0:
                         self.logger.info(f"🔄 {symbol}: Ya existe posición LONG, se ignora señal BUY.")
                         continue
                     
@@ -532,7 +532,7 @@ class TradingManager:
                         self.logger.warning(f"🚫 {symbol}: Compra rechazada por gestión de riesgo: {risk_check.get('reason', 'N/A')}")
                 
                 elif signal_type == 'SELL':
-                    if not existing_position or existing_position.get('quantity', 0) <= 0:
+                    if not existing_position or not hasattr(existing_position, 'quantity') or existing_position.quantity <= 0:
                         self.logger.info(f"🔄 {symbol}: No hay posición LONG para vender, se ignora señal SELL.")
                         continue
                     
@@ -541,7 +541,7 @@ class TradingManager:
                     )
                     
                     if risk_check['approved']:
-                        position_quantity = existing_position.get('quantity', 0)
+                        position_quantity = existing_position.quantity if hasattr(existing_position, 'quantity') else 0
                         self.logger.info(f"💸 EJECUTANDO VENTA: {symbol} - {position_quantity} @ ${current_price:.2f}")
                         
                         result = await self.risk_manager.close_position(
