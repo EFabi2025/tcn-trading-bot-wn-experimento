@@ -669,6 +669,7 @@ class TradingManager:
                 })
                 
                 # Log detallado para auditoría
+                order_id = sell_result.get('orderId', 'N/A') if sell_result else 'N/A'
                 self.logger.info(f"""
 🎯 STOP LOSS COMPLETADO:
    Par: {position.symbol}
@@ -677,19 +678,28 @@ class TradingManager:
    Cantidad: {position.size:.6f}
    P&L: {pnl_percent:+.2f}% (${pnl_usd:+.2f})
    Razón: {trigger_reason}
-   Orden ID: {sell_result.get('orderId', 'N/A')}
+   Orden ID: {order_id}
                 """)
                 
             else:
                 self.logger.error(f"❌ FALLO EN STOP LOSS: {position.symbol}")
                 self.logger.error(f"   Resultado: {sell_result}")
                 
+                # Manejar respuesta None o vacía de forma segura
+                error_msg = "Desconocido"
+                if sell_result and isinstance(sell_result, dict):
+                    error_msg = sell_result.get('error', 'Resultado sin detalles de error')
+                elif sell_result is None:
+                    error_msg = "Función close_position retornó None - posición posiblemente inexistente"
+                else:
+                    error_msg = f"Tipo de respuesta inesperado: {type(sell_result)}"
+                
                 # Notificar fallo a Discord  
                 await self.discord_notifier.send_system_notification(
                     f"❌ **ERROR EN STOP LOSS**\n"
                     f"**Par:** {position.symbol}\n"
                     f"**Razón:** {trigger_reason}\n"
-                    f"**Error:** {sell_result.get('error', 'Desconocido')}\n"
+                    f"**Error:** {error_msg}\n"
                     f"**Acción:** Verificación manual requerida",
                     NotificationPriority.CRITICAL
                 )

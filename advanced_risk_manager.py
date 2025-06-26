@@ -97,38 +97,42 @@ class AdvancedRiskManager:
         self.logger.info(f"   🔢 Max Posiciones Concurrentes: {self.config.MAX_CONCURRENT_POSITIONS}")
         self.logger.info(f"   💵 Mínimo por Trade (Binance): ${self.config.MIN_POSITION_VALUE_USDT} USDT")
 
-    def calculate_position_size(self, symbol: str, confidence: float, price: float) -> float:
-        """📊 Calcular tamaño de posición usando configuración centralizada"""
+    def calculate_position_size(self, symbol: str, price: float, confidence: float, risk_adjustment_factor: float = 1.0) -> float:
+        """
+        📊 Calcular tamaño de posición usando configuración centralizada.
         
-        # ✅ Usa config
+        Args:
+            symbol (str): El símbolo del activo.
+            price (float): El precio actual del activo.
+            confidence (float): La confianza del modelo en la señal.
+            risk_adjustment_factor (float, optional): Factor para ajustar el riesgo. Defaults to 1.0.
+
+        Returns:
+            float: La cantidad del activo a comprar.
+        """
         base_size_percent = self.config.MAX_POSITION_SIZE_PERCENT
         
-        # Ajustar según confianza (puede ser más complejo)
-        # Por ahora, usamos un enfoque directo para claridad.
-        final_size_percent = base_size_percent
+        confidence_factor = 1 + (confidence - self.config.TCN_BUY_CONFIDENCE_THRESHOLD)
+        final_size_percent = min(base_size_percent * confidence_factor, self.config.MAX_POSITION_SIZE_PERCENT)
         
-        # Limitar al máximo configurado
-        final_size_percent = min(final_size_percent, self.config.MAX_POSITION_SIZE_PERCENT)
-        
-        # Calcular cantidad en USD
         position_value_usd = self.current_balance * (final_size_percent / 100)
         
-        # ⚠️ VALIDACIÓN CRÍTICA: Verificar mínimo de Binance
+        if risk_adjustment_factor != 1.0:
+            self.logger.warning(f"🏛️ Aplicando factor de ajuste de riesgo: {risk_adjustment_factor}. Tamaño original: ${position_value_usd:.2f}")
+            position_value_usd *= risk_adjustment_factor
+            self.logger.warning(f"   Nuevo tamaño ajustado: ${position_value_usd:.2f}")
+
         if position_value_usd < self.config.MIN_POSITION_VALUE_USDT:
             self.logger.warning(f"Posición calculada ${position_value_usd:.2f} es menor al mínimo de Binance ${self.config.MIN_POSITION_VALUE_USDT}")
-            
-            # Si el balance lo permite, usar el mínimo de Binance
             if self.current_balance >= self.config.MIN_POSITION_VALUE_USDT * 1.2:
                 position_value_usd = self.config.MIN_POSITION_VALUE_USDT
                 self.logger.info(f"🔧 Ajustando al mínimo de Binance: ${position_value_usd:.2f}")
             else:
-                self.logger.error(f"❌ Balance insuficiente para cubrir el mínimo de trade de Binance.")
+                self.logger.error("❌ Balance insuficiente para cubrir el mínimo de trade de Binance.")
                 return 0.0
         
         quantity = position_value_usd / price
-        
         self.logger.info(f"📊 Cálculo de Tamaño para {symbol}: Valor=${position_value_usd:.2f} USD, Cantidad={quantity:.6f}")
-        
         return quantity
     
     def set_stop_loss_take_profit(self, position: Position) -> Position:
@@ -207,21 +211,21 @@ class AdvancedRiskManager:
             self.circuit_breaker_until = datetime.now() + timedelta(minutes=duration_minutes)
             # Aquí podrías añadir una notificación a Discord.
     
-    async def open_position(self, symbol: str, signal: str, confidence: float, price: float) -> Optional[Position]:
-        """Abre una nueva posición después de verificar el riesgo."""
-        can_trade, reason = await self.check_risk_limits_before_trade(symbol, signal, confidence)
+    async def open_position(self, symbol: str, side: str, amount: float, price: float, confidence: float, signal_data: dict) -> Optional[Dict]:
+        """Abre una nueva posición con una cantidad pre-calculada."""
+        can_trade, reason = await self.check_risk_limits_before_trade(symbol, side, confidence)
         if not can_trade:
             self.logger.warning(f"❌ Trade para {symbol} rechazado por Risk Manager: {reason}")
-            return None
+            return {'success': False, 'reason': reason}
 
-        quantity = self.calculate_position_size(symbol, confidence, price)
-        if quantity == 0:
-            return None
+        if amount <= 0:
+            self.logger.warning(f"Intento de abrir posición con cantidad 0 o negativa para {symbol}")
+            return {'success': False, 'reason': 'Cantidad inválida'}
         
         position = Position(
             symbol=symbol,
-            side=signal,
-            quantity=quantity,
+            side=side,
+            quantity=amount,
             entry_price=price,
             current_price=price,
             entry_time=datetime.now()
@@ -231,14 +235,20 @@ class AdvancedRiskManager:
         
         self.active_positions[symbol] = position
         self.stats['trades'] += 1
-        self.logger.info(f"✅ Nueva posición abierta para {symbol}: {quantity:.6f} unidades.")
-        return position
+        self.logger.info(f"✅ Nueva posición abierta para {symbol}: {amount:.6f} unidades.")
+        return {'success': True, 'position': position}
 
     async def close_position(self, symbol: str, exit_price: float, reason: str) -> Optional[Dict]:
         """Cierra una posición y registra el resultado."""
         if symbol not in self.active_positions:
             self.logger.warning(f"Intento de cerrar posición inexistente para {symbol}.")
-            return None
+            return {
+                'success': False,
+                'error': f'Posición no encontrada para {symbol}',
+                'symbol': symbol,
+                'reason': reason,
+                'message': 'La posición ya fue cerrada o nunca existió'
+            }
 
         position = self.active_positions.pop(symbol)
         
@@ -262,11 +272,13 @@ class AdvancedRiskManager:
                 self.stats['largest_loss'] = pnl_usd
 
         result = {
+            "success": True,
             "symbol": symbol,
             "pnl_usd": pnl_usd,
             "pnl_percent": pnl_percent,
             "exit_price": exit_price,
-            "reason": reason
+            "reason": reason,
+            "profit_loss": pnl_usd  # Para compatibilidad con código existente
         }
 
         self.logger.info(f"Position Closed: {symbol}, PnL: ${pnl_usd:.2f} ({pnl_percent:.2f}%), Reason: {reason}")
