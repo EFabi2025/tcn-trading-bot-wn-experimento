@@ -641,8 +641,8 @@ class TradingManager:
             # Ejecutar orden de venta usando el risk manager
             sell_result = await self.risk_manager.close_position(
                 symbol=position.symbol,
-                reason=f"AUTO_{trigger_reason}",
-                current_price=position.current_price
+                exit_price=position.current_price,
+                reason=f"AUTO_{trigger_reason}"
             )
             
             if sell_result and sell_result.get('success'):
@@ -657,16 +657,16 @@ class TradingManager:
                     title = "TRAILING STOP EJECUTADO"
                 
                 # Notificar a Discord
-                await self.discord_notifier.send_trade_notification(
-                    f"{emoji} **{title}**\n"
-                    f"**Par:** {position.symbol}\n"
-                    f"**Precio Entrada:** ${position.entry_price:.4f}\n"
-                    f"**Precio Salida:** ${position.current_price:.4f}\n"
-                    f"**P&L:** {pnl_percent:+.2f}% (${pnl_usd:+.2f})\n"
-                    f"**Razón:** {trigger_reason}\n"
-                    f"**Cantidad:** {position.size:.6f}",
-                    priority="HIGH"
-                )
+                await self.discord_notifier.send_trade_notification({
+                    'symbol': position.symbol,
+                    'side': 'SELL',
+                    'value_usd': abs(pnl_usd),
+                    'pnl_percent': pnl_percent,
+                    'pnl_usd': pnl_usd,
+                    'price': position.current_price,
+                    'reason': trigger_reason,
+                    'confidence': 1.0  # Stop loss siempre tiene confianza máxima
+                })
                 
                 # Log detallado para auditoría
                 self.logger.info(f"""
@@ -684,26 +684,26 @@ class TradingManager:
                 self.logger.error(f"❌ FALLO EN STOP LOSS: {position.symbol}")
                 self.logger.error(f"   Resultado: {sell_result}")
                 
-                # Notificar fallo a Discord
-                await self.discord_notifier.send_trade_notification(
+                # Notificar fallo a Discord  
+                await self.discord_notifier.send_system_notification(
                     f"❌ **ERROR EN STOP LOSS**\n"
                     f"**Par:** {position.symbol}\n"
                     f"**Razón:** {trigger_reason}\n"
                     f"**Error:** {sell_result.get('error', 'Desconocido')}\n"
                     f"**Acción:** Verificación manual requerida",
-                    priority="CRITICAL"
+                    NotificationPriority.CRITICAL
                 )
                 
         except Exception as e:
             self.logger.error(f"❌ Error crítico ejecutando stop loss para {position.symbol}: {e}", exc_info=True)
             
             # Notificar error crítico
-            await self.discord_notifier.send_trade_notification(
+            await self.discord_notifier.send_system_notification(
                 f"🚨 **ERROR CRÍTICO EN STOP LOSS**\n"
                 f"**Par:** {position.symbol}\n"
                 f"**Error:** {str(e)}\n"
                 f"**Acción:** Intervención manual URGENTE",
-                priority="CRITICAL"
+                NotificationPriority.CRITICAL
             )
 
     async def shutdown(self):
