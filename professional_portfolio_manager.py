@@ -559,6 +559,7 @@ class ProfessionalPortfolioManager:
                 signal = pred.get('signal', 'N/A')
                 confidence = pred.get('confidence', 0) * 100
                 price = pred.get('current_price', 0)
+                probabilities = pred.get('probabilities', {})
                 
                 emoji = "🟢" if signal == "BUY" else "🔴" if signal == "SELL" else "⚪"
                 
@@ -566,6 +567,17 @@ class ProfessionalPortfolioManager:
                     f"{emoji} **{pred['pair']}**: {signal} ({confidence:.1f}%)"
                 )
                 report_lines.append(f"   └ Precio: ${price:,.4f}")
+                
+                # ✅ NUEVO: Mostrar probabilidades detalladas
+                if probabilities:
+                    sell_prob = probabilities.get('SELL', 0) * 100
+                    hold_prob = probabilities.get('HOLD', 0) * 100
+                    buy_prob = probabilities.get('BUY', 0) * 100
+                    
+                    report_lines.append(f"   📊 **Probabilidades:**")
+                    report_lines.append(f"      🔴 SELL: {sell_prob:.1f}%")
+                    report_lines.append(f"      ⚪ HOLD: {hold_prob:.1f}%")
+                    report_lines.append(f"      🟢 BUY: {buy_prob:.1f}%")
             report_lines.append("")
 
         # --- POSICIONES ACTIVAS (Sección existente) ---
@@ -748,7 +760,7 @@ class ProfessionalPortfolioManager:
                     print(f"   💰 PnL Final: +{final_pnl:.2f}%")
                     print(f"   🏔️ Máximo alcanzado: +{max_profit:.2f}%")
                     print(f"   📈 Movimientos trailing: {position.trailing_movements}")
-                    print(f"   🎯 NOTA: Esta es solo una ALERTA - NO se ejecuta orden automática")
+                    print(f"   🚀 ORDEN AUTOMÁTICA: Se ejecutará venta automática")
                 
                 # 6. Verificar stop loss tradicional (solo si trailing no está activo o es menor)
                 elif current_price <= position.stop_loss_price:
@@ -758,7 +770,7 @@ class ProfessionalPortfolioManager:
                         
                         loss_pnl = ((position.stop_loss_price - position.entry_price) / position.entry_price) * 100
                         print(f"🛑 STOP LOSS TRADICIONAL {position.symbol} Pos #{position.order_id}: {loss_pnl:.2f}%")
-                        print(f"   🎯 NOTA: Esta es solo una ALERTA - NO se ejecuta orden automática")
+                        print(f"   🚀 ORDEN AUTOMÁTICA: Se ejecutará venta automática")
             
             else:
                 # ✅ SHORT POSITION LOGIC (para futuros)

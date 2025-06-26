@@ -138,7 +138,9 @@ class TradingManager:
         """Configura las tareas de monitoreo en segundo plano."""
         self.logger.info("⚙️ Configurando tareas de monitoreo...")
         asyncio.create_task(self._heartbeat_monitor())
+        asyncio.create_task(self._stop_loss_monitor())
         self.logger.info("✅ Tarea de monitoreo de heartbeat configurada.")
+        self.logger.info("✅ Tarea de monitoreo de stop loss configurada.")
 
     async def _heartbeat_monitor(self):
         """💖 Envía un "latido" periódico para mostrar que el bot está activo."""
@@ -152,6 +154,52 @@ class TradingManager:
                 break
             except Exception as e:
                 self.logger.error(f"💥 Error en el monitor de heartbeat: {e}")
+                await asyncio.sleep(60)
+
+    async def _stop_loss_monitor(self):
+        """🛑 Monitor continuo de stop loss y trailing stop para liquidación automática"""
+        self.logger.info("🛑 Monitor de stop loss iniciado.")
+        
+        while self.status == TradingManagerStatus.RUNNING:
+            try:
+                # Obtener snapshot de posiciones actuales
+                snapshot = await self.portfolio_manager.get_portfolio_snapshot()
+                
+                if snapshot and snapshot.active_positions:
+                    self.logger.debug(f"🔍 Monitoreando {len(snapshot.active_positions)} posiciones activas...")
+                    
+                    for position in snapshot.active_positions:
+                        try:
+                            # Obtener precio actual
+                            current_price = await self.portfolio_manager.get_current_price(position.symbol)
+                            
+                            if current_price:
+                                # Actualizar posición con precio actual
+                                position.current_price = current_price
+                                
+                                # Verificar trailing stop y stop loss
+                                updated_pos, stop_triggered, trigger_reason = self.portfolio_manager.update_trailing_stop_professional(
+                                    position, current_price
+                                )
+                                
+                                # Si se activa stop loss o trailing stop, ejecutar venta
+                                if stop_triggered:
+                                    self.logger.warning(f"🚨 STOP ACTIVADO: {position.symbol} - {trigger_reason}")
+                                    
+                                    # Ejecutar liquidación automática
+                                    await self._execute_stop_loss_order(updated_pos, trigger_reason)
+                                    
+                        except Exception as e:
+                            self.logger.error(f"❌ Error monitoreando posición {position.symbol}: {e}")
+                
+                # Esperar 30 segundos antes de la siguiente verificación
+                await asyncio.sleep(30)
+                
+            except asyncio.CancelledError:
+                self.logger.info("🛑 Monitor de stop loss detenido.")
+                break
+            except Exception as e:
+                self.logger.error(f"💥 Error en el monitor de stop loss: {e}")
                 await asyncio.sleep(60)
 
     async def _display_status_report(self, market_regime: MarketRegime, tcn_predictions: List[Dict]):
@@ -575,6 +623,88 @@ class TradingManager:
                     
             except Exception as e:
                 self.logger.error(f"❌ Error procesando señal {signal_type} para {symbol}: {e}", exc_info=True)
+
+    async def _execute_stop_loss_order(self, position, trigger_reason: str):
+        """🛑 Ejecutar orden de venta por stop loss o trailing stop"""
+        try:
+            self.logger.warning(f"🚨 EJECUTANDO STOP LOSS: {position.symbol}")
+            self.logger.info(f"   📍 Razón: {trigger_reason}")
+            self.logger.info(f"   💰 Precio entrada: ${position.entry_price:.4f}")
+            self.logger.info(f"   📊 Precio actual: ${position.current_price:.4f}")
+            
+            # Calcular PnL final
+            pnl_percent = ((position.current_price - position.entry_price) / position.entry_price) * 100
+            pnl_usd = (position.current_price - position.entry_price) * position.size
+            
+            self.logger.info(f"   📈 PnL Final: {pnl_percent:+.2f}% (${pnl_usd:+.2f})")
+            
+            # Ejecutar orden de venta usando el risk manager
+            sell_result = await self.risk_manager.close_position(
+                symbol=position.symbol,
+                reason=f"AUTO_{trigger_reason}",
+                current_price=position.current_price
+            )
+            
+            if sell_result and sell_result.get('success'):
+                self.logger.info(f"✅ STOP LOSS EJECUTADO EXITOSAMENTE: {position.symbol}")
+                
+                # Determinar emoji según el resultado
+                if trigger_reason == "STOP_LOSS":
+                    emoji = "🔴"  # Pérdida por stop loss
+                    title = "STOP LOSS EJECUTADO"
+                else:
+                    emoji = "🟡"  # Trailing stop (probablemente ganancia)
+                    title = "TRAILING STOP EJECUTADO"
+                
+                # Notificar a Discord
+                await self.discord_notifier.send_trade_notification(
+                    f"{emoji} **{title}**\n"
+                    f"**Par:** {position.symbol}\n"
+                    f"**Precio Entrada:** ${position.entry_price:.4f}\n"
+                    f"**Precio Salida:** ${position.current_price:.4f}\n"
+                    f"**P&L:** {pnl_percent:+.2f}% (${pnl_usd:+.2f})\n"
+                    f"**Razón:** {trigger_reason}\n"
+                    f"**Cantidad:** {position.size:.6f}",
+                    priority="HIGH"
+                )
+                
+                # Log detallado para auditoría
+                self.logger.info(f"""
+🎯 STOP LOSS COMPLETADO:
+   Par: {position.symbol}
+   Entrada: ${position.entry_price:.4f}
+   Salida: ${position.current_price:.4f}
+   Cantidad: {position.size:.6f}
+   P&L: {pnl_percent:+.2f}% (${pnl_usd:+.2f})
+   Razón: {trigger_reason}
+   Orden ID: {sell_result.get('orderId', 'N/A')}
+                """)
+                
+            else:
+                self.logger.error(f"❌ FALLO EN STOP LOSS: {position.symbol}")
+                self.logger.error(f"   Resultado: {sell_result}")
+                
+                # Notificar fallo a Discord
+                await self.discord_notifier.send_trade_notification(
+                    f"❌ **ERROR EN STOP LOSS**\n"
+                    f"**Par:** {position.symbol}\n"
+                    f"**Razón:** {trigger_reason}\n"
+                    f"**Error:** {sell_result.get('error', 'Desconocido')}\n"
+                    f"**Acción:** Verificación manual requerida",
+                    priority="CRITICAL"
+                )
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error crítico ejecutando stop loss para {position.symbol}: {e}", exc_info=True)
+            
+            # Notificar error crítico
+            await self.discord_notifier.send_trade_notification(
+                f"🚨 **ERROR CRÍTICO EN STOP LOSS**\n"
+                f"**Par:** {position.symbol}\n"
+                f"**Error:** {str(e)}\n"
+                f"**Acción:** Intervención manual URGENTE",
+                priority="CRITICAL"
+            )
 
     async def shutdown(self):
         """Realiza un apagado controlado del sistema."""
