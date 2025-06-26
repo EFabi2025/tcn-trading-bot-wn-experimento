@@ -512,7 +512,7 @@ class SimpleProfessionalTradingManager:
         ✅ ALTA FRECUENCIA TCN: Actualizaciones frecuentes para trading en tiempo real
         - Bucle principal: cada 60 segundos (genera señales TCN, updates balance)
         - Monitor de posiciones: cada 30 segundos (máxima frecuencia TCN)
-        - Reporte TCN: cada 5 minutos (completo)
+        - Reporte TCN: cada 3 minutos (completo)
         - PRIORIDAD: Datos frescos > logs limpios
         """
         print("🎯 Iniciando loop principal de trading...")
@@ -639,18 +639,18 @@ class SimpleProfessionalTradingManager:
         }
 
     async def _generate_tcn_report_if_needed(self):
-        """📊 Generar reporte TCN cada 5 minutos"""
+        """📊 Generar reporte TCN cada 3 minutos"""
         try:
             now = datetime.now()
 
-            # Verificar si es hora de generar reporte (cada 5 minutos)
+            # Verificar si es hora de generar reporte (cada 3 minutos)
             should_generate = False
 
             if self.last_tcn_report_time is None:
                 should_generate = True
             else:
                 time_since_last = (now - self.last_tcn_report_time).total_seconds()
-                if time_since_last >= 300:  # 5 minutos
+                if time_since_last >= 180:  # 3 minutos
                     should_generate = True
 
             if should_generate:
