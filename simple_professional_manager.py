@@ -168,6 +168,9 @@ class TradingManager:
                 if snapshot and snapshot.active_positions:
                     self.logger.debug(f"🔍 Monitoreando {len(snapshot.active_positions)} posiciones activas...")
                     
+                    # ✅ NUEVO: Sincronizar posiciones entre portfolio manager y risk manager
+                    await self._sync_positions_with_risk_manager(snapshot.active_positions)
+                    
                     for position in snapshot.active_positions:
                         try:
                             # Obtener precio actual
@@ -186,8 +189,11 @@ class TradingManager:
                                 if stop_triggered:
                                     self.logger.warning(f"🚨 STOP ACTIVADO: {position.symbol} - {trigger_reason}")
                                     
-                                    # Ejecutar liquidación automática
-                                    await self._execute_stop_loss_order(updated_pos, trigger_reason)
+                                    # ✅ NUEVO: Verificar si posición existe antes de cerrar
+                                    if await self._verify_position_exists(position.symbol):
+                                        await self._execute_stop_loss_order(updated_pos, trigger_reason)
+                                    else:
+                                        self.logger.warning(f"⚠️ Posición {position.symbol} ya no existe - omitiendo stop loss")
                                     
                         except Exception as e:
                             self.logger.error(f"❌ Error monitoreando posición {position.symbol}: {e}")
@@ -624,6 +630,90 @@ class TradingManager:
             except Exception as e:
                 self.logger.error(f"❌ Error procesando señal {signal_type} para {symbol}: {e}", exc_info=True)
 
+    async def _sync_positions_with_risk_manager(self, portfolio_positions):
+        """🔄 Sincronizar posiciones entre portfolio manager y risk manager"""
+        try:
+            for pos in portfolio_positions:
+                symbol = pos.symbol
+                
+                # Si el risk manager no tiene esta posición, sincronizarla
+                if symbol not in self.risk_manager.active_positions:
+                    self.logger.info(f"🔄 Sincronizando posición {symbol} al risk manager")
+                    
+                    # Crear posición en el risk manager
+                    from advanced_risk_manager import Position as RiskPosition
+                    
+                    risk_position = RiskPosition(
+                        symbol=symbol,
+                        side=pos.side,
+                        quantity=pos.size,
+                        entry_price=pos.entry_price,
+                        current_price=pos.current_price,
+                        entry_time=pos.entry_time
+                    )
+                    
+                    # Configurar stops
+                    risk_position = self.risk_manager.set_stop_loss_take_profit(risk_position)
+                    
+                    # Registrar en el risk manager
+                    self.risk_manager.active_positions[symbol] = risk_position
+                    
+                    self.logger.info(f"✅ Posición {symbol} sincronizada con risk manager")
+                    
+        except Exception as e:
+            self.logger.error(f"❌ Error sincronizando posiciones: {e}")
+
+    async def _verify_position_exists(self, symbol: str) -> bool:
+        """🔍 Verificar si una posición realmente existe en Binance"""
+        try:
+            # Obtener balances actuales
+            balances = await self.portfolio_manager.get_account_balances()
+            
+            if not balances:
+                return False
+            
+            # Extraer el activo del símbolo (ej: ETHUSDT -> ETH)
+            asset = symbol.replace('USDT', '').replace('BUSD', '')
+            
+            # Verificar si tenemos balance del activo
+            asset_balance = balances.get(asset, {})
+            total_balance = asset_balance.get('total', 0.0)
+            
+            # Si el balance total es > 0, la posición existe
+            exists = total_balance > 0.0001  # Umbral mínimo para considerar una posición
+            
+            if not exists:
+                self.logger.info(f"🔍 Verificación {symbol}: Balance {asset} = {total_balance} - Posición NO existe")
+            else:
+                self.logger.debug(f"🔍 Verificación {symbol}: Balance {asset} = {total_balance} - Posición existe")
+                
+            return exists
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error verificando posición {symbol}: {e}")
+            return False  # En caso de error, asumir que no existe
+
+    async def _cleanup_closed_position(self, symbol: str):
+        """🧹 Limpiar posición cerrada de todos los caches"""
+        try:
+            # Eliminar del risk manager
+            if symbol in self.risk_manager.active_positions:
+                del self.risk_manager.active_positions[symbol]
+                self.logger.info(f"🧹 Posición {symbol} eliminada del risk manager")
+            
+            # Invalidar cache del portfolio manager para forzar actualización
+            if hasattr(self.portfolio_manager, 'last_snapshot_time'):
+                self.portfolio_manager.last_snapshot_time = None
+                self.logger.debug(f"🧹 Cache del portfolio manager invalidado")
+            
+            # Limpiar cache de precios para forzar nueva consulta
+            if hasattr(self.portfolio_manager, 'price_cache') and symbol in self.portfolio_manager.price_cache:
+                del self.portfolio_manager.price_cache[symbol]
+                self.logger.debug(f"🧹 Cache de precio {symbol} eliminado")
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error limpiando posición cerrada {symbol}: {e}")
+
     async def _execute_stop_loss_order(self, position, trigger_reason: str):
         """🛑 Ejecutar orden de venta por stop loss o trailing stop"""
         try:
@@ -647,6 +737,9 @@ class TradingManager:
             
             if sell_result and sell_result.get('success'):
                 self.logger.info(f"✅ STOP LOSS EJECUTADO EXITOSAMENTE: {position.symbol}")
+                
+                # ✅ NUEVO: Limpiar posición de caches para evitar reintento
+                await self._cleanup_closed_position(position.symbol)
                 
                 # Determinar emoji según el resultado
                 if trigger_reason == "STOP_LOSS":
