@@ -269,3 +269,4 @@ dev_settings.py
 # LICENSE
 # models/tcn_final_*.h5 (modelos de producción)
 .env.backup_old_keys
+*.env.backup
