@@ -41,12 +41,31 @@ class MarketRegimeFilter:
         self.data_provider = data_provider
         self.logger = logger
         self.config = trading_config
-        self.symbol = self.config.MARKET_REGIME_SYMBOL
-        self.timeframe = self.config.MARKET_REGIME_TIMEFRAME
-        self.logger.info(
-            f"🏛️ Filtro de Régimen de Mercado inicializado para {self.symbol} "
-            f"en temporalidad de {self.timeframe}."
-        )
+        
+        # ✅ ROBUSTO: Verificar que los atributos existan antes de usarlos
+        try:
+            self.symbol = getattr(self.config, 'MARKET_REGIME_SYMBOL', 'BTCUSDT')
+            self.timeframe = getattr(self.config, 'MARKET_REGIME_TIMEFRAME', '4h')
+            
+            # Verificar que todos los atributos necesarios existan
+            required_attrs = [
+                'MARKET_REGIME_EMA_SHORT', 'MARKET_REGIME_EMA_LONG',
+                'MARKET_REGIME_ATR_PERIOD', 'MARKET_REGIME_ATR_MULTIPLIER'
+            ]
+            
+            for attr in required_attrs:
+                if not hasattr(self.config, attr):
+                    raise AttributeError(f"Configuración faltante: {attr}")
+            
+            self.logger.info(
+                f"🏛️ Filtro de Régimen de Mercado inicializado para {self.symbol} "
+                f"en temporalidad de {self.timeframe}."
+            )
+            
+        except AttributeError as e:
+            self.logger.error(f"❌ Error de configuración en MarketRegimeFilter: {e}")
+            self.logger.error(f"❌ Atributos disponibles en config: {[attr for attr in dir(self.config) if not attr.startswith('_')]}")
+            raise
 
     async def get_market_regime(self) -> tuple[MarketRegime, dict]:
         """

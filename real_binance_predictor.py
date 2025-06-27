@@ -14,12 +14,22 @@ from sklearn.preprocessing import RobustScaler
 import warnings
 warnings.filterwarnings('ignore')
 
+# ✅ IMPORTAR CLIENTE BINANCE PARA ÓRDENES REALES
+from binance.client import Client
+from config import trading_config
+
 class BinanceDataProvider:
     """Proveedor de datos reales de Binance"""
     
     def __init__(self):
         self.base_url = "https://api.binance.com"
         self.session = None
+        
+        # ✅ AGREGAR CLIENTE BINANCE PARA ÓRDENES REALES
+        self.client = Client(
+            api_key=trading_config.BINANCE_API_KEY,
+            api_secret=trading_config.BINANCE_SECRET_KEY
+        )
     
     async def __aenter__(self):
         self.session = aiohttp.ClientSession()

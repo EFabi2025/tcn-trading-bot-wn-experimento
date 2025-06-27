@@ -31,7 +31,9 @@ from definitivo_tcn_predictor import DefinitivoTCNPredictor
 from hybrid_features_engine import HybridFeaturesEngine
 
 # Módulos de utilidad
-from smart_discord_notifier import SmartDiscordNotifier, NotificationPriority
+from smart_discord_notifier import SmartDiscordNotifier
+# from professional_order_executor import ProfessionalOrderExecutor, OrderExecutionRequest, OrderType, ExecutionMode
+from decimal import Decimal
 
 class TradingManagerStatus:
     """📊 Estados del Trading Manager"""
@@ -107,11 +109,15 @@ class TradingManager:
             await self.risk_manager.initialize(initial_balance)
             self.logger.info("✅ Gestor de Riesgo (AdvancedRiskManager) configurado.")
             
-            # 6. Notificador de Discord
+            # 6. Order Executor para Trading Real - Comentado temporalmente
+            # self.order_executor = ProfessionalOrderExecutor(...)
+            self.logger.info("✅ Trading real habilitado usando métodos directos.")
+
+            # 7. Notificador de Discord
             self.discord_notifier = SmartDiscordNotifier()
             self.logger.info("✅ Notificador de Discord listo.")
 
-            # 7. Filtro de Régimen de Mercado
+            # 8. Filtro de Régimen de Mercado
             if self.config.ENABLE_MARKET_REGIME_FILTER:
                 self.market_regime_filter = MarketRegimeFilter(self.data_provider, self.logger)
                 self.logger.info("✅ Filtro de Régimen de Mercado Activado.")
@@ -124,8 +130,7 @@ class TradingManager:
 
             # Enviar notificación de inicio a Discord
             await self.discord_notifier.send_system_notification(
-                "🚀 **Bot de Trading TCN Iniciado**\nSistema operativo y monitoreando el mercado.",
-                priority=NotificationPriority.HIGH
+                "🚀 **Bot de Trading TCN Iniciado**\nSistema operativo y monitoreando el mercado."
             )
 
         except Exception as e:
@@ -546,83 +551,94 @@ class TradingManager:
                         self.logger.info(f"🔄 {symbol}: Ya existe posición LONG, se ignora señal BUY.")
                         continue
                     
-                    risk_check = await self.risk_manager.check_risk_limits_before_trade(
-                        symbol, 'BUY', current_price, confidence
+                    risk_approved, risk_reason = await self.risk_manager.check_risk_limits_before_trade(
+                        symbol, 'BUY', current_price
                     )
                     
-                    if risk_check['approved']:
-                        trade_amount = self.risk_manager.calculate_position_size(
+                    if risk_approved:
+                        # ✅ CORREGIDO: calculate_position_size devuelve CANTIDAD, no USD
+                        trade_quantity = self.risk_manager.calculate_position_size(
                             symbol, current_price, confidence, risk_adjustment_factor
                         )
                         
-                        if trade_amount and trade_amount > 0:
-                            self.logger.info(f"💰 EJECUTANDO COMPRA: {symbol} - ${trade_amount:.2f} @ ${current_price:.2f}")
+                        if trade_quantity and trade_quantity > 0:
+                            # Calcular el valor en USD para el log y la orden
+                            trade_amount_usd = trade_quantity * current_price
                             
-                            result = await self.risk_manager.open_position(
+                            self.logger.info(f"🚨 EJECUTANDO COMPRA REAL: {symbol} - ${trade_amount_usd:.2f} @ ${current_price:.2f}")
+                            self.logger.info(f"   📊 Cantidad: {trade_quantity:.6f} {symbol.replace('USDT', '')}")
+                            
+                            # 🚨 EJECUTAR COMPRA REAL EN BINANCE
+                            result = await self._execute_real_buy_order(
                                 symbol=symbol,
-                                side='BUY',
-                                amount=trade_amount,
-                                price=current_price,
-                                confidence=confidence,
-                                signal_data=signal_data
+                                amount_usdt=trade_amount_usd,
+                                current_price=current_price,
+                                confidence=confidence
                             )
                             
                             if result and result.get('success'):
-                                self.logger.info(f"✅ COMPRA EXITOSA: {symbol} - {result}")
+                                self.logger.info(f"✅ 🚨 COMPRA REAL EXITOSA: {symbol} - {result}")
                                 
-                                await self.discord_notifier.send_trade_notification(
-                                    f"🟢 **COMPRA EJECUTADA**\n"
-                                    f"**Par:** {symbol}\n"
-                                    f"**Precio:** ${current_price:.2f}\n"
-                                    f"**Cantidad:** ${trade_amount:.2f}\n"
-                                    f"**Confianza:** {confidence:.1%}",
-                                    priority=NotificationPriority.HIGH
-                                )
+                                # Notificación Discord con datos reales
+                                trade_data = {
+                                    'symbol': symbol,
+                                    'side': 'BUY',
+                                    'value_usd': trade_amount_usd,
+                                    'pnl_percent': 0,
+                                    'pnl_usd': 0,
+                                    'price': current_price,
+                                    'confidence': confidence
+                                }
+                                await self.discord_notifier.send_trade_notification(trade_data)
                             else:
-                                self.logger.error(f"❌ FALLO EN COMPRA: {symbol} - {result}")
+                                self.logger.error(f"❌ FALLO EN COMPRA REAL: {symbol} - {result}")
                         else:
                             self.logger.warning(f"⚠️ {symbol}: Cantidad de compra calculada es 0 o inválida.")
                     else:
-                        self.logger.warning(f"🚫 {symbol}: Compra rechazada por gestión de riesgo: {risk_check.get('reason', 'N/A')}")
+                        self.logger.warning(f"🚫 {symbol}: Compra rechazada por gestión de riesgo: {risk_reason}")
                 
                 elif signal_type == 'SELL':
                     if not existing_position or not hasattr(existing_position, 'quantity') or existing_position.quantity <= 0:
                         self.logger.info(f"🔄 {symbol}: No hay posición LONG para vender, se ignora señal SELL.")
                         continue
                     
-                    risk_check = await self.risk_manager.check_risk_limits_before_trade(
-                        symbol, 'SELL', current_price, confidence
+                    risk_approved, risk_reason = await self.risk_manager.check_risk_limits_before_trade(
+                        symbol, 'SELL', current_price
                     )
                     
-                    if risk_check['approved']:
+                    if risk_approved:
                         position_quantity = existing_position.quantity if hasattr(existing_position, 'quantity') else 0
-                        self.logger.info(f"💸 EJECUTANDO VENTA: {symbol} - {position_quantity} @ ${current_price:.2f}")
+                        self.logger.info(f"🚨 EJECUTANDO VENTA REAL: {symbol} - {position_quantity} @ ${current_price:.2f}")
                         
-                        result = await self.risk_manager.close_position(
+                        # 🚨 EJECUTAR VENTA REAL EN BINANCE
+                        result = await self._execute_real_sell_order(
                             symbol=symbol,
-                            price=current_price,
-                            confidence=confidence,
-                            signal_data=signal_data
+                            quantity=position_quantity,
+                            current_price=current_price,
+                            confidence=confidence
                         )
                         
                         if result and result.get('success'):
-                            self.logger.info(f"✅ VENTA EXITOSA: {symbol} - {result}")
+                            self.logger.info(f"✅ 🚨 VENTA REAL EXITOSA: {symbol} - {result}")
                             
                             profit_loss = result.get('profit_loss', 0)
-                            profit_emoji = "🟢" if profit_loss >= 0 else "🔴"
+                            pnl_percent = result.get('pnl_percent', 0)
                             
-                            await self.discord_notifier.send_trade_notification(
-                                f"{profit_emoji} **VENTA EJECUTADA**\n"
-                                f"**Par:** {symbol}\n"
-                                f"**Precio:** ${current_price:.2f}\n"
-                                f"**P&L:** ${profit_loss:.2f}\n"
-                                f"**Confianza:** {confidence:.1%}",
-                                priority=NotificationPriority.HIGH
-                            )
+                            # Notificación Discord con datos reales
+                            trade_data = {
+                                'symbol': symbol,
+                                'side': 'SELL',
+                                'value_usd': position_quantity * current_price,
+                                'pnl_percent': pnl_percent,
+                                'pnl_usd': profit_loss,
+                                'price': current_price,
+                                'confidence': confidence
+                            }
+                            await self.discord_notifier.send_trade_notification(trade_data)
                         else:
-                            self.logger.error(f"❌ FALLO EN VENTA: {symbol} - {result}")
+                            self.logger.error(f"❌ FALLO EN VENTA REAL: {symbol} - {result}")
                     else:
-                        self.logger.warning(f"🚫 {symbol}: Venta rechazada por gestión de riesgo: {risk_check.get('reason', 'N/A')}")
+                        self.logger.warning(f"🚫 {symbol}: Venta rechazada por gestión de riesgo: {risk_reason}")
                 
                 else:
                     self.logger.info(f"🔄 {symbol}: Señal HOLD, mantener posición actual.")
@@ -808,6 +824,118 @@ class TradingManager:
                 f"**Acción:** Intervención manual URGENTE",
                 NotificationPriority.CRITICAL
             )
+
+    async def _execute_real_buy_order(self, symbol: str, amount_usdt: float, current_price: float, confidence: float) -> dict:
+        """🚨 EJECUTA UNA ORDEN DE COMPRA REAL EN BINANCE"""
+        try:
+            # Calcular cantidad a comprar
+            quantity = amount_usdt / current_price
+            
+            # Redondear cantidad según las reglas de Binance
+            if symbol == 'BTCUSDT':
+                quantity = round(quantity, 5)  # 5 decimales para BTC
+            elif symbol in ['ETHUSDT', 'BNBUSDT']:
+                quantity = round(quantity, 3)  # 3 decimales para ETH/BNB
+            else:
+                quantity = round(quantity, 6)  # Default
+            
+            # Verificar cantidad mínima
+            min_qty = 0.00001 if symbol == 'BTCUSDT' else 0.001
+            if quantity < min_qty:
+                return {
+                    'success': False,
+                    'error': f'Cantidad {quantity} menor al mínimo {min_qty}'
+                }
+            
+            self.logger.info(f"🚨 EJECUTANDO ORDEN REAL: BUY {quantity} {symbol} @ ${current_price}")
+            
+            # EJECUTAR ORDEN REAL EN BINANCE
+            order_result = self.data_provider.client.order_market_buy(
+                symbol=symbol,
+                quantity=quantity
+            )
+            
+            self.logger.info(f"✅ ORDEN REAL EJECUTADA: {order_result}")
+            
+            # Crear posición en el risk manager para tracking
+            position_result = await self.risk_manager.open_position(
+                symbol=symbol,
+                side='BUY',
+                amount=amount_usdt,
+                price=current_price,
+                confidence=confidence,
+                signal_data={'order_id': order_result.get('orderId')}
+            )
+            
+            return {
+                'success': True,
+                'order_id': order_result.get('orderId'),
+                'quantity': quantity,
+                'price': current_price,
+                'amount_usdt': amount_usdt,
+                'position': position_result.get('position') if position_result else None
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ ERROR EN ORDEN REAL DE COMPRA: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    async def _execute_real_sell_order(self, symbol: str, quantity: float, current_price: float, confidence: float) -> dict:
+        """🚨 EJECUTA UNA ORDEN DE VENTA REAL EN BINANCE"""
+        try:
+            # Redondear cantidad según las reglas de Binance
+            if symbol == 'BTCUSDT':
+                quantity = round(quantity, 5)  # 5 decimales para BTC
+            elif symbol in ['ETHUSDT', 'BNBUSDT']:
+                quantity = round(quantity, 3)  # 3 decimales para ETH/BNB
+            else:
+                quantity = round(quantity, 6)  # Default
+            
+            # Verificar cantidad mínima
+            min_qty = 0.00001 if symbol == 'BTCUSDT' else 0.001
+            if quantity < min_qty:
+                return {
+                    'success': False,
+                    'error': f'Cantidad {quantity} menor al mínimo {min_qty}'
+                }
+            
+            self.logger.info(f"🚨 EJECUTANDO ORDEN REAL: SELL {quantity} {symbol} @ ${current_price}")
+            
+            # EJECUTAR ORDEN REAL EN BINANCE
+            order_result = self.data_provider.client.order_market_sell(
+                symbol=symbol,
+                quantity=quantity
+            )
+            
+            self.logger.info(f"✅ ORDEN REAL EJECUTADA: {order_result}")
+            
+            # Cerrar posición en el risk manager
+            close_result = await self.risk_manager.close_position(
+                symbol=symbol,
+                price=current_price,
+                confidence=confidence,
+                signal_data={'order_id': order_result.get('orderId')}
+            )
+            
+            return {
+                'success': True,
+                'order_id': order_result.get('orderId'),
+                'quantity': quantity,
+                'price': current_price,
+                'amount_usdt': quantity * current_price,
+                'profit_loss': close_result.get('profit_loss', 0) if close_result else 0,
+                'pnl_percent': close_result.get('pnl_percent', 0) if close_result else 0
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ ERROR EN ORDEN REAL DE VENTA: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': str(e)
+            }
 
     async def shutdown(self):
         """Realiza un apagado controlado del sistema."""

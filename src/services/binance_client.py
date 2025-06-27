@@ -468,4 +468,50 @@ class ExperimentalBinanceClient(ITradingClient, IMarketDataProvider):
             research_note="Cliente experimental desconectado"
         )
         # No hay conexión persistente que cerrar en REST API
-        pass 
+        pass
+    
+    # Métodos faltantes requeridos por las interfaces
+    async def get_account_balance(self) -> Dict[str, Decimal]:
+        """Obtiene balance de cuenta"""
+        balances = await self.get_balances()
+        return {balance.asset: balance.free for balance in balances}
+    
+    async def get_asset_balance(self, asset: str) -> Decimal:
+        """Obtiene balance de un asset específico"""
+        account_balance = await self.get_account_balance()
+        return account_balance.get(asset, Decimal('0'))
+    
+    async def get_current_price(self, symbol: str) -> Decimal:
+        """Obtiene precio actual"""
+        return await self._get_current_price(symbol)
+    
+    async def get_historical_data(self, symbol: str, interval: str = '1m', limit: int = 100) -> List[Dict]:
+        """Obtiene datos históricos de forma asíncrona"""
+        try:
+            # La llamada a la librería subyacente puede ser síncrona,
+            # la envolvemos para que sea compatible con el bucle de eventos async.
+            loop = asyncio.get_event_loop()
+            klines = await loop.run_in_executor(
+                None, 
+                lambda: self._client.get_klines(symbol=symbol, interval=interval, limit=limit)
+            )
+            
+            return [
+                {
+                    'timestamp': kline[0],
+                    'open': Decimal(kline[1]),
+                    'high': Decimal(kline[2]),
+                    'low': Decimal(kline[3]),
+                    'close': Decimal(kline[4]),
+                    'volume': Decimal(kline[5])
+                }
+                for kline in klines
+            ]
+        except BinanceAPIException as e:
+            self.logger.log_error(
+                "historical_data_failed",
+                symbol=symbol,
+                error_code=e.code,
+                error_message=e.message
+            )
+            return [] 

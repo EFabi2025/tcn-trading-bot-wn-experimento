@@ -35,14 +35,23 @@ class TradingConfig:
         self.MIN_POSITION_VALUE_USDT: float = float(os.getenv('MIN_POSITION_VALUE_USDT', '11.0'))
         self.MAX_CONCURRENT_POSITIONS: int = int(os.getenv('MAX_CONCURRENT_POSITIONS', '3'))
 
-        # --- Umbrales del Modelo TCN ---
-        self.TCN_BUY_CONFIDENCE_THRESHOLD: float = float(os.getenv('TCN_BUY_CONFIDENCE_THRESHOLD', '0.75'))
-        self.TCN_SELL_CONFIDENCE_THRESHOLD: float = float(os.getenv('TCN_SELL_CONFIDENCE_THRESHOLD', '0.70'))
+        # --- Umbrales del Modelo TCN (🎯 BAJADOS A 58%) ---
+        self.TCN_BUY_CONFIDENCE_THRESHOLD: float = float(os.getenv('TCN_BUY_CONFIDENCE_THRESHOLD', '0.58'))
+        self.TCN_SELL_CONFIDENCE_THRESHOLD: float = float(os.getenv('TCN_SELL_CONFIDENCE_THRESHOLD', '0.58'))
 
         # --- Configuración del Manager ---
         self.CHECK_INTERVAL_SECONDS: int = int(os.getenv('CHECK_INTERVAL_SECONDS', '60'))
         self.MONITORING_INTERVAL_SECONDS: int = int(os.getenv('MONITORING_INTERVAL_SECONDS', '30'))
         self.HEARTBEAT_INTERVAL_SECONDS: int = int(os.getenv('HEARTBEAT_INTERVAL_SECONDS', '300'))
+        self.ENABLE_MARKET_REGIME_FILTER: bool = os.getenv('ENABLE_MARKET_REGIME_FILTER', 'True').lower() == 'true'
+        
+        # --- Configuración del Filtro de Régimen de Mercado (CORREGIDO) ---
+        self.MARKET_REGIME_SYMBOL: str = os.getenv('MARKET_REGIME_SYMBOL', 'BTCUSDT')
+        self.MARKET_REGIME_TIMEFRAME: str = os.getenv('MARKET_REGIME_TIMEFRAME', '4h')
+        self.MARKET_REGIME_EMA_SHORT: int = int(os.getenv('MARKET_REGIME_EMA_SHORT', '12'))
+        self.MARKET_REGIME_EMA_LONG: int = int(os.getenv('MARKET_REGIME_EMA_LONG', '26'))
+        self.MARKET_REGIME_ATR_PERIOD: int = int(os.getenv('MARKET_REGIME_ATR_PERIOD', '14'))
+        self.MARKET_REGIME_ATR_MULTIPLIER: float = float(os.getenv('MARKET_REGIME_ATR_MULTIPLIER', '3.0'))
         
         # --- Configuración de Notificaciones Discord ---
         self.DISCORD_WEBHOOK_URL: str = os.getenv('DISCORD_WEBHOOK_URL', '')
@@ -50,6 +59,7 @@ class TradingConfig:
         self.DISCORD_MIN_PNL_PERCENT_NOTIFY: float = float(os.getenv('DISCORD_MIN_PNL_PERCENT_NOTIFY', '2.0'))
         self.DISCORD_MAX_NOTIFICATIONS_PER_HOUR: int = int(os.getenv('DISCORD_MAX_NOTIFICATIONS_PER_HOUR', '8'))
         self.DISCORD_SUPPRESS_SIMILAR_MINUTES: int = int(os.getenv('DISCORD_SUPPRESS_SIMILAR_MINUTES', '10'))
+        self.DISCORD_REPORT_INTERVAL_SECONDS: int = int(os.getenv('DISCORD_REPORT_INTERVAL_SECONDS', '300'))
 
         self.MAX_NOTIFICATIONS_PER_HOUR: int = int(os.getenv('MAX_NOTIFICATIONS_PER_HOUR', '8'))
 
