@@ -121,7 +121,7 @@ class DefinitivoTCNPredictor:
         self.models = {}
         self.scalers = {}
         self.features_engine = CentralizedFeaturesEngine()
-        self.pairs = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+        self.pairs = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
         
         print("🎯 Definitivo TCN Predictor inicializando...")
         self.load_models()

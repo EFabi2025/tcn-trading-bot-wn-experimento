@@ -22,7 +22,7 @@ class TradingConfig:
         self.ENVIRONMENT: str = os.getenv('ENVIRONMENT', 'production')
 
         # --- Estrategia de Trading y Símbolos ---
-        symbols_str = os.getenv('TRADING_SYMBOLS', 'BTCUSDT,ETHUSDT,BNBUSDT')
+        symbols_str = os.getenv('TRADING_SYMBOLS', 'BTCUSDT,ETHUSDT,BNBUSDT,XRPUSDT')
         self.TRADING_SYMBOLS: list[str] = [s.strip().upper() for s in symbols_str.split(',')]
 
         # --- Parámetros de Riesgo ---
