@@ -27,7 +27,7 @@ class TradingConfig:
 
         # --- Parámetros de Riesgo ---
         self.MAX_POSITION_SIZE_PERCENT: float = float(os.getenv('MAX_POSITION_SIZE_PERCENT', '22.0'))
-        self.MAX_TOTAL_EXPOSURE_PERCENT: float = float(os.getenv('MAX_TOTAL_EXPOSURE_PERCENT', '75.0'))
+        self.MAX_TOTAL_EXPOSURE_PERCENT: float = float(os.getenv('MAX_TOTAL_EXPOSURE_PERCENT', '85.0'))
         self.MAX_DAILY_LOSS_PERCENT: float = float(os.getenv('MAX_DAILY_LOSS_PERCENT', '10.0'))
         self.MAX_DRAWDOWN_PERCENT: float = float(os.getenv('MAX_DRAWDOWN_PERCENT', '15.0'))
         self.STOP_LOSS_PERCENT: float = float(os.getenv('STOP_LOSS_PERCENT', '3.0'))
