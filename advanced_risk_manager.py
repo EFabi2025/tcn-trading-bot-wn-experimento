@@ -99,7 +99,7 @@ class AdvancedRiskManager:
 
     def calculate_position_size(self, symbol: str, price: float, confidence: float, risk_adjustment_factor: float = 1.0) -> float:
         """
-        📊 Calcular tamaño de posición usando configuración centralizada.
+        📊 Calcular tamaño de posición usando configuración centralizada con límites inteligentes.
         
         Args:
             symbol (str): El símbolo del activo.
@@ -110,31 +110,82 @@ class AdvancedRiskManager:
         Returns:
             float: La cantidad del activo a comprar.
         """
-        base_size_percent = self.config.MAX_POSITION_SIZE_PERCENT
-        
-        confidence_factor = 1 + (confidence - self.config.TCN_BUY_CONFIDENCE_THRESHOLD)
-        final_size_percent = min(base_size_percent * confidence_factor, self.config.MAX_POSITION_SIZE_PERCENT)
-        
-        position_value_usd = self.current_balance * (final_size_percent / 100)
-        
-        if risk_adjustment_factor != 1.0:
-            self.logger.warning(f"🏛️ Aplicando factor de ajuste de riesgo: {risk_adjustment_factor}. Tamaño original: ${position_value_usd:.2f}")
-            position_value_usd *= risk_adjustment_factor
-            self.logger.warning(f"   Nuevo tamaño ajustado: ${position_value_usd:.2f}")
-
-        if position_value_usd < self.config.MIN_POSITION_VALUE_USDT:
-            self.logger.warning(f"Posición calculada ${position_value_usd:.2f} es menor al mínimo de Binance ${self.config.MIN_POSITION_VALUE_USDT}")
-            if self.current_balance >= self.config.MIN_POSITION_VALUE_USDT * 1.2:
-                position_value_usd = self.config.MIN_POSITION_VALUE_USDT
-                self.logger.info(f"🔧 Ajustando al mínimo de Binance: ${position_value_usd:.2f}")
-            else:
-                self.logger.error("❌ Balance insuficiente para cubrir el mínimo de trade de Binance.")
-                return 0.0
-        
-        quantity = position_value_usd / price
-        self.logger.info(f"📊 Cálculo de Tamaño para {symbol}: Valor=${position_value_usd:.2f} USD, Cantidad={quantity:.6f}")
-        return quantity
+        # 🎯 NUEVO: Usar cálculo inteligente que considera TODOS los límites
+        return self._calculate_smart_position_size(symbol, price, confidence, risk_adjustment_factor)
     
+    def _calculate_smart_position_size(self, symbol: str, price: float, confidence: float, risk_adjustment_factor: float = 1.0) -> float:
+        """
+        🧠 Cálculo INTELIGENTE de tamaño de posición que considera TODOS los límites de riesgo.
+        
+        Este método calcula el tamaño óptimo considerando:
+        1. Límite por posición individual (MAX_POSITION_SIZE_PERCENT)
+        2. Límite de exposición total (MAX_TOTAL_EXPOSURE_PERCENT)
+        3. Mínimo requerido por Binance (MIN_POSITION_VALUE_USDT)
+        4. Balance disponible
+        """
+        try:
+            # 1. CALCULAR TAMAÑO BASE (método original)
+            base_size_percent = self.config.MAX_POSITION_SIZE_PERCENT
+            confidence_factor = 1 + (confidence - self.config.TCN_BUY_CONFIDENCE_THRESHOLD)
+            final_size_percent = min(base_size_percent * confidence_factor, self.config.MAX_POSITION_SIZE_PERCENT)
+            
+            base_position_value_usd = self.current_balance * (final_size_percent / 100)
+            
+            # 2. APLICAR FACTOR DE AJUSTE DE RIESGO
+            if risk_adjustment_factor != 1.0:
+                self.logger.warning(f"🏛️ Aplicando factor de ajuste de riesgo: {risk_adjustment_factor}")
+                base_position_value_usd *= risk_adjustment_factor
+            
+            # 3. 🎯 VERIFICAR LÍMITE DE EXPOSICIÓN TOTAL
+            current_exposure_usd = sum(p.quantity * p.current_price for p in self.active_positions.values())
+            max_exposure_usd = self.current_balance * (self.config.MAX_TOTAL_EXPOSURE_PERCENT / 100)
+            available_exposure = max_exposure_usd - current_exposure_usd
+            
+            self.logger.info(f"🔍 ANÁLISIS DE EXPOSICIÓN para {symbol}:")
+            self.logger.info(f"   💰 Balance actual: ${self.current_balance:.2f}")
+            self.logger.info(f"   📊 Exposición actual: ${current_exposure_usd:.2f}")
+            self.logger.info(f"   ⚖️ Límite exposición: ${max_exposure_usd:.2f} ({self.config.MAX_TOTAL_EXPOSURE_PERCENT}%)")
+            self.logger.info(f"   🆓 Exposición disponible: ${available_exposure:.2f}")
+            self.logger.info(f"   🎯 Tamaño base calculado: ${base_position_value_usd:.2f}")
+            
+            # 4. AJUSTAR TAMAÑO SI EXCEDE EXPOSICIÓN DISPONIBLE
+            if available_exposure <= 0:
+                self.logger.warning(f"❌ No hay exposición disponible para nuevas posiciones")
+                return 0.0
+            
+            # Usar el menor entre el tamaño base y la exposición disponible
+            final_position_value_usd = min(base_position_value_usd, available_exposure)
+            
+            if final_position_value_usd < base_position_value_usd:
+                self.logger.warning(f"⚖️ AJUSTE POR EXPOSICIÓN: Reduciendo de ${base_position_value_usd:.2f} a ${final_position_value_usd:.2f}")
+            
+            # 5. VERIFICAR MÍNIMO DE BINANCE
+            if final_position_value_usd < self.config.MIN_POSITION_VALUE_USDT:
+                self.logger.warning(f"💰 Posición calculada ${final_position_value_usd:.2f} < mínimo ${self.config.MIN_POSITION_VALUE_USDT}")
+                
+                # Si hay suficiente exposición disponible, usar el mínimo
+                if available_exposure >= self.config.MIN_POSITION_VALUE_USDT:
+                    final_position_value_usd = self.config.MIN_POSITION_VALUE_USDT
+                    self.logger.info(f"🔧 Ajustando al mínimo de Binance: ${final_position_value_usd:.2f}")
+                else:
+                    self.logger.error(f"❌ Exposición disponible ${available_exposure:.2f} insuficiente para mínimo ${self.config.MIN_POSITION_VALUE_USDT}")
+                    return 0.0
+            
+            # 6. CALCULAR CANTIDAD FINAL
+            quantity = final_position_value_usd / price
+            
+            self.logger.info(f"✅ CÁLCULO INTELIGENTE COMPLETADO para {symbol}:")
+            self.logger.info(f"   💵 Valor final: ${final_position_value_usd:.2f} USD")
+            self.logger.info(f"   📊 Cantidad: {quantity:.6f} {symbol.replace('USDT', '')}")
+            self.logger.info(f"   💱 Precio: ${price:.2f}")
+            self.logger.info(f"   🎯 Confianza: {confidence:.1%}")
+            
+            return quantity
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error en cálculo inteligente de posición: {e}")
+            return 0.0
+
     def set_stop_loss_take_profit(self, position: Position) -> Position:
         """🛑 Configurar Stop Loss y Take Profit desde la configuración"""
         
@@ -148,7 +199,11 @@ class AdvancedRiskManager:
         return position
 
     async def check_risk_limits_before_trade(self, symbol: str, signal: str, confidence: float) -> Tuple[bool, str]:
-        """🛡️ Verificar todos los límites de riesgo antes de abrir un nuevo trade"""
+        """🛡️ Verificar límites de riesgo básicos antes de abrir un nuevo trade
+        
+        NOTA: La verificación de exposición total ahora se hace en calculate_position_size()
+        para permitir ajustes automáticos del tamaño.
+        """
         
         # 1. Circuit breaker por pérdida diaria
         if self.circuit_breaker_active:
@@ -156,7 +211,6 @@ class AdvancedRiskManager:
             return False, f"🔥 CIRCUIT BREAKER ACTIVO. {remaining_time // 60:.0f} min restantes."
         
         # 2. Verificar que no sea una señal de venta (para Spot)
-        # Esta lógica puede ser más compleja si se manejan posiciones para cerrar.
         if signal == 'SELL':
             # Se permite la señal SELL si es para cerrar una posición existente, no para abrir una nueva.
             if symbol not in self.active_positions:
@@ -166,22 +220,18 @@ class AdvancedRiskManager:
         if len(self.active_positions) >= self.config.MAX_CONCURRENT_POSITIONS:
             return False, f"🔢 Límite de posiciones concurrentes ({self.config.MAX_CONCURRENT_POSITIONS}) alcanzado."
         
-        # 4. Verificar exposición total
-        current_exposure_usd = sum(p.quantity * p.current_price for p in self.active_positions.values())
-        max_exposure_usd = self.current_balance * (self.config.MAX_TOTAL_EXPOSURE_PERCENT / 100)
+        # 4. ✅ REMOVIDO: Verificación de exposición total (ahora se hace en calculate_position_size)
+        # Esto permite que el cálculo de tamaño se ajuste automáticamente a la exposición disponible
         
-        # Calcular tamaño potencial de la nueva posición
-        potential_pos_value = self.current_balance * (self.config.MAX_POSITION_SIZE_PERCENT / 100)
-        potential_total_exposure = current_exposure_usd + potential_pos_value
+        # 5. Verificar confianza mínima
+        if confidence < self.config.TCN_BUY_CONFIDENCE_THRESHOLD:
+            return False, f"🎯 Confianza {confidence:.1%} < {self.config.TCN_BUY_CONFIDENCE_THRESHOLD:.1%} requerida."
 
-        if potential_total_exposure > max_exposure_usd:
-            return False, f"⚖️ Exposición total ({potential_total_exposure:.2f}) excedería el límite de ${max_exposure_usd:.2f}."
-
-        # 5. TODO: Verificar correlación de activos si se implementa.
+        # 6. TODO: Verificar correlación de activos si se implementa.
         # if await self.check_correlation_risk(symbol):
         #    return False, f"📈 Alta correlación con posiciones existentes."
 
-        return True, "✅ Límites de riesgo pre-trade verificados."
+        return True, "✅ Límites de riesgo básicos verificados. Exposición se verificará en cálculo de tamaño."
 
     async def update_balance(self, new_balance: float):
         """Actualiza el balance y recalcula el PnL diario y el drawdown."""
@@ -219,8 +269,24 @@ class AdvancedRiskManager:
             return {'success': False, 'reason': reason}
 
         if amount <= 0:
-            self.logger.warning(f"Intento de abrir posición con cantidad 0 o negativa para {symbol}")
-            return {'success': False, 'reason': 'Cantidad inválida'}
+            # 🎯 MEJORADO: Intentar recalcular tamaño automáticamente
+            self.logger.warning(f"⚠️ Cantidad inválida ({amount}) para {symbol}. Intentando recálculo automático...")
+            
+            # Recalcular usando el método inteligente
+            recalculated_amount = self.calculate_position_size(symbol, price, confidence, 1.0)
+            
+            if recalculated_amount <= 0:
+                self.logger.error(f"❌ Recálculo automático falló para {symbol}. No se puede abrir posición.")
+                return {'success': False, 'reason': 'Cantidad inválida incluso después del recálculo automático'}
+            
+            amount = recalculated_amount
+            self.logger.info(f"✅ Recálculo exitoso: Nueva cantidad {amount:.6f} para {symbol}")
+        
+        # Verificar valor mínimo final
+        position_value_usd = amount * price
+        if position_value_usd < self.config.MIN_POSITION_VALUE_USDT:
+            self.logger.warning(f"❌ Valor final ${position_value_usd:.2f} < mínimo ${self.config.MIN_POSITION_VALUE_USDT}")
+            return {'success': False, 'reason': f'Valor de posición ${position_value_usd:.2f} menor al mínimo ${self.config.MIN_POSITION_VALUE_USDT}'}
         
         position = Position(
             symbol=symbol,
@@ -235,7 +301,7 @@ class AdvancedRiskManager:
         
         self.active_positions[symbol] = position
         self.stats['trades'] += 1
-        self.logger.info(f"✅ Nueva posición abierta para {symbol}: {amount:.6f} unidades.")
+        self.logger.info(f"✅ Nueva posición abierta para {symbol}: {amount:.6f} unidades (${position_value_usd:.2f} USD)")
         return {'success': True, 'position': position}
 
     async def close_position(self, symbol: str, exit_price: float, reason: str) -> Optional[Dict]:

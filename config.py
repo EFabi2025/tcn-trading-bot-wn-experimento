@@ -26,14 +26,14 @@ class TradingConfig:
         self.TRADING_SYMBOLS: list[str] = [s.strip().upper() for s in symbols_str.split(',')]
 
         # --- Parámetros de Riesgo ---
-        self.MAX_POSITION_SIZE_PERCENT: float = float(os.getenv('MAX_POSITION_SIZE_PERCENT', '15.0'))
-        self.MAX_TOTAL_EXPOSURE_PERCENT: float = float(os.getenv('MAX_TOTAL_EXPOSURE_PERCENT', '40.0'))
+        self.MAX_POSITION_SIZE_PERCENT: float = float(os.getenv('MAX_POSITION_SIZE_PERCENT', '22.0'))
+        self.MAX_TOTAL_EXPOSURE_PERCENT: float = float(os.getenv('MAX_TOTAL_EXPOSURE_PERCENT', '75.0'))
         self.MAX_DAILY_LOSS_PERCENT: float = float(os.getenv('MAX_DAILY_LOSS_PERCENT', '10.0'))
         self.MAX_DRAWDOWN_PERCENT: float = float(os.getenv('MAX_DRAWDOWN_PERCENT', '15.0'))
         self.STOP_LOSS_PERCENT: float = float(os.getenv('STOP_LOSS_PERCENT', '3.0'))
-        self.TAKE_PROFIT_PERCENT: float = float(os.getenv('TAKE_PROFIT_PERCENT', '6.0'))
+        self.TAKE_PROFIT_PERCENT: float = float(os.getenv('TAKE_PROFIT_PERCENT', '3.0'))
         self.MIN_POSITION_VALUE_USDT: float = float(os.getenv('MIN_POSITION_VALUE_USDT', '11.0'))
-        self.MAX_CONCURRENT_POSITIONS: int = int(os.getenv('MAX_CONCURRENT_POSITIONS', '3'))
+        self.MAX_CONCURRENT_POSITIONS: int = int(os.getenv('MAX_CONCURRENT_POSITIONS', '6'))
 
         # --- Umbrales del Modelo TCN (🎯 BAJADOS A 58%) ---
         self.TCN_BUY_CONFIDENCE_THRESHOLD: float = float(os.getenv('TCN_BUY_CONFIDENCE_THRESHOLD', '0.58'))
