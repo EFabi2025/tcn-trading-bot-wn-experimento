@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from decimal import Decimal, ROUND_DOWN
 import pandas as pd
 from dotenv import load_dotenv
+from config import trading_config
 
 load_dotenv()
 
@@ -52,7 +53,7 @@ class Position:
     stop_loss_price: Optional[float] = None
     take_profit_price: Optional[float] = None
     stop_loss_percent: float = 3.0  # Default 3%
-    take_profit_percent: float = 6.0  # Default 6%
+    take_profit_percent: float = None  # Se asigna desde config centralizada
 
 @dataclass
 class Asset:
@@ -655,6 +656,10 @@ class ProfessionalPortfolioManager:
     def initialize_position_stops(self, position: Position) -> Position:
         """🛡️ Inicializar stops tradicionales y trailing para nueva posición"""
         try:
+            # ✅ CENTRALIZADO: Asignar take profit desde configuración
+            if position.take_profit_percent is None:
+                position.take_profit_percent = trading_config.TAKE_PROFIT_PERCENT
+            
             # Configurar Stop Loss y Take Profit tradicionales
             if position.side == 'BUY':
                 position.stop_loss_price = position.entry_price * (1 - position.stop_loss_percent / 100)

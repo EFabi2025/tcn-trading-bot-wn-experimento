@@ -36,8 +36,8 @@ class TradingConfig:
         self.MAX_CONCURRENT_POSITIONS: int = int(os.getenv('MAX_CONCURRENT_POSITIONS', '6'))
 
         # --- Umbrales del Modelo TCN (🎯 BAJADOS A 58%) ---
-        self.TCN_BUY_CONFIDENCE_THRESHOLD: float = float(os.getenv('TCN_BUY_CONFIDENCE_THRESHOLD', '0.58'))
-        self.TCN_SELL_CONFIDENCE_THRESHOLD: float = float(os.getenv('TCN_SELL_CONFIDENCE_THRESHOLD', '0.58'))
+        self.TCN_BUY_CONFIDENCE_THRESHOLD: float = float(os.getenv('TCN_BUY_CONFIDENCE_THRESHOLD', '0.65'))
+        self.TCN_SELL_CONFIDENCE_THRESHOLD: float = float(os.getenv('TCN_SELL_CONFIDENCE_THRESHOLD', '0.65'))
 
         # --- Configuración del Manager ---
         self.CHECK_INTERVAL_SECONDS: int = int(os.getenv('CHECK_INTERVAL_SECONDS', '60'))
