@@ -63,6 +63,25 @@ class TradingBotSettings(BaseSettings):
         le=0.2,
         description="Take profit automático (4%)"
     )
+
+    # === CONFIGURACIÓN DE TRAILING STOP ===
+    trailing_stop_percent: float = Field(
+        default=0.014,
+        ge=0.005,
+        le=0.05,
+        description="Trailing stop automático (1.4%)"
+    )
+    trailing_activation_threshold: float = Field(
+        default=0.01,
+        ge=0.005,
+        le=0.05,
+        description="Umbral de activación del trailing stop (1%)"
+    )
+    enable_trailing_stops: bool = Field(
+        default=True,
+        description="Habilitar trailing stops automáticos"
+    )
+
     max_open_positions: int = Field(
         default=9,
         ge=1,

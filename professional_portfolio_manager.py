@@ -41,7 +41,7 @@ class Position:
     # ✅ NUEVO: Sistema de Trailing Stop Profesional
     trailing_stop_active: bool = False
     trailing_stop_price: Optional[float] = None
-    trailing_stop_percent: float = 2.0  # Default 2%
+    trailing_stop_percent: float = 1.4  # Default 1.4% - Configurado desde .env
     highest_price_since_entry: Optional[float] = None  # Para tracking del máximo
     lowest_price_since_entry: Optional[float] = None   # Para shorts
     trailing_activation_threshold: float = 1.0  # Activar trailing después de +1% ganancia
@@ -51,8 +51,8 @@ class Position:
     # Stop Loss y Take Profit tradicionales
     stop_loss_price: Optional[float] = None
     take_profit_price: Optional[float] = None
-    stop_loss_percent: float = 1.4  # Default 1.4%
-    take_profit_percent: float = 6.0  # Default 6%
+    stop_loss_percent: float = 1.4  # Default 1.4% - Configurado desde .env
+    take_profit_percent: float = 4.0  # Default 4.0% - Configurado desde .env
 
 @dataclass
 class Asset:
@@ -705,6 +705,19 @@ class ProfessionalPortfolioManager:
     def initialize_position_stops(self, position: Position) -> Position:
         """🛡️ Inicializar Stop Loss, Take Profit y Trailing Stop para una posición"""
         try:
+            # ✅ CONFIGURACIÓN CENTRALIZADA DESDE .ENV
+            import os
+            stop_loss_percent = float(os.getenv('STOP_LOSS_PERCENT', '1.4'))
+            take_profit_percent = float(os.getenv('TAKE_PROFIT_PERCENT', '4.0'))
+            trailing_stop_percent = float(os.getenv('TRAILING_STOP_PERCENT', '1.4'))
+            trailing_activation_threshold = float(os.getenv('TRAILING_ACTIVATION_THRESHOLD', '1.0'))
+
+            # Actualizar los valores de la posición con la configuración
+            position.stop_loss_percent = stop_loss_percent
+            position.take_profit_percent = take_profit_percent
+            position.trailing_stop_percent = trailing_stop_percent
+            position.trailing_activation_threshold = trailing_activation_threshold
+
             # ✅ PRIMERO: Intentar restaurar estado previo del trailing stop
             position = self._restore_trailing_state(position)
 

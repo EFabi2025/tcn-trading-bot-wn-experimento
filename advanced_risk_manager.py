@@ -105,8 +105,8 @@ class AdvancedRiskManager:
             max_drawdown_percent=float(os.getenv('MAX_DRAWDOWN_PERCENT', '15.0')),
             min_confidence_threshold=float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.70')),
             stop_loss_percent=float(os.getenv('STOP_LOSS_PERCENT', '1.4')),
-            take_profit_percent=float(os.getenv('TAKE_PROFIT_PERCENT', '6.0')),
-            trailing_stop_percent=float(os.getenv('TRAILING_STOP_PERCENT', '2.0')),
+            take_profit_percent=float(os.getenv('TAKE_PROFIT_PERCENT', '4.0')),
+            trailing_stop_percent=float(os.getenv('TRAILING_STOP_PERCENT', '1.4')),
             max_concurrent_positions=int(os.getenv('MAX_CONCURRENT_POSITIONS', '3')),
             correlation_limit=float(os.getenv('CORRELATION_LIMIT', '0.7')),
             min_position_value_usdt=11.0  # Se actualizará dinámicamente desde Binance
