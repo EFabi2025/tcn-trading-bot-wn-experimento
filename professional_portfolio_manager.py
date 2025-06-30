@@ -51,7 +51,7 @@ class Position:
     # Stop Loss y Take Profit tradicionales
     stop_loss_price: Optional[float] = None
     take_profit_price: Optional[float] = None
-    stop_loss_percent: float = 3.0  # Default 3%
+    stop_loss_percent: float = 1.4  # Default 1.4%
     take_profit_percent: float = 6.0  # Default 6%
 
 @dataclass

@@ -52,10 +52,10 @@ class TradingBotSettings(BaseSettings):
         description="Máxima pérdida diaria permitida (5%)"
     )
     stop_loss_percent: float = Field(
-        default=0.02,
+        default=0.014,
         ge=0.005,
         le=0.1,
-        description="Stop loss automático (2%)"
+        description="Stop loss automático (1.4%)"
     )
     take_profit_percent: float = Field(
         default=0.04,

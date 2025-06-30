@@ -107,7 +107,7 @@ DISCORD_WEBHOOK_URL=tu_webhook_url
 
 # Parámetros de riesgo (OPCIONAL - usa defaults si no se especifica)
 MAX_POSITION_SIZE_PERCENT=15.0
-STOP_LOSS_PERCENT=3.0
+STOP_LOSS_PERCENT=1.4
 TAKE_PROFIT_PERCENT=6.0
 ```
 
@@ -297,4 +297,4 @@ Una vez completada la instalación y configuración:
 
 ---
 
-*Sistema desarrollado con las mejores prácticas de trading algorítmico y optimizado específicamente para Windows.* 
+*Sistema desarrollado con las mejores prácticas de trading algorítmico y optimizado específicamente para Windows.*

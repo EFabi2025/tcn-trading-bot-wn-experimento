@@ -72,7 +72,7 @@ async def main():
         print(f"   🛡️ Configuración de riesgo:")
         print(f"      📊 Max posición: 15.0% (${trading_manager.current_balance * 0.15:.2f})")
         print(f"      🚨 Max pérdida diaria: 10.0%")
-        print(f"      🛑 Stop Loss: 3.0%")
+        print(f"      🛑 Stop Loss: 1.4%")
         print(f"      🎯 Take Profit: 6.0%")
 
         print(f"\n🎯 Iniciando trading automático...")

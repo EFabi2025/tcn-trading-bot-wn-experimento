@@ -104,7 +104,7 @@ class AdvancedRiskManager:
             max_daily_loss_percent=float(os.getenv('MAX_DAILY_LOSS_PERCENT', '10.0')),
             max_drawdown_percent=float(os.getenv('MAX_DRAWDOWN_PERCENT', '15.0')),
             min_confidence_threshold=float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.70')),
-            stop_loss_percent=float(os.getenv('STOP_LOSS_PERCENT', '3.0')),
+            stop_loss_percent=float(os.getenv('STOP_LOSS_PERCENT', '1.4')),
             take_profit_percent=float(os.getenv('TAKE_PROFIT_PERCENT', '6.0')),
             trailing_stop_percent=float(os.getenv('TRAILING_STOP_PERCENT', '2.0')),
             max_concurrent_positions=int(os.getenv('MAX_CONCURRENT_POSITIONS', '3')),
@@ -314,10 +314,10 @@ class AdvancedRiskManager:
         # ✅ CORRECCIÓN CRÍTICA: Verificar exposición total usando balance inicial
         # Calcular valor total invertido (dinero gastado originalmente)
         total_invested_usd = sum(pos.quantity * pos.entry_price for pos in self.active_positions.values())
-        
+
         # Calcular balance inicial (balance actual + dinero ya invertido)
         initial_balance = self.current_balance + total_invested_usd
-        
+
         # Calcular exposición correcta sobre balance inicial
         exposure_percent = 0
         if initial_balance > 0:

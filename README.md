@@ -17,7 +17,7 @@ Sistema de trading automatizado profesional usando **Temporal Convolutional Netw
 - **Gestión de riesgo avanzada** con trailing stops
 
 ### 🛡️ **Gestión de Riesgo**
-- **Stop Loss automático:** 3%
+- **Stop Loss automático:** 1.4%
 - **Take Profit:** 6%
 - **Trailing Stops** por posición individual
 - **Límites de exposición:** 15% por posición, 2 posiciones máx
@@ -147,7 +147,7 @@ El sistema mostrará:
 # En advanced_risk_manager.py
 max_position_percent = 15.0    # 15% máximo por posición
 max_daily_loss_percent = 10.0  # 10% pérdida máxima diaria
-stop_loss_percent = 3.0        # 3% stop loss
+stop_loss_percent = 1.4        # 1.4% stop loss
 take_profit_percent = 6.0      # 6% take profit
 max_simultaneous_positions = 2 # 2 posiciones máximo
 ```

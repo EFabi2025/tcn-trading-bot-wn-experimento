@@ -112,7 +112,7 @@ class ConfigManager:
             max_daily_loss_percent=float(os.getenv('MAX_DAILY_LOSS_PERCENT', '10.0')),
             max_drawdown_percent=float(os.getenv('MAX_DRAWDOWN_PERCENT', '15.0')),
 
-            stop_loss_percent=float(os.getenv('STOP_LOSS_PERCENT', '3.0')),
+            stop_loss_percent=float(os.getenv('STOP_LOSS_PERCENT', '1.4')),
             take_profit_percent=float(os.getenv('TAKE_PROFIT_PERCENT', '6.0')),
             trailing_stop_percent=float(os.getenv('TRAILING_STOP_PERCENT', '2.0')),
 
