@@ -71,7 +71,7 @@ class SimpleProfessionalTradingManager:
 
         # ✅ CORREGIDO: Solo pares con modelos TCN disponibles
         # Excluir temporalmente ADAUSDT, DOTUSDT, SOLUSDT hasta entrenar modelos
-        self.symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+        self.symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
 
         # ⚠️ PARES PENDIENTES (sin modelos): ["ADAUSDT", "DOTUSDT", "SOLUSDT"]
         self.excluded_symbols = ["ADAUSDT", "DOTUSDT", "SOLUSDT"]

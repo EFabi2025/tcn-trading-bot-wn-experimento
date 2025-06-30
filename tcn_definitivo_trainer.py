@@ -25,7 +25,7 @@ class DefinitiveTCNTrainer:
     """🎯 Entrenador definitivo del TCN con técnicas anti-sesgo"""
 
     def __init__(self):
-        self.pairs = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+        self.pairs = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
         self.lookback_window = 24
         self.prediction_horizon = 6
 
@@ -48,6 +48,12 @@ class DefinitiveTCNTrainer:
                 'weak_sell': -0.0007,    # -0.07%
                 'weak_buy': 0.0007,      # +0.07%
                 'strong_buy': 0.0015     # +0.15%
+            },
+            'XRPUSDT': {
+                'strong_sell': -0.0018,  # -0.18%
+                'weak_sell': -0.0009,    # -0.09%
+                'weak_buy': 0.0009,      # +0.09%
+                'strong_buy': 0.0018     # +0.18%
             }
         }
 

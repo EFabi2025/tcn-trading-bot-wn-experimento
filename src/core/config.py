@@ -64,7 +64,7 @@ class TradingBotSettings(BaseSettings):
         description="Take profit automático (4%)"
     )
     max_open_positions: int = Field(
-        default=3,
+        default=9,
         ge=1,
         le=10,
         description="Máximo número de posiciones abiertas"

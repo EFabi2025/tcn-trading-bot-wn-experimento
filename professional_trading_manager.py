@@ -68,7 +68,7 @@ class ProfessionalTradingManager:
         self.emergency_mode = False
 
         # Configuración de trading
-        self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT']
+        self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT']
         self.prediction_interval = 60  # segundos
         self.monitoring_interval = 30  # segundos
 

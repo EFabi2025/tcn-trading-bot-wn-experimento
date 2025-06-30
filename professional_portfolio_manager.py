@@ -105,7 +105,7 @@ class ProfessionalPortfolioManager:
         self.last_orders_hash: Optional[str] = None  # Para detectar cambios en órdenes
 
         # Configuración
-        self.max_positions = 10
+        self.max_positions = int(os.getenv('MAX_CONCURRENT_POSITIONS', '3'))  # ✅ Lee del .env
         self.min_position_value = 5.0  # Mínimo $5 USD por posición
         self.days_to_lookback = 30  # Días hacia atrás para historial
 

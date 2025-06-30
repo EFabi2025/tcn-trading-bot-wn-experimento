@@ -63,6 +63,7 @@ class TradingConfig:
             'BTCUSDT': 'MAJOR_CRYPTO',
             'ETHUSDT': 'MAJOR_CRYPTO',
             'BNBUSDT': 'EXCHANGE_TOKEN',
+            'XRPUSDT': 'ALT_CRYPTO',         # ✅ INTEGRADO desde repositorio externo
             # ⏸️ TEMPORALMENTE EXCLUIDOS (sin modelos TCN):
             # 'ADAUSDT': 'ALT_CRYPTO',
             # 'DOTUSDT': 'ALT_CRYPTO',
