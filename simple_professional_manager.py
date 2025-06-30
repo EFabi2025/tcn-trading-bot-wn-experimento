@@ -27,7 +27,7 @@ from trading_database import TradingDatabase
 from smart_discord_notifier import SmartDiscordNotifier
 
 # ✅ NUEVO: Importar Professional Portfolio Manager
-from professional_portfolio_manager import ProfessionalPortfolioManager
+from professional_portfolio_manager import ProfessionalPortfolioManager, Position as PortfolioPosition
 
 # ✅ NUEVO: Importar Portfolio Diversification Manager
 from portfolio_diversification_manager import PortfolioDiversificationManager, PortfolioPosition
@@ -1605,6 +1605,32 @@ class SimpleProfessionalTradingManager:
             # ✅ CORREGIDO: Usar trade_id (que ahora es el order_id) como clave
             self.active_positions[position.order_id] = position
             print(f"    ✅ PASO 4: Posición guardada en active_positions con ID: {position.order_id}")
+
+            # ✅ CRÍTICO: Actualizar inmediatamente el registry del portfolio manager
+            print(f"    🔄 PASO 4.1: Actualizando registry del portfolio manager...")
+
+            # Crear posición compatible para el registry
+            registry_position = PortfolioPosition(
+                symbol=position.symbol,
+                side=position.side,
+                quantity=position.quantity,
+                entry_price=position.entry_price,
+                current_price=position.current_price,
+                market_value=position.quantity * position.current_price,
+                unrealized_pnl_usd=0.0,  # Inicial
+                unrealized_pnl_percent=0.0,  # Inicial
+                entry_time=position.entry_time,
+                duration_minutes=0,
+                order_id=position.order_id,
+                batch_id=position.order_id
+            )
+
+            # Inicializar stops para la nueva posición
+            registry_position = self.portfolio_manager.initialize_position_stops(registry_position)
+
+            # Agregar al registry inmediatamente
+            self.portfolio_manager.position_registry[position.order_id] = registry_position
+            print(f"    ✅ PASO 4.1: Posición agregada al registry con ID: {position.order_id}")
 
             # Guardar en base de datos, incluyendo el order_id de Binance
             trade_data = {
