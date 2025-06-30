@@ -33,28 +33,31 @@ class TCNDefinitivoPredictor:
         self.feature_columns = {}
         self.class_weights = {}
         # ✅ Solo pares con modelos entrenados disponibles
-        self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT']
+        self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT']
 
         # ⚠️ PARES PENDIENTES (sin modelos): ['ADAUSDT', 'DOTUSDT', 'SOLUSDT']
         self.excluded_symbols = ['ADAUSDT', 'DOTUSDT', 'SOLUSDT']
         self.model_stats = {
             'BTCUSDT': {'accuracy': 0.597, 'loss': 0.835},
-            'ETHUSDT': {'accuracy': 0.600, 'loss': 0.840},  # Estimado
-            'BNBUSDT': {'accuracy': 0.601, 'loss': 0.858}
+            'ETHUSDT': {'accuracy': 0.628, 'loss': 0.852},  # ✅ REENTRENADO: 62.8% accuracy, thresholds actualizados
+            'BNBUSDT': {'accuracy': 0.601, 'loss': 0.858},
+            'XRPUSDT': {'accuracy': 0.404, 'loss': 1.050}   # ✅ MODELO REENTRENADO con metodología definitiva
         }
 
         # Thresholds específicos utilizados en entrenamiento
         self.thresholds = {
             'BTCUSDT': {'sell': -0.0014, 'buy': 0.0014},  # -0.14%/+0.14%
-            'ETHUSDT': {'sell': -0.0026, 'buy': 0.0027},  # -0.26%/+0.27%
-            'BNBUSDT': {'sell': -0.0015, 'buy': 0.0015}   # -0.15%/+0.15%
+            'ETHUSDT': {'sell': -0.0008, 'buy': 0.0009},  # ✅ ACTUALIZADOS: -0.08%/+0.09% (corrige drift 68.7%)
+            'BNBUSDT': {'sell': -0.0015, 'buy': 0.0015},  # -0.15%/+0.15%
+            'XRPUSDT': {'sell': -0.0010, 'buy': 0.0011}   # ✅ BASADO EN ANÁLISIS REAL DE VOLATILIDAD
         }
 
         # 🔧 SEQUENCE LENGTH DINÁMICO POR MODELO
         self.sequence_lengths = {
             'BTCUSDT': 48,  # Modelo antiguo
             'ETHUSDT': 24,  # Modelo reentrenado
-            'BNBUSDT': 48   # Modelo antiguo
+            'BNBUSDT': 48,  # Modelo antiguo
+            'XRPUSDT': 24   # ✅ MODELO REENTRENADO con configuración estándar
         }
 
         self.n_features = 66
