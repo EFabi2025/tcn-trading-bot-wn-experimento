@@ -2083,11 +2083,13 @@ class SimpleProfessionalTradingManager:
             # ✅ TRADICIONAL: Stop Loss y Take Profit (solo si trailing no está activo)
             if hasattr(position, 'trailing_stop_active') and not position.trailing_stop_active:
                 # Stop Loss tradicional
-                if pnl_percent <= -3.0:
+                stop_loss_threshold = float(os.getenv('STOP_LOSS_PERCENT', '1.4'))
+                if pnl_percent <= -stop_loss_threshold:
                     return True, f"STOP_LOSS_TRADICIONAL (-{abs(pnl_percent):.2f}%)"
 
                 # Take Profit tradicional
-                if pnl_percent >= 6.0:
+                take_profit_threshold = float(os.getenv('TAKE_PROFIT_PERCENT', '4.0'))
+                if pnl_percent >= take_profit_threshold:
                     return True, f"TAKE_PROFIT_TRADICIONAL (+{pnl_percent:.2f}%)"
 
             # ✅ CIRCUITO: Pérdida máxima diaria

@@ -5,9 +5,14 @@ Script principal para ejecutar el Professional Trading Manager
 """
 
 import asyncio
+import os
 import signal
 import sys
+from dotenv import load_dotenv
 from simple_professional_manager import SimpleProfessionalTradingManager
+
+# Cargar variables de entorno desde .env
+load_dotenv()
 
 # Variable global para control del manager
 trading_manager = None
@@ -70,10 +75,15 @@ async def main():
             print(f"      🕐 Último update: {status['last_balance_update']}")
 
         print(f"   🛡️ Configuración de riesgo:")
-        print(f"      📊 Max posición: 15.0% (${trading_manager.current_balance * 0.15:.2f})")
-        print(f"      🚨 Max pérdida diaria: 10.0%")
-        print(f"      🛑 Stop Loss: 1.4%")
-        print(f"      🎯 Take Profit: 6.0%")
+        max_position_percent = float(os.getenv('MAX_POSITION_SIZE_PERCENT', '15.0'))
+        max_daily_loss = float(os.getenv('MAX_DAILY_LOSS_PERCENT', '10.0'))
+        stop_loss_percent = float(os.getenv('STOP_LOSS_PERCENT', '1.4'))
+        take_profit_percent = float(os.getenv('TAKE_PROFIT_PERCENT', '4.0'))
+
+        print(f"      📊 Max posición: {max_position_percent}% (${trading_manager.current_balance * max_position_percent/100:.2f})")
+        print(f"      🚨 Max pérdida diaria: {max_daily_loss}%")
+        print(f"      🛑 Stop Loss: {stop_loss_percent}%")
+        print(f"      🎯 Take Profit: {take_profit_percent}%")
 
         print(f"\n🎯 Iniciando trading automático...")
         print(f"⏸️ Presiona Ctrl+C para pausar/detener")
