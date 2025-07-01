@@ -749,10 +749,16 @@ class SimpleProfessionalTradingManager:
                     'LOW': '😴'
                 }.get(volatility, '📊')
 
+                # Obtener detalles del sistema robusto para Discord
+                components = market_context.get('components', {})
+                regime_system = components.get('regime_system', 'UNKNOWN')
+                pairs_analyzed = components.get('pairs_analyzed', [])
+
                 models_section += f"""
-🌍 **RÉGIMEN DE MERCADO**
+🌍 **RÉGIMEN DE MERCADO** ({regime_system})
 {regime_emoji} **{regime}** (Conf: {regime_confidence:.1%}) {vol_emoji} Vol: {volatility}
 📊 Score: {market_score:+.3f} | 🔗 Correlación: {market_context.get('correlation_strength', 0):.2f}
+🔍 Pares: {len(pairs_analyzed)} analizados | 🎯 Consenso requerido: >60%
 
 """
             except Exception as e:
