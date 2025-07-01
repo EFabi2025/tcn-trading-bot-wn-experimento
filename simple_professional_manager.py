@@ -1340,7 +1340,8 @@ class SimpleProfessionalTradingManager:
                     required_confidence = {
                         'BTCUSDT': 85,   # BTC líder - umbral moderado
                         'ETHUSDT': 82,   # ETH principal altcoin - umbral medio
-                        'BNBUSDT': 80    # BNB exchange token - umbral más bajo
+                        'BNBUSDT': 80,   # BNB exchange token - umbral más bajo
+                        'XRPUSDT': 83    # XRP altcoin establecida - umbral medio-alto
                     }.get(symbol, 88)  # Otros activos: 88%
 
                     if confidence >= required_confidence:
@@ -1380,7 +1381,8 @@ class SimpleProfessionalTradingManager:
                 volatility_thresholds = {
                     'BTCUSDT': 78,   # BTC más estable - umbral menor
                     'ETHUSDT': 75,   # ETH volátil - umbral medio
-                    'BNBUSDT': 72    # BNB exchange - umbral menor
+                    'BNBUSDT': 72,   # BNB exchange - umbral menor
+                    'XRPUSDT': 76    # XRP moderadamente volátil - umbral medio
                 }
 
                 if signal == 'BUY':
@@ -1405,14 +1407,15 @@ class SimpleProfessionalTradingManager:
                     else:
                         filter_reason = f"BTC BUY permitido pese a tendencia bajista por alta confianza ({confidence:.1f}%)"
 
-            elif symbol in ['ETHUSDT', 'BNBUSDT']:
+            elif symbol in ['ETHUSDT', 'BNBUSDT', 'XRPUSDT']:
                 # ✅ ALTCOINS OPTIMIZADO - Umbrales diferenciados por underperformance
                 altcoin_strength = market_context.get('altcoin_strength', 0)
                 if signal == 'BUY' and altcoin_strength < -0.2:  # Altcoins underperforming
                     # Umbrales específicos para cada altcoin
                     altcoin_thresholds = {
                         'ETHUSDT': 73,   # ETH principal altcoin - umbral medio
-                        'BNBUSDT': 72    # BNB exchange token - umbral menor
+                        'BNBUSDT': 72,   # BNB exchange token - umbral menor
+                        'XRPUSDT': 74    # XRP altcoin establecida - umbral medio-alto
                     }
 
                     required_alt_confidence = altcoin_thresholds.get(symbol, 75)
