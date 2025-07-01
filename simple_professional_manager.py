@@ -1187,31 +1187,27 @@ class SimpleProfessionalTradingManager:
 
     async def _analyze_market_context(self, prices: Dict[str, float]) -> Dict:
         """
-        🌍 Analizar contexto general de mercado como capa de seguridad adicional
+        🌍 ANÁLISIS ROBUSTO DE CONTEXTO DE MERCADO
 
-        Evalúa múltiples factores para determinar el régimen de mercado:
-        - Tendencia de dominancia de BTC
-        - Correlación entre activos principales
-        - Índice de miedo/codicia (Fear & Greed simulado)
-        - Volatilidad del mercado
-        - Fortaleza relativa de las altcoins vs BTC
+        Sistema mejorado que considera múltiples pares y factores de mercado
+        para determinar el régimen actual de forma precisa.
 
         Returns:
             Dict con régimen, score, confianza y factores de riesgo
         """
         try:
-            print("🔍 Analizando contexto de mercado...")
+            print("🔍 Analizando contexto de mercado robusto...")
 
-            # Obtener datos históricos para análisis de tendencia
+            # Obtener datos históricos para análisis robusto
             market_data = {}
-            for symbol in ['BTCUSDT', 'ETHUSDT', 'BNBUSDT']:
+            for symbol in ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT']:
                 try:
-                    # Obtener últimas 100 velas de 1h para análisis macro
+                    # Obtener datos de 5 minutos para análisis detallado
                     url = f"https://api.binance.com/api/v3/klines"
                     params = {
                         'symbol': symbol,
-                        'interval': '1h',
-                        'limit': 100
+                        'interval': '5m',
+                        'limit': 200  # 200 * 5m = ~16.7 horas de datos
                     }
 
                     async with aiohttp.ClientSession() as session:
@@ -1221,101 +1217,44 @@ class SimpleProfessionalTradingManager:
                                 market_data[symbol] = [float(k[4]) for k in klines]  # Precios de cierre
                 except Exception as e:
                     print(f"  ⚠️ Error obteniendo datos para {symbol}: {e}")
-                    market_data[symbol] = [prices.get(symbol, 0)] * 100  # Fallback
+                    market_data[symbol] = [prices.get(symbol, 0)] * 200  # Fallback
 
-            # 1. ANÁLISIS DE TENDENCIA DOMINANTE (BTC como líder)
-            btc_prices = market_data.get('BTCUSDT', [])
-            if len(btc_prices) >= 50:
-                # Tendencia de corto y largo plazo
-                short_avg = sum(btc_prices[-10:]) / 10  # Últimas 10 horas
-                medium_avg = sum(btc_prices[-24:]) / 24  # Últimas 24 horas
-                long_avg = sum(btc_prices[-50:]) / 50   # Últimas 50 horas
+            # Usar el sistema robusto de detección de régimen
+            regime, confidence = await self._detect_market_regime_robust(market_data)
 
-                current_btc = btc_prices[-1]
+            # Calcular métricas adicionales para compatibilidad
+            fear_factor = 0.5  # Neutral por defecto
+            correlation_strength = 0.5
 
-                # Score de tendencia (-1 = muy bearish, +1 = muy bullish)
-                trend_score = 0
-                trend_score += 0.4 * ((current_btc - short_avg) / short_avg)   # 40% peso corto plazo
-                trend_score += 0.35 * ((current_btc - medium_avg) / medium_avg) # 35% peso medio plazo
-                trend_score += 0.25 * ((current_btc - long_avg) / long_avg)     # 25% peso largo plazo
-
-                # Normalizar a rango [-1, 1]
-                trend_score = max(-1, min(1, trend_score * 10))
-            else:
-                trend_score = 0
-
-            # 2. ANÁLISIS DE CORRELACIÓN (Mercado unificado vs disperso)
-            correlation_strength = 0
             try:
-                if len(market_data) >= 2:
-                    # Calcular correlación entre BTC, ETH y BNB
+                # Calcular volatilidad del mercado
+                if 'BTCUSDT' in market_data and len(market_data['BTCUSDT']) > 24:
                     import numpy as np
+                    btc_returns = np.diff(market_data['BTCUSDT']) / market_data['BTCUSDT'][:-1]
+                    btc_volatility = np.std(btc_returns)
+                    fear_factor = min(1, max(0, btc_volatility * 1000))  # Escalar a [0,1]
 
+                # Calcular correlación entre pares principales
+                if len(market_data) >= 2:
                     btc_returns = np.diff(market_data['BTCUSDT']) / market_data['BTCUSDT'][:-1]
                     eth_returns = np.diff(market_data['ETHUSDT']) / market_data['ETHUSDT'][:-1]
-                    bnb_returns = np.diff(market_data['BNBUSDT']) / market_data['BNBUSDT'][:-1]
 
-                    # Correlación promedio
-                    btc_eth_corr = np.corrcoef(btc_returns, eth_returns)[0, 1]
-                    btc_bnb_corr = np.corrcoef(btc_returns, bnb_returns)[0, 1]
-                    eth_bnb_corr = np.corrcoef(eth_returns, bnb_returns)[0, 1]
-
-                    correlation_strength = np.mean([btc_eth_corr, btc_bnb_corr, eth_bnb_corr])
-                    correlation_strength = max(0, min(1, correlation_strength))  # Clamp [0,1]
+                    if len(btc_returns) > 10 and len(eth_returns) > 10:
+                        min_len = min(len(btc_returns), len(eth_returns))
+                        corr = np.corrcoef(btc_returns[:min_len], eth_returns[:min_len])[0, 1]
+                        correlation_strength = max(0, min(1, (corr + 1) / 2))  # Normalizar a [0,1]
             except Exception as e:
-                print(f"  ⚠️ Error calculando correlación: {e}")
-                correlation_strength = 0.5  # Neutral
+                print(f"  ⚠️ Error calculando métricas adicionales: {e}")
 
-            # 3. ÍNDICE DE MIEDO/CODICIA SIMULADO
-            try:
-                # Basado en volatilidad y momentum
-                btc_volatility = np.std(np.diff(btc_prices[-24:]) / btc_prices[-25:-1]) if len(btc_prices) >= 25 else 0
+            # Mapear régimen a score para compatibilidad
+            if regime == 'BULLISH':
+                score = 0.3 + (confidence - 0.5) * 0.4  # Score positivo
+            elif regime == 'BEARISH':
+                score = -0.3 - (confidence - 0.5) * 0.4  # Score negativo
+            else:  # NEUTRAL
+                score = 0.0
 
-                # Convertir volatilidad a fear factor (alta vol = miedo, baja vol = codicia)
-                fear_factor = min(1, btc_volatility * 100)  # Escalar volatilidad
-                fear_factor = max(0, min(1, fear_factor))   # Clamp [0,1]
-            except Exception as e:
-                fear_factor = 0.5  # Neutral
-
-            # 4. FORTALEZA DE ALTCOINS vs BTC (Dominancia)
-            altcoin_strength = 0
-            try:
-                # Comparar rendimiento de ETH y BNB vs BTC en últimas 24h
-                if len(market_data['BTCUSDT']) >= 24 and len(market_data['ETHUSDT']) >= 24:
-                    btc_change_24h = (btc_prices[-1] - btc_prices[-24]) / btc_prices[-24]
-                    eth_change_24h = (market_data['ETHUSDT'][-1] - market_data['ETHUSDT'][-24]) / market_data['ETHUSDT'][-24]
-                    bnb_change_24h = (market_data['BNBUSDT'][-1] - market_data['BNBUSDT'][-24]) / market_data['BNBUSDT'][-24]
-
-                    # Altcoins superando a BTC = bullish, underperformance = bearish
-                    eth_relative = eth_change_24h - btc_change_24h
-                    bnb_relative = bnb_change_24h - btc_change_24h
-
-                    altcoin_strength = (eth_relative + bnb_relative) / 2
-                    altcoin_strength = max(-0.5, min(0.5, altcoin_strength))  # Clamp [-0.5, 0.5]
-            except Exception as e:
-                altcoin_strength = 0
-
-            # 5. SCORE COMPUESTO FINAL
-            # Pesos: Tendencia BTC (50%), Correlación (20%), Fear (15%), Altcoins (15%)
-            composite_score = (
-                0.50 * trend_score +           # Tendencia dominante
-                0.20 * (correlation_strength - 0.5) * 2 +  # Correlación (centralizada en 0)
-                0.15 * (0.5 - fear_factor) * 2 +           # Fear invertido (bajo miedo = bullish)
-                0.15 * altcoin_strength * 2                # Fortaleza altcoins
-            )
-
-            # 6. CLASIFICACIÓN DE RÉGIMEN
-            if composite_score > 0.15:
-                regime = 'BULLISH'
-                confidence = min(0.95, 0.5 + abs(composite_score))
-            elif composite_score < -0.15:
-                regime = 'BEARISH'
-                confidence = min(0.95, 0.5 + abs(composite_score))
-            else:
-                regime = 'NEUTRAL'
-                confidence = 0.5 + (0.15 - abs(composite_score)) / 0.15 * 0.3
-
-            # 7. NIVEL DE VOLATILIDAD
+            # Nivel de volatilidad
             if fear_factor > 0.7:
                 volatility_level = 'HIGH'
             elif fear_factor < 0.3:
@@ -1325,44 +1264,44 @@ class SimpleProfessionalTradingManager:
 
             context = {
                 'regime': regime,
-                'score': composite_score,
+                'score': score,
                 'confidence': confidence,
                 'market_fear_factor': fear_factor,
-                'trend_strength': abs(trend_score),
+                'trend_strength': abs(score),
                 'volatility_level': volatility_level,
                 'correlation_strength': correlation_strength,
-                'altcoin_strength': altcoin_strength,
-                'btc_trend_score': trend_score,
+                'altcoin_strength': 0.0,  # Calculado internamente por el sistema robusto
+                'btc_trend_score': score,
                 'components': {
-                    'btc_trend': trend_score,
-                    'correlation': correlation_strength,
-                    'fear_greed': 1 - fear_factor,  # Invertir para mostrar greed
-                    'altcoin_performance': altcoin_strength
+                    'regime_system': 'ROBUST_MULTI_PAIR',
+                    'pairs_analyzed': list(market_data.keys()),
+                    'confidence': confidence,
+                    'volatility': fear_factor
                 }
             }
 
-            print(f"  📊 Tendencia BTC: {trend_score:.3f}")
-            print(f"  🔗 Correlación mercado: {correlation_strength:.3f}")
+            print(f"  🎯 RÉGIMEN DETECTADO: {regime} (Confianza: {confidence:.2f})")
+            print(f"  📊 Score compuesto: {score:.3f}")
             print(f"  😨 Factor miedo: {fear_factor:.3f}")
-            print(f"  🚀 Fortaleza altcoins: {altcoin_strength:.3f}")
+            print(f"  🔗 Correlación: {correlation_strength:.3f}")
             print(f"  ⚡ Volatilidad: {volatility_level}")
 
             return context
 
         except Exception as e:
-            print(f"❌ Error en análisis de contexto: {e}")
+            print(f"❌ Error en análisis robusto de contexto: {e}")
             # Contexto neutral por defecto
             return {
                 'regime': 'NEUTRAL',
                 'score': 0.0,
-                'confidence': 0.0,
+                'confidence': 0.5,
                 'market_fear_factor': 0.5,
                 'trend_strength': 0.0,
                 'volatility_level': 'MEDIUM',
                 'correlation_strength': 0.5,
                 'altcoin_strength': 0.0,
                 'btc_trend_score': 0.0,
-                'components': {}
+                'components': {'error': str(e)}
             }
 
     def _apply_market_context_filter(self, signal: str, confidence: float, market_context: Dict, symbol: str) -> tuple:
@@ -2601,6 +2540,171 @@ class SimpleProfessionalTradingManager:
         await self.database.log_event('INFO', 'SYSTEM', 'Sistema apagado correctamente')
 
         print("✅ Sistema apagado correctamente")
+
+    async def _detect_market_regime_robust(self, market_data: Dict[str, List[float]]) -> Tuple[str, float]:
+        """
+        🔍 DETECCIÓN ROBUSTA DE RÉGIMEN DE MERCADO
+        Sistema mejorado que considera múltiples pares y factores de mercado
+
+        Returns:
+            Tuple[str, float]: (regime, confidence)
+        """
+        try:
+            print(f"🔍 Detectando régimen de mercado robusto...")
+
+            # 1. ANÁLISIS MULTI-PAR
+            pair_regimes = {}
+            total_signals = 0
+            bullish_signals = 0
+            bearish_signals = 0
+
+            for symbol, prices in market_data.items():
+                if len(prices) < 50:  # Necesitamos datos suficientes
+                    continue
+
+                # Convertir a pandas para análisis técnico
+                df = pd.DataFrame({'close': prices})
+
+                # === INDICADORES POR PAR ===
+
+                # 1. Momentum multitimeframe
+                df['momentum_1h'] = df['close'].pct_change(12)   # 12 * 5m = 1h
+                df['momentum_4h'] = df['close'].pct_change(48)   # 48 * 5m = 4h
+                df['momentum_12h'] = df['close'].pct_change(144) # 144 * 5m = 12h
+
+                # 2. Medias móviles
+                df['sma_20'] = df['close'].rolling(20).mean()
+                df['sma_50'] = df['close'].rolling(50).mean()
+                df['ema_20'] = df['close'].ewm(span=20).mean()
+
+                # 3. Trend strength
+                df['ma_trend'] = (df['close'] - df['sma_20']) / df['sma_20']
+                df['ma_direction'] = df['sma_20'] > df['sma_50']
+
+                # 4. Volatilidad relativa
+                df['returns'] = df['close'].pct_change()
+                df['volatility'] = df['returns'].rolling(20).std()
+                df['vol_percentile'] = df['volatility'].rolling(100).rank(pct=True)
+
+                # 5. RSI para momentum
+                delta = df['close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+                rs = gain / loss
+                df['rsi'] = 100 - (100 / (1 + rs))
+
+                # === CLASIFICACIÓN POR PAR ===
+                latest = df.iloc[-1]
+
+                # Contar señales bullish
+                bullish_count = 0
+                bearish_count = 0
+
+                # Señales de momentum
+                if not pd.isna(latest['momentum_4h']) and latest['momentum_4h'] > 0.02:  # +2%
+                    bullish_count += 2
+                elif not pd.isna(latest['momentum_4h']) and latest['momentum_4h'] < -0.02:  # -2%
+                    bearish_count += 2
+
+                if not pd.isna(latest['momentum_12h']) and latest['momentum_12h'] > 0.05:  # +5%
+                    bullish_count += 3
+                elif not pd.isna(latest['momentum_12h']) and latest['momentum_12h'] < -0.05:  # -5%
+                    bearish_count += 3
+
+                # Señales de MA
+                if not pd.isna(latest['ma_trend']) and latest['ma_trend'] > 0.01 and latest['ma_direction']:
+                    bullish_count += 2
+                elif not pd.isna(latest['ma_trend']) and latest['ma_trend'] < -0.01 and not latest['ma_direction']:
+                    bearish_count += 2
+
+                # Señales de RSI extremas
+                if not pd.isna(latest['rsi']):
+                    if latest['rsi'] > 70 and not pd.isna(latest['momentum_1h']) and latest['momentum_1h'] > 0:
+                        bullish_count += 1
+                    elif latest['rsi'] < 30 and not pd.isna(latest['momentum_1h']) and latest['momentum_1h'] < 0:
+                        bearish_count += 1
+
+                # Clasificar este par
+                if bullish_count > bearish_count + 1:
+                    pair_regime = 'BULLISH'
+                    bullish_signals += bullish_count
+                elif bearish_count > bullish_count + 1:
+                    pair_regime = 'BEARISH'
+                    bearish_signals += bearish_count
+                else:
+                    pair_regime = 'NEUTRAL'
+
+                pair_regimes[symbol] = {
+                    'regime': pair_regime,
+                    'bullish_signals': bullish_count,
+                    'bearish_signals': bearish_count,
+                    'momentum_4h': latest['momentum_4h'] if not pd.isna(latest['momentum_4h']) else 0,
+                    'momentum_12h': latest['momentum_12h'] if not pd.isna(latest['momentum_12h']) else 0,
+                    'ma_trend': latest['ma_trend'] if not pd.isna(latest['ma_trend']) else 0,
+                    'rsi': latest['rsi'] if not pd.isna(latest['rsi']) else 50
+                }
+
+                total_signals += bullish_count + bearish_count
+
+                print(f"   📊 {symbol}: {pair_regime} (Bull: {bullish_count}, Bear: {bearish_count})")
+
+            # 2. ANÁLISIS AGREGADO DEL MERCADO
+
+            # Contar regímenes por par
+            regime_votes = {'BULLISH': 0, 'BEARISH': 0, 'NEUTRAL': 0}
+            for data in pair_regimes.values():
+                regime_votes[data['regime']] += 1
+
+            total_pairs = len(pair_regimes)
+            if total_pairs == 0:
+                return 'NEUTRAL', 0.5
+
+            # 3. MÉTRICAS AGREGADAS DE CONFIANZA
+
+            # Ratio de señales
+            if total_signals > 0:
+                bullish_ratio = bullish_signals / total_signals
+                bearish_ratio = bearish_signals / total_signals
+            else:
+                bullish_ratio = bearish_ratio = 0
+
+            # Consenso entre pares
+            max_votes = max(regime_votes.values())
+            consensus_strength = max_votes / total_pairs
+
+            # 4. CLASIFICACIÓN FINAL ROBUSTA
+
+            # Umbrales más estrictos para mayor precisión
+            if (regime_votes['BULLISH'] > regime_votes['BEARISH'] + 1 and
+                bullish_ratio > 0.6 and consensus_strength > 0.6):
+                final_regime = 'BULLISH'
+                confidence = min(0.95, 0.5 + (bullish_ratio - 0.5) + (consensus_strength - 0.5))
+
+            elif (regime_votes['BEARISH'] > regime_votes['BULLISH'] + 1 and
+                  bearish_ratio > 0.6 and consensus_strength > 0.6):
+                final_regime = 'BEARISH'
+                confidence = min(0.95, 0.5 + (bearish_ratio - 0.5) + (consensus_strength - 0.5))
+
+            else:
+                final_regime = 'NEUTRAL'
+                confidence = 0.5 + (1 - consensus_strength) * 0.3  # Mayor incertidumbre
+
+            # 5. LOGGING DETALLADO
+            print(f"   📊 Votos por régimen: {regime_votes}")
+            print(f"   📊 Ratio señales: Bull {bullish_ratio:.2f}, Bear {bearish_ratio:.2f}")
+            print(f"   📊 Consenso: {consensus_strength:.2f}")
+            print(f"   🎯 RÉGIMEN FINAL: {final_regime} (Confianza: {confidence:.2f})")
+
+            # Mostrar detalles por par
+            for symbol, data in pair_regimes.items():
+                print(f"     {symbol}: {data['regime']} | Mom4h: {data['momentum_4h']:.3f} | "
+                      f"Mom12h: {data['momentum_12h']:.3f} | MA: {data['ma_trend']:.3f} | RSI: {data['rsi']:.1f}")
+
+            return final_regime, confidence
+
+        except Exception as e:
+            print(f"❌ Error en detección de régimen: {e}")
+            return 'NEUTRAL', 0.5
 
 async def main():
     """🎯 Función principal para testing directo"""
