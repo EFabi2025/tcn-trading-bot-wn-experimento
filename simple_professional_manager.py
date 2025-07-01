@@ -1935,7 +1935,8 @@ class SimpleProfessionalTradingManager:
 
             # Calcular exposición actual por símbolo
             symbol_exposures = {}
-            total_portfolio_value = self.current_balance  # Empezar con balance disponible
+            total_invested_value = 0.0  # Total invertido originalmente
+            total_current_value = 0.0   # Valor actual de mercado
 
             for pos in snapshot.active_positions:
                 symbol_key = pos.symbol
@@ -1953,12 +1954,24 @@ class SimpleProfessionalTradingManager:
                 # Valor invertido originalmente (entry_price * quantity)
                 invested_value = pos.quantity * pos.entry_price
                 symbol_exposures[symbol_key]['total_invested'] += invested_value
+                total_invested_value += invested_value
 
-                # Valor actual de mercado
-                symbol_exposures[symbol_key]['current_value'] += pos.market_value
-                total_portfolio_value += invested_value
+                # Valor actual de mercado (market_value ya calculado)
+                current_market_value = pos.market_value
+                symbol_exposures[symbol_key]['current_value'] += current_market_value
+                total_current_value += current_market_value
 
-                print(f"   📍 {pos.symbol}: {pos.quantity:.6f} x ${pos.entry_price:.4f} = ${invested_value:.2f} (actual: ${pos.market_value:.2f})")
+                print(f"   📍 {pos.symbol}: {pos.quantity:.6f} x ${pos.entry_price:.4f} = ${invested_value:.2f} (actual: ${current_market_value:.2f})")
+
+            # ✅ CORRECCIÓN CRÍTICA: Total del portafolio = balance disponible + valor actual de mercado
+            total_portfolio_value = self.current_balance + total_current_value
+
+            # ✅ DEBUG: Mostrar cálculos correctos
+            print(f"🔍 CÁLCULO DE PORTAFOLIO CORREGIDO:")
+            print(f"   💰 Balance disponible: ${self.current_balance:.2f}")
+            print(f"   📊 Valor actual invertido: ${total_current_value:.2f}")
+            print(f"   💼 Total portafolio: ${total_portfolio_value:.2f}")
+            print(f"   📈 Total originalmente invertido: ${total_invested_value:.2f}")
 
             # ✅ VALIDACIÓN 1: Máximo 3 posiciones por símbolo
             current_positions_count = symbol_exposures.get(symbol, {}).get('count', 0)
@@ -1977,19 +1990,31 @@ class SimpleProfessionalTradingManager:
             # ✅ VALIDACIÓN 2: Límites específicos por símbolo
             symbol_limit = SYMBOL_LIMITS.get(symbol, 10.0)  # Default 10% para otros
 
-            # Calcular exposición actual del símbolo
-            current_symbol_value = symbol_exposures.get(symbol, {}).get('total_invested', 0.0)
-            new_total_symbol_value = current_symbol_value + proposed_position_usd
-            new_symbol_exposure_percent = (new_total_symbol_value / total_portfolio_value) * 100 if total_portfolio_value > 0 else 0
+            # ✅ CORRECCIÓN CRÍTICA: Usar valor actual de mercado para exposición
+            current_symbol_market_value = symbol_exposures.get(symbol, {}).get('current_value', 0.0)
+            new_total_symbol_value = current_symbol_market_value + proposed_position_usd
+            new_symbol_exposure_percent = (new_total_symbol_value / (total_portfolio_value + proposed_position_usd)) * 100 if total_portfolio_value > 0 else 0
+
+            # Exposición actual sin la nueva posición
+            current_symbol_exposure_percent = (current_symbol_market_value / total_portfolio_value) * 100 if total_portfolio_value > 0 else 0
+
+            # ✅ VALIDACIÓN CRÍTICA: Verificar si ya excede el límite SIN nueva posición
+            if current_symbol_exposure_percent > symbol_limit:
+                print(f"🚫 DIVERSIFICACIÓN: {symbol} YA EXCEDE el límite de exposición")
+                print(f"   📊 Exposición actual: {current_symbol_exposure_percent:.1f}% > {symbol_limit}%")
+                print(f"   💰 Valor actual en {symbol}: ${current_symbol_market_value:.2f}")
+                print(f"   💼 Total portafolio: ${total_portfolio_value:.2f}")
+                print(f"   🚫 NO SE PERMITE nueva posición hasta reducir exposición")
+                raise Exception(f"Trade bloqueado por diversificación: {symbol} ya excede límite de {symbol_limit}% (actual: {current_symbol_exposure_percent:.1f}%)")
 
             if new_symbol_exposure_percent > symbol_limit:
                 # Calcular el máximo permitido para este símbolo
-                max_allowed_value = (total_portfolio_value * symbol_limit / 100)
-                max_new_position = max_allowed_value - current_symbol_value
+                max_allowed_total_value = (total_portfolio_value + proposed_position_usd) * symbol_limit / 100
+                max_new_position = max_allowed_total_value - current_symbol_market_value
 
                 if max_new_position <= 11.0:  # Mínimo Binance
-                    print(f"🚫 DIVERSIFICACIÓN: Límite de exposición alcanzado para {symbol}")
-                    print(f"   📊 Exposición actual: {(current_symbol_value/total_portfolio_value)*100:.1f}%")
+                    print(f"🚫 DIVERSIFICACIÓN: Nueva posición excedería límite para {symbol}")
+                    print(f"   📊 Exposición actual: {current_symbol_exposure_percent:.1f}%")
                     print(f"   📊 Nueva exposición: {new_symbol_exposure_percent:.1f}% > {symbol_limit}%")
                     print(f"   💰 Máximo permitido: ${max_new_position:.2f} (mínimo: $11)")
                     raise Exception(f"Trade bloqueado por diversificación: {symbol} excedería límite de {symbol_limit}%")
@@ -2029,23 +2054,25 @@ class SimpleProfessionalTradingManager:
             # ✅ INFORMACIÓN: Mostrar análisis detallado
             print(f"✅ DIVERSIFICACIÓN: Trade aprobado para {symbol}")
             print(f"   🎯 Límite específico: {symbol_limit}% (BTC:50%, ETH:20%, BNB:15%, XRP:15%)")
-            print(f"   📊 Exposición actual en {symbol}: {(current_symbol_value/total_portfolio_value)*100:.1f}%")
+            print(f"   📊 Exposición actual en {symbol}: {current_symbol_exposure_percent:.1f}%")
             print(f"   📊 Nueva exposición en {symbol}: {new_symbol_exposure_percent:.1f}%/{symbol_limit}%")
             print(f"   💰 Tamaño propuesto: ${proposed_position_usd:.2f} ({base_size_percent:.1f}%)")
             print(f"   📊 Posiciones en {symbol}: {current_positions_count}/3")
             print(f"   🔥 Confianza: {confidence:.1f}%")
             print(f"   🏆 Prioridad: {PRIORITY_ORDER.index(symbol) + 1 if symbol in PRIORITY_ORDER else 'N/A'}")
 
-            # ✅ RESUMEN: Estado del portafolio
+            # ✅ RESUMEN: Estado del portafolio (CORREGIDO)
             if symbol_exposures:
                 print(f"📊 ESTADO ACTUAL DEL PORTAFOLIO:")
                 for sym in PRIORITY_ORDER:
                     if sym in symbol_exposures:
                         exposure = symbol_exposures[sym]
-                        exposure_percent = (exposure['total_invested'] / total_portfolio_value) * 100
+                        # ✅ CORRECCIÓN: Usar valor actual de mercado para exposición
+                        current_market_value = exposure['current_value']
+                        exposure_percent = (current_market_value / total_portfolio_value) * 100
                         limit = SYMBOL_LIMITS[sym]
                         status = "✅" if exposure_percent <= limit * 0.8 else "⚠️" if exposure_percent <= limit else "🔴"
-                        print(f"   {status} {sym}: {exposure['count']} pos, {exposure_percent:.1f}%/{limit}% (${exposure['total_invested']:.2f})")
+                        print(f"   {status} {sym}: {exposure['count']} pos, {exposure_percent:.1f}%/{limit}% (${current_market_value:.2f} actual, ${exposure['total_invested']:.2f} invertido)")
 
         except Exception as e:
             if "Trade bloqueado por diversificación" in str(e) or "Trade pausado por priorización" in str(e):
