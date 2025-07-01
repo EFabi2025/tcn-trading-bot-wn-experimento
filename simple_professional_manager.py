@@ -27,7 +27,7 @@ from trading_database import TradingDatabase
 from smart_discord_notifier import SmartDiscordNotifier
 
 # ✅ NUEVO: Importar Professional Portfolio Manager
-from professional_portfolio_manager import ProfessionalPortfolioManager, Position as PortfolioPosition
+from professional_portfolio_manager import ProfessionalPortfolioManager, Position as PortfolioManagerPosition
 
 # ✅ NUEVO: Importar Portfolio Diversification Manager
 from portfolio_diversification_manager import PortfolioDiversificationManager, PortfolioPosition
@@ -1667,7 +1667,7 @@ class SimpleProfessionalTradingManager:
             print(f"    🔄 PASO 4.1: Actualizando registry del portfolio manager...")
 
             # Crear posición compatible para el registry
-            registry_position = PortfolioPosition(
+            registry_position = PortfolioManagerPosition(
                 symbol=position.symbol,
                 side=position.side,
                 quantity=position.quantity,
