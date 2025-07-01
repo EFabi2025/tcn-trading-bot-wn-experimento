@@ -101,6 +101,9 @@ class SimpleProfessionalTradingManager:
         self.active_positions: Dict[str, Position] = {}
         self.account_info = None
 
+        # ✅ NUEVO: Sistema de priorización de señales
+        self.pending_signals = {}  # {symbol: signal_data} para priorización
+
         # ✅ NUEVO: Portfolio tracking
         self.last_portfolio_snapshot = None
         self.last_tcn_report_time = None
@@ -1184,12 +1187,113 @@ class SimpleProfessionalTradingManager:
                 print(f"  ❌ Error procesando {symbol}: {e}")
                 continue
 
+        # ✅ NUEVO: Implementar priorización de BTC en señales simultáneas
         if signals:
             print(f"🎯 Total señales TCN generadas: {len(signals)}")
+
+            # Aplicar priorización: BTC > ETH > BNB > XRP
+            prioritized_signals = self._apply_signal_prioritization(signals)
+
+            print(f"⚖️ Señales después de priorización: {len(prioritized_signals)}")
+            return prioritized_signals
         else:
             print("📊 No se generaron señales TCN válidas en este ciclo")
+            return signals
 
-        return signals
+    def _apply_signal_prioritization(self, signals: Dict) -> Dict:
+        """
+        🏆 SISTEMA DE PRIORIZACIÓN DE SEÑALES CON PRIVILEGIO PARA BTC
+        ---
+        En caso de señales simultáneas, prioriza BTC sobre todas las demás
+        Orden de prioridad: BTC > ETH > BNB > XRP
+
+        Lógica:
+        - Si hay señal BUY de BTC, se ejecuta inmediatamente
+        - Otras señales BUY se evalúan según disponibilidad de balance
+        - Señales SELL no se priorizan (se ejecutan todas)
+        """
+
+        if not signals:
+            return signals
+
+        try:
+            print(f"🏆 Aplicando priorización de señales...")
+
+            # Orden de prioridad definido
+            PRIORITY_ORDER = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT']
+
+            # Separar señales BUY y SELL
+            buy_signals = {symbol: data for symbol, data in signals.items() if data['signal'] == 'BUY'}
+            sell_signals = {symbol: data for symbol, data in signals.items() if data['signal'] == 'SELL'}
+
+            print(f"   📊 Señales BUY: {list(buy_signals.keys())}")
+            print(f"   📊 Señales SELL: {list(sell_signals.keys())}")
+
+            # ✅ SELL: Todas las señales SELL se procesan (no hay priorización)
+            prioritized_signals = sell_signals.copy()
+
+            # ✅ BUY: Aplicar priorización estricta
+            if buy_signals:
+                # Ordenar según prioridad
+                sorted_buy_symbols = []
+                for priority_symbol in PRIORITY_ORDER:
+                    if priority_symbol in buy_signals:
+                        sorted_buy_symbols.append(priority_symbol)
+
+                # Agregar cualquier símbolo no contemplado al final
+                for symbol in buy_signals:
+                    if symbol not in sorted_buy_symbols:
+                        sorted_buy_symbols.append(symbol)
+
+                print(f"   🏆 Orden de prioridad BUY: {sorted_buy_symbols}")
+
+                # ✅ PRIVILEGIO ABSOLUTO PARA BTC
+                if 'BTCUSDT' in buy_signals:
+                    btc_signal = buy_signals['BTCUSDT']
+                    prioritized_signals['BTCUSDT'] = btc_signal
+                    print(f"   👑 BTC PRIVILEGIADO: Señal BUY de BTCUSDT tiene prioridad absoluta")
+
+                    # Verificar si hay balance suficiente para otros después de BTC
+                    btc_confidence = btc_signal['confidence']
+                    estimated_btc_size = min(18.0, max(10.0, (btc_confidence/100) * 20.0))
+                    estimated_btc_value = (self.current_balance * estimated_btc_size / 100)
+                    remaining_balance = self.current_balance - estimated_btc_value
+
+                    print(f"   💰 Balance estimado después de BTC: ${remaining_balance:.2f}")
+
+                    # Solo agregar otras señales BUY si queda balance significativo
+                    min_position_value = 11.0
+                    if remaining_balance >= min_position_value * 1.5:  # Buffer del 50%
+                        # Agregar siguientes en orden de prioridad
+                        for symbol in sorted_buy_symbols[1:]:  # Saltar BTC ya agregado
+                            if symbol in buy_signals:
+                                prioritized_signals[symbol] = buy_signals[symbol]
+                                print(f"   ✅ Agregado {symbol} (prioridad {PRIORITY_ORDER.index(symbol) + 1})")
+                    else:
+                        print(f"   ⏸️ Otras señales BUY pausadas - Balance insuficiente después de BTC")
+
+                else:
+                    # No hay BTC, procesar en orden de prioridad normal
+                    for symbol in sorted_buy_symbols:
+                        prioritized_signals[symbol] = buy_signals[symbol]
+                        print(f"   ✅ Agregado {symbol} (prioridad {PRIORITY_ORDER.index(symbol) + 1 if symbol in PRIORITY_ORDER else 'N/A'})")
+
+            # ✅ ACTUALIZAR pending_signals para el sistema de diversificación
+            self.pending_signals = {symbol: data for symbol, data in prioritized_signals.items() if data['signal'] == 'BUY'}
+
+            # Mostrar resultado final
+            if len(prioritized_signals) != len(signals):
+                removed_signals = set(signals.keys()) - set(prioritized_signals.keys())
+                print(f"   ⏸️ Señales pausadas por priorización: {list(removed_signals)}")
+
+            print(f"   ✅ Señales finales priorizadas: {list(prioritized_signals.keys())}")
+
+            return prioritized_signals
+
+        except Exception as e:
+            print(f"❌ Error en priorización de señales: {e}")
+            # En caso de error, devolver señales originales
+            return signals
 
     async def _analyze_market_context(self, prices: Dict[str, float]) -> Dict:
         """
@@ -1481,6 +1585,11 @@ class SimpleProfessionalTradingManager:
             else:
                 print(f"  📈 Señal BUY - Considerando nueva posición para {symbol} (será {len(existing_positions)+1}/3)")
                 await self._consider_new_position(symbol, signal_data)
+
+        # ✅ NUEVO: Limpiar señales pendientes después de procesar
+        if symbol in self.pending_signals:
+            del self.pending_signals[symbol]
+            print(f"  🧹 Señal pendiente limpiada para {symbol}")
 
     async def _consider_new_position(self, symbol: str, signal_data: Dict):
         """📈 Considerar nueva posición con diversificación - CON DEBUG DETALLADO"""
@@ -1786,151 +1895,174 @@ class SimpleProfessionalTradingManager:
 
     async def _check_portfolio_diversification_before_trade(self, symbol: str, signal_data: Dict):
         """
-        🎯 Verificar diversificación antes de ejecutar trade
+        🎯 SISTEMA DE DIVERSIFICACIÓN INTELIGENTE CON LÍMITES POR PAR
         ---
-        VERSIÓN SIMPLIFICADA: Para bots con pocos pares (BTC, ETH, BNB)
-        Solo aplica restricciones básicas sin bloquear oportunidades
+        Implementa límites específicos de exposición por activo y priorización de BTC
+
+        Límites por par:
+        - BTC: máximo 50% del portafolio
+        - ETH: máximo 20% del portafolio
+        - BNB: máximo 15% del portafolio
+        - XRP: máximo 15% del portafolio
+
+        Priorización: BTC > ETH > BNB > XRP en señales simultáneas
         """
 
         try:
-            # ✅ NUEVO: Con solo 3 pares, usar lógica simplificada
-            print(f"🎯 Verificación de diversificación simplificada para {symbol}")
+            print(f"🎯 Verificación de diversificación inteligente para {symbol}")
 
             # ✅ CRÍTICO: Actualizar balance antes de verificar diversificación
             await self.update_balance_from_binance()
 
-            # Obtener posiciones actuales solo para información
+            # Obtener snapshot actual del portafolio
             snapshot = await self.portfolio_manager.get_portfolio_snapshot()
 
-            # ✅ DEBUG: Información del balance
-            print(f"🔍 DEBUG DIVERSIFICACIÓN:")
-            print(f"   💰 Balance actual: ${self.current_balance:.2f}")
-            print(f"   📊 Posiciones en snapshot: {len(snapshot.active_positions)}")
+            # ✅ CONFIGURACIÓN: Límites específicos por par
+            SYMBOL_LIMITS = {
+                'BTCUSDT': 50.0,  # BTC máximo 50% del portafolio
+                'ETHUSDT': 20.0,  # ETH máximo 20% del portafolio
+                'BNBUSDT': 15.0,  # BNB máximo 15% del portafolio
+                'XRPUSDT': 15.0   # XRP máximo 15% del portafolio
+            }
 
-            # Contar posiciones por símbolo y calcular exposición correctamente
-            positions_by_symbol = {}
-            total_invested_usd = 0.0  # Total invertido originalmente
+            # ✅ PRIORIZACIÓN: Orden de preferencia para señales simultáneas
+            PRIORITY_ORDER = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT']
+
+            # ✅ DEBUG: Información del balance
+            print(f"🔍 DEBUG DIVERSIFICACIÓN INTELIGENTE:")
+            print(f"   💰 Balance actual: ${self.current_balance:.2f}")
+            print(f"   📊 Posiciones activas: {len(snapshot.active_positions)}")
+
+            # Calcular exposición actual por símbolo
+            symbol_exposures = {}
+            total_portfolio_value = self.current_balance  # Empezar con balance disponible
 
             for pos in snapshot.active_positions:
-                if pos.symbol not in positions_by_symbol:
-                    positions_by_symbol[pos.symbol] = []
-                positions_by_symbol[pos.symbol].append(pos)
-                # ✅ CORREGIDO: Solo contar la inversión inicial (dinero gastado en comprar)
+                symbol_key = pos.symbol
+                if symbol_key not in symbol_exposures:
+                    symbol_exposures[symbol_key] = {
+                        'positions': [],
+                        'total_invested': 0.0,
+                        'current_value': 0.0,
+                        'count': 0
+                    }
+
+                symbol_exposures[symbol_key]['positions'].append(pos)
+                symbol_exposures[symbol_key]['count'] += 1
+
+                # Valor invertido originalmente (entry_price * quantity)
                 invested_value = pos.quantity * pos.entry_price
-                total_invested_usd += invested_value
-                print(f"   📍 {pos.symbol}: {pos.quantity:.6f} x ${pos.entry_price:.4f} = ${invested_value:.2f}")
+                symbol_exposures[symbol_key]['total_invested'] += invested_value
 
-            # ✅ REGLAS SIMPLIFICADAS PARA POCOS PARES:
+                # Valor actual de mercado
+                symbol_exposures[symbol_key]['current_value'] += pos.market_value
+                total_portfolio_value += invested_value
 
-            # 1. Máximo 3 posiciones por símbolo (configuración correcta)
-            existing_positions_count = len(positions_by_symbol.get(symbol, []))
-            if existing_positions_count >= 3:
+                print(f"   📍 {pos.symbol}: {pos.quantity:.6f} x ${pos.entry_price:.4f} = ${invested_value:.2f} (actual: ${pos.market_value:.2f})")
+
+            # ✅ VALIDACIÓN 1: Máximo 3 posiciones por símbolo
+            current_positions_count = symbol_exposures.get(symbol, {}).get('count', 0)
+            if current_positions_count >= 3:
                 print(f"🚫 DIVERSIFICACIÓN: Máximo 3 posiciones por símbolo alcanzado para {symbol}")
-                print(f"   📊 Posiciones actuales en {symbol}: {existing_positions_count}")
+                print(f"   📊 Posiciones actuales en {symbol}: {current_positions_count}/3")
                 raise Exception(f"Trade bloqueado por diversificación: Máximo 3 posiciones por símbolo en {symbol}")
 
-            # 2. ✅ CORRECCIÓN CRÍTICA: Calcular exposición correctamente
+            # ✅ CÁLCULO: Tamaño de nueva posición propuesta
             confidence = signal_data['confidence']
-            # ✅ NUEVO: Calcular balance inicial primero para usar en todos los cálculos
-            initial_balance = self.current_balance + total_invested_usd
 
-            # ✅ CORRECCIÓN CRÍTICA: Ponderar por dinero realmente disponible
-            # El tamaño de posición debe calcularse sobre el dinero disponible, no el balance inicial
-            available_balance = self.current_balance  # Dinero realmente disponible
+            # Tamaño base según confianza (entre 10% y 18% del balance disponible)
+            base_size_percent = min(18.0, max(10.0, (confidence/100) * 20.0))
+            proposed_position_usd = (self.current_balance * base_size_percent / 100)
 
-            # ✅ LÓGICA INTELIGENTE: Ajustar porcentaje según dinero disponible vs balance inicial
-            if initial_balance > 0:
-                available_ratio = available_balance / initial_balance  # Qué % del capital inicial queda libre
+            # ✅ VALIDACIÓN 2: Límites específicos por símbolo
+            symbol_limit = SYMBOL_LIMITS.get(symbol, 10.0)  # Default 10% para otros
 
-                # Si queda poco dinero disponible, usar porcentaje más alto del disponible
-                if available_ratio < 0.3:  # Si queda menos del 30% disponible
-                    max_position_size = min(90.0, 15.0 / available_ratio)  # Escalar hasta 90% del disponible
+            # Calcular exposición actual del símbolo
+            current_symbol_value = symbol_exposures.get(symbol, {}).get('total_invested', 0.0)
+            new_total_symbol_value = current_symbol_value + proposed_position_usd
+            new_symbol_exposure_percent = (new_total_symbol_value / total_portfolio_value) * 100 if total_portfolio_value > 0 else 0
+
+            if new_symbol_exposure_percent > symbol_limit:
+                # Calcular el máximo permitido para este símbolo
+                max_allowed_value = (total_portfolio_value * symbol_limit / 100)
+                max_new_position = max_allowed_value - current_symbol_value
+
+                if max_new_position <= 11.0:  # Mínimo Binance
+                    print(f"🚫 DIVERSIFICACIÓN: Límite de exposición alcanzado para {symbol}")
+                    print(f"   📊 Exposición actual: {(current_symbol_value/total_portfolio_value)*100:.1f}%")
+                    print(f"   📊 Nueva exposición: {new_symbol_exposure_percent:.1f}% > {symbol_limit}%")
+                    print(f"   💰 Máximo permitido: ${max_new_position:.2f} (mínimo: $11)")
+                    raise Exception(f"Trade bloqueado por diversificación: {symbol} excedería límite de {symbol_limit}%")
                 else:
-                    max_position_size = 15.0  # Usar 15% normal si hay suficiente dinero
+                    # Ajustar el tamaño de la posición al máximo permitido
+                    proposed_position_usd = max_new_position
+                    print(f"⚖️ AJUSTE DE DIVERSIFICACIÓN: {symbol} ajustado a ${proposed_position_usd:.2f}")
 
-                position_size_percent = min(max_position_size, (confidence/100) * 18.0)
-                new_position_size_usd = (available_balance * position_size_percent / 100)
-            else:
-                new_position_size_usd = 0
+            # ✅ VALIDACIÓN 3: Priorización en señales simultáneas
+            # Verificar si hay otras señales pendientes con mayor prioridad
+            if hasattr(self, 'pending_signals') and self.pending_signals:
+                current_priority = PRIORITY_ORDER.index(symbol) if symbol in PRIORITY_ORDER else len(PRIORITY_ORDER)
 
-            # ✅ CÁLCULO CORRECTO:
-            # - Balance inicial = balance actual + dinero ya invertido
-            # - Exposición = (dinero invertido + nueva inversión) / balance inicial * 100
-            new_total_invested = total_invested_usd + new_position_size_usd
-            exposure_percent = (new_total_invested / initial_balance) * 100 if initial_balance > 0 else 0
-            current_exposure_percent = (total_invested_usd / initial_balance) * 100 if initial_balance > 0 else 0
+                for pending_symbol in self.pending_signals:
+                    if pending_symbol in PRIORITY_ORDER:
+                        pending_priority = PRIORITY_ORDER.index(pending_symbol)
+                        if pending_priority < current_priority:
+                            print(f"⏸️ PRIORIZACIÓN: {symbol} pausado, {pending_symbol} tiene mayor prioridad")
+                            print(f"   📊 Orden de prioridad: {' > '.join(PRIORITY_ORDER)}")
+                            raise Exception(f"Trade pausado por priorización: {pending_symbol} tiene mayor prioridad que {symbol}")
 
-            # ✅ DEBUG: Mostrar cálculos detallados
-            print(f"🔍 CÁLCULOS DE EXPOSICIÓN:")
-            print(f"   💰 Total ya invertido: ${total_invested_usd:.2f}")
-            print(f"   💰 Balance inicial calculado: ${initial_balance:.2f}")
-            print(f"   💰 Dinero disponible: ${available_balance:.2f}")
-            if initial_balance > 0:
-                available_ratio = available_balance / initial_balance
-                print(f"   📊 % dinero libre: {available_ratio*100:.1f}%")
-                print(f"   🎯 Max posición ajustado: {max_position_size:.1f}%")
-            print(f"   💰 Nueva posición (USD): ${new_position_size_usd:.2f}")
-            print(f"   💰 Nueva posición (%): {position_size_percent:.1f}%")
-            print(f"   📊 Exposición actual: {current_exposure_percent:.1f}%")
-            print(f"   📊 Nueva exposición: {exposure_percent:.1f}%")
+            # ✅ VALIDACIÓN 4: Exposición total del portafolio
+            total_exposure_percent = ((total_portfolio_value - self.current_balance) / total_portfolio_value) * 100 if total_portfolio_value > 0 else 0
+            max_total_exposure = 85.0  # Máximo 85% del portafolio invertido
 
-            # ✅ LÓGICA INTELIGENTE: Límite dinámico basado en confianza y número de pares
-            max_exposure = 90.0  # Base: 90%
-
-            # Aumentar límite si la confianza es muy alta
             if confidence >= 80.0:
-                max_exposure = 95.0  # Permitir hasta 95% con alta confianza
+                max_total_exposure = 90.0  # Permitir hasta 90% con alta confianza
 
-            # Reducir límite solo si ya tenemos muchas posiciones distribuidas
-            total_symbols_with_positions = len(positions_by_symbol)
-            if total_symbols_with_positions >= 3:  # Si ya tenemos posiciones en los 3 pares
-                max_exposure = 85.0  # Ser más conservador
+            new_total_exposure = total_exposure_percent + (proposed_position_usd / total_portfolio_value) * 100
 
-            if exposure_percent > max_exposure:
+            if new_total_exposure > max_total_exposure:
                 print(f"🚫 DIVERSIFICACIÓN: Exposición total muy alta")
-                print(f"   📊 Exposición actual: {current_exposure_percent:.1f}%")
-                print(f"   📊 Nueva exposición: {exposure_percent:.1f}% > {max_exposure:.0f}%")
-                print(f"   💰 Balance actual: ${self.current_balance:.2f}")
-                print(f"   💰 Balance inicial: ${initial_balance:.2f}")
-                print(f"   💰 Ya invertido: ${total_invested_usd:.2f}")
-                print(f"   💰 Nueva inversión: ${new_position_size_usd:.2f}")
-                print(f"   🎯 Confianza: {confidence:.1f}% | Pares activos: {total_symbols_with_positions}/3")
-                raise Exception(f"Trade bloqueado por diversificación: Exposición total > {max_exposure:.0f}%")
+                print(f"   📊 Exposición actual: {total_exposure_percent:.1f}%")
+                print(f"   📊 Nueva exposición: {new_total_exposure:.1f}% > {max_total_exposure:.0f}%")
+                raise Exception(f"Trade bloqueado por diversificación: Exposición total > {max_total_exposure:.0f}%")
 
-            # 3. ✅ PERMITIR: Concentración en un solo par si es rentable
-            # Con solo 3 pares, es normal tener concentración temporal
+            # ✅ INFORMACIÓN: Mostrar análisis detallado
+            print(f"✅ DIVERSIFICACIÓN: Trade aprobado para {symbol}")
+            print(f"   🎯 Límite específico: {symbol_limit}% (BTC:50%, ETH:20%, BNB:15%, XRP:15%)")
+            print(f"   📊 Exposición actual en {symbol}: {(current_symbol_value/total_portfolio_value)*100:.1f}%")
+            print(f"   📊 Nueva exposición en {symbol}: {new_symbol_exposure_percent:.1f}%/{symbol_limit}%")
+            print(f"   💰 Tamaño propuesto: ${proposed_position_usd:.2f} ({base_size_percent:.1f}%)")
+            print(f"   📊 Posiciones en {symbol}: {current_positions_count}/3")
+            print(f"   🔥 Confianza: {confidence:.1f}%")
+            print(f"   🏆 Prioridad: {PRIORITY_ORDER.index(symbol) + 1 if symbol in PRIORITY_ORDER else 'N/A'}")
 
-            # ✅ INFORMACIÓN: Solo mostrar estado sin bloquear
-            print(f"✅ DIVERSIFICACIÓN: Trade permitido para {symbol}")
-            print(f"   📊 Posiciones en {symbol}: {existing_positions_count}/3")
-            print(f"   💰 Exposición actual: {current_exposure_percent:.1f}%")
-            print(f"   💰 Nueva exposición: {exposure_percent:.1f}%/{max_exposure:.0f}%")
-            print(f"   🎯 Tamaño propuesto: ${new_position_size_usd:.2f} ({position_size_percent:.1f}%)")
-            print(f"   🔥 Confianza: {confidence:.1f}% | Pares activos: {len(positions_by_symbol)}/3")
-
-            # ✅ OPCIONAL: Análisis informativo cada 5 trades (no bloquea)
-            if self.trade_count % 5 == 0 and len(snapshot.active_positions) > 0:
-                print(f"📊 RESUMEN DE PORTAFOLIO:")
-                for sym, positions in positions_by_symbol.items():
-                    total_value = sum(pos.market_value for pos in positions)
-                    percentage = (total_value / snapshot.total_balance_usd) * 100 if snapshot.total_balance_usd > 0 else 0
-                    print(f"   {sym}: {len(positions)} posición(es), ${total_value:.2f} ({percentage:.1f}%)")
+            # ✅ RESUMEN: Estado del portafolio
+            if symbol_exposures:
+                print(f"📊 ESTADO ACTUAL DEL PORTAFOLIO:")
+                for sym in PRIORITY_ORDER:
+                    if sym in symbol_exposures:
+                        exposure = symbol_exposures[sym]
+                        exposure_percent = (exposure['total_invested'] / total_portfolio_value) * 100
+                        limit = SYMBOL_LIMITS[sym]
+                        status = "✅" if exposure_percent <= limit * 0.8 else "⚠️" if exposure_percent <= limit else "🔴"
+                        print(f"   {status} {sym}: {exposure['count']} pos, {exposure_percent:.1f}%/{limit}% (${exposure['total_invested']:.2f})")
 
         except Exception as e:
-            if "Trade bloqueado por diversificación" in str(e):
-                # Solo bloquear en casos extremos (>3 posiciones por par o >90% exposición)
+            if "Trade bloqueado por diversificación" in str(e) or "Trade pausado por priorización" in str(e):
+                # Bloqueos legítimos de diversificación
                 print(f"🚫 {str(e)}")
                 await self.database.log_event('WARNING', 'DIVERSIFICATION', str(e), symbol)
 
-                # Notificación Discord más suave
+                # Notificación Discord informativa
                 await self._send_discord_notification(
-                    f"⚠️ **DIVERSIFICACIÓN: LÍMITE ALCANZADO**\n"
+                    f"⚖️ **DIVERSIFICACIÓN INTELIGENTE**\n"
                     f"📊 {symbol}: {signal_data['signal']}\n"
-                    f"💡 {str(e).replace('Trade bloqueado por diversificación: ', '')}\n"
-                    f"🎯 Confianza: {signal_data['confidence']:.1%}"
+                    f"💡 {str(e).replace('Trade bloqueado por diversificación: ', '').replace('Trade pausado por priorización: ', '')}\n"
+                    f"🎯 Confianza: {signal_data['confidence']:.1%}\n"
+                    f"🏆 Límites: BTC≤50%, ETH≤20%, BNB≤15%, XRP≤15%"
                 )
 
-                raise  # Re-lanzar solo bloqueos reales
+                raise  # Re-lanzar bloqueos legítimos
             else:
                 # Errores técnicos no deben bloquear trades
                 print(f"⚠️ Error técnico en diversificación (ignorado): {e}")
