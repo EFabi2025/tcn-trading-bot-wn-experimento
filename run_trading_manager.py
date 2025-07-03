@@ -28,12 +28,8 @@ def signal_handler(sig, frame):
 async def main():
     """🎯 Función principal"""
     global trading_manager
-
-    print("🚀 PROFESSIONAL TRADING MANAGER")
     print("=" * 50)
-    print("💰 Balance: 102 USDT")
-    print("🎯 Mínimo Binance: 11 USDT")
-    print("📊 Posiciones máx: 2 simultáneas")
+    print("🚀 PROFESSIONAL TRADING MANAGER")
     print("=" * 50)
 
     try:

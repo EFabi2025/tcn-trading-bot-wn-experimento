@@ -95,6 +95,55 @@ class TradingConfig:
         'intra_op_parallelism_threads': 0   # Auto-detect
     }
 
+    # ✅ NUEVO: Sistema de Estabilidad y Cooldown de Señales
+    SIGNAL_STABILITY_CONFIG = {
+        # Tiempos de cooldown por símbolo (minutos)
+        'SIGNAL_COOLDOWN_MINUTES': {
+            'ETHUSDT': 15,  # ETH: 15 minutos entre cambios de señal
+            'BTCUSDT': 10,  # BTC: 10 minutos
+            'BNBUSDT': 12,  # BNB: 12 minutos
+            'XRPUSDT': 12   # XRP: 12 minutos
+        },
+
+        # Protección específica para ETH
+        'ETH_PROTECTION': {
+            'min_hold_time_minutes': 20,        # Mínimo 20 min antes de cerrar posición ETH
+            'signal_confirmation_required': 2,   # Requiere 2 señales consecutivas para SELL
+            'extreme_confidence_threshold': 90.0, # Umbral para bypasses de protección
+            'loss_protection_threshold': -4.0,   # Pérdida % que permite cierre inmediato
+            'profit_taking_threshold': 5.0       # Ganancia % para cierre con confianza extrema
+        },
+
+        # Umbrales de confianza aumentada para cambios de señal
+        'MIN_CONFIDENCE_FOR_SIGNAL_CHANGE': {
+            'ETHUSDT': 78.0,  # ETH requiere 78% para cambiar señal
+            'BTCUSDT': 75.0,  # BTC requiere 75%
+            'BNBUSDT': 72.0,  # BNB requiere 72%
+            'XRPUSDT': 75.0   # XRP requiere 75%
+        },
+
+        # Criterios de cierre de posición por símbolo
+        'POSITION_CLOSE_CRITERIA': {
+            'ETHUSDT': {
+                'extreme_confidence_threshold': 90.0,
+                'high_confidence_threshold': 85.0,
+                'min_hold_time_minutes': 20,
+                'big_loss_threshold': -4.0,
+                'medium_loss_threshold': -3.0,
+                'big_profit_threshold': 5.0,
+                'very_high_profit_threshold': 6.0,
+                'reversal_loss_threshold': -2.0
+            },
+            'DEFAULT': {  # Para BTC, BNB, XRP
+                'high_confidence_threshold': 75.0,
+                'very_high_confidence_threshold': 85.0,
+                'profit_threshold': 2.0,
+                'loss_threshold': -1.5,
+                'reversal_profit_threshold': 3.0
+            }
+        }
+    }
+
 class ConfigManager:
     """📋 Gestor de configuración centralizada"""
 

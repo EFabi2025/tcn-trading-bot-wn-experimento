@@ -1,22 +1,31 @@
 #!/usr/bin/env python3
 """
 🚀 SIMPLE PROFESSIONAL TRADING MANAGER
-Sistema de trading básico sin ML para testing inicial
-Integrado con Professional Portfolio Manager para reportes TCN
+====================================
+
+Gestor de trading automatizado profesional con:
+- Sistema TCN avanzado para predicciones
+- Gestión inteligente de riesgo y diversificación
+- Monitoreo en tiempo real de posiciones
+- Notificaciones automáticas vía Discord
+- Análisis de contexto de mercado
 """
 
-import asyncio
-import aiohttp
-import time
+import os
+import sys
+import json
 import hmac
 import hashlib
-import json
-import os
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
-from decimal import Decimal
+import asyncio
+import aiohttp
+import sqlite3
 import pandas as pd
+import numpy as np
+import time
+from datetime import datetime, timedelta
+from dataclasses import dataclass
+from decimal import Decimal, ROUND_DOWN
+from typing import Dict, List, Optional, Any, Tuple
 from dotenv import load_dotenv
 
 # Importar nuestros módulos de risk y database
@@ -60,18 +69,36 @@ class TradingManagerStatus:
     EMERGENCY_STOP = "EMERGENCY_STOP"
 
 class SimpleProfessionalTradingManager:
-    """🚀 Trading Manager Profesional Simplificado"""
+    """🚀 Trading Manager Profesional"""
 
     def __init__(self):
-        """🚀 Inicializar Trading Manager"""
-        print("🚀 Simple Professional Trading Manager inicializado")
+        """🏗️ Constructor del Trading Manager Profesional"""
+        print("🚀 Inicializando Simple Professional Trading Manager...")
 
-        # Configuración básica
-        self.config = self._load_config()
+        # Estados y configuración
+        self.status = TradingManagerStatus.STOPPED
+        self.session_pnl = 0.0
+        self.current_balance = 0.0
+        self.binance_config = self._load_config()
 
-        # ✅ CORREGIDO: Solo pares con modelos TCN disponibles
-        # Excluir temporalmente ADAUSDT, DOTUSDT, SOLUSDT hasta entrenar modelos
-        self.symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
+        # ✅ NUEVO: Sistema de cooldown y estabilidad de señales
+        self.signal_history = {}  # Historial de señales por símbolo
+        self.last_position_action = {}  # Última acción de posición por símbolo
+        self.signal_cooldown = {  # Tiempos de enfriamiento por símbolo (en minutos)
+            'ETHUSDT': 15,  # ETH: 15 minutos entre cambios de señal
+            'BTCUSDT': 10,  # BTC: 10 minutos
+            'BNBUSDT': 12,  # BNB: 12 minutos
+            'XRPUSDT': 12   # XRP: 12 minutos
+        }
+        self.eth_position_protection = {  # Protección específica para ETH
+            'last_close_time': None,
+            'min_hold_time_minutes': 20,  # Mínimo 20 min antes de cerrar posición ETH
+            'consecutive_signals': 0,     # Contador de señales consecutivas
+            'signal_confirmation_required': 2  # Requiere 2 señales consecutivas para ETH
+        }
+
+        # Configuración de símbolos y gestores
+        self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT']
 
         # ⚠️ PARES PENDIENTES (sin modelos): ["ADAUSDT", "DOTUSDT", "SOLUSDT"]
         self.excluded_symbols = ["ADAUSDT", "DOTUSDT", "SOLUSDT"]
@@ -95,7 +122,6 @@ class SimpleProfessionalTradingManager:
 
         # Balance y trading - ✅ CORREGIDO: Inicializar en 0, obtener de Binance
         self.current_balance = 0.0  # Se actualizará desde Binance
-        self.session_pnl = 0.0
         self.trade_count = 0
         # ✅ CORREGIDO: Clave por order_id para múltiples posiciones por símbolo
         self.active_positions: Dict[str, Position] = {}
@@ -194,7 +220,7 @@ class SimpleProfessionalTradingManager:
     def _generate_signature(self, params: str) -> str:
         """🔐 Generar firma para API de Binance"""
         return hmac.new(
-            self.config.secret_key.encode('utf-8'),
+            self.binance_config.secret_key.encode('utf-8'),
             params.encode('utf-8'),
             hashlib.sha256
         ).hexdigest()
@@ -210,10 +236,10 @@ class SimpleProfessionalTradingManager:
             signature = self._generate_signature(query_string)
 
             headers = {
-                'X-MBX-APIKEY': self.config.api_key
+                'X-MBX-APIKEY': self.binance_config.api_key
             }
 
-            url = f"{self.config.base_url}/api/v3/account"
+            url = f"{self.binance_config.base_url}/api/v3/account"
             full_url = f"{url}?{query_string}&signature={signature}"
 
             async with aiohttp.ClientSession() as session:
@@ -317,9 +343,9 @@ class SimpleProfessionalTradingManager:
             # 3. ✅ NUEVO: Inicializar Professional Portfolio Manager
             print("💼 Inicializando Professional Portfolio Manager...")
             self.portfolio_manager = ProfessionalPortfolioManager(
-                api_key=self.config.api_key,
-                secret_key=self.config.secret_key,
-                base_url=self.config.base_url
+                api_key=self.binance_config.api_key,
+                secret_key=self.binance_config.secret_key,
+                base_url=self.binance_config.base_url
             )
             print("✅ Portfolio Manager inicializado")
 
@@ -445,10 +471,9 @@ class SimpleProfessionalTradingManager:
     async def _initialize_risk_manager(self):
         """🛡️ Inicializar Risk Manager"""
         print("🛡️ Inicializando Risk Manager...")
-        self.risk_manager = AdvancedRiskManager(self.config)
+        self.risk_manager = AdvancedRiskManager(self.binance_config)
         await self.risk_manager.initialize()
-
-        print("✅ Risk Manager configurado")
+        print("🛡️ Risk Manager inicializado")
 
     async def _verify_connectivity(self):
         """🔗 Verificar conectividad con APIs"""
@@ -468,7 +493,7 @@ class SimpleProfessionalTradingManager:
         """💲 Obtener precio actual de un símbolo"""
         try:
             async with aiohttp.ClientSession() as session:
-                url = f"{self.config.base_url}/api/v3/ticker/price"
+                url = f"{self.binance_config.base_url}/api/v3/ticker/price"
                 params = {'symbol': symbol}
                 async with session.get(url, params=params) as response:
                     if response.status == 200:
@@ -1115,6 +1140,18 @@ class SimpleProfessionalTradingManager:
                 signal = prediction['signal']
                 confidence_level = prediction['confidence'] * 100  # Convertir a porcentaje
 
+                # ✅ NUEVO: Aplicar filtros de estabilidad y cooldown
+                filtered_signal, filter_reason = self._apply_signal_stability_filter(
+                    symbol, signal, confidence_level, current_price
+                )
+
+                if filtered_signal != signal:
+                    print(f"🛡️ FILTRO DE ESTABILIDAD aplicado en {symbol}: {signal} → {filtered_signal} ({filter_reason})")
+                    signal = filtered_signal
+                    # Si la señal fue filtrada a HOLD, reducir confianza
+                    if signal == 'HOLD':
+                        confidence_level = min(confidence_level, 65.0)
+
                 # ✅ NUEVO: Aplicar filtro de contexto de mercado
                 filtered_signal, context_reason = self._apply_market_context_filter(
                     signal, confidence_level, market_context, symbol
@@ -1416,26 +1453,28 @@ class SimpleProfessionalTradingManager:
 
     def _apply_market_context_filter(self, signal: str, confidence: float, market_context: Dict, symbol: str) -> tuple:
         """
-        🛡️ Aplicar filtro de contexto de mercado como capa de seguridad adicional
-
-        Args:
-            signal: Señal original del modelo TCN ('BUY', 'SELL', 'HOLD')
-            confidence: Confianza de la señal (0-100)
-            market_context: Contexto de mercado analizado
-            symbol: Símbolo siendo analizado
+        🛡️ FILTRO DE CONTEXTO DE MERCADO INTEGRAL CON OPTIMIZACIONES
+        ---
+        Aplica filtros adaptativos basados en:
+        1. Régimen de mercado (Bullish/Bearish/Neutral)
+        2. Volatilidad y miedo del mercado
+        3. Características específicas por activo
+        4. Correlaciones y momentum
 
         Returns:
             tuple: (señal_filtrada, razón_del_filtro)
         """
-        try:
-            regime = market_context['regime']
-            market_score = market_context['score']
-            market_confidence = market_context['confidence']
-            fear_factor = market_context['market_fear_factor']
-            volatility = market_context['volatility_level']
 
-            original_signal = signal
-            filter_reason = ""
+        try:
+            # Extraer información del contexto
+            regime = market_context.get('regime', 'NEUTRAL')
+            market_confidence = market_context.get('confidence', 0.0)
+            market_score = market_context.get('score', 0.0)
+            fear_factor = market_context.get('market_fear_factor', 0.5)
+            volatility = market_context.get('volatility_level', 'MEDIUM')
+
+            # Por defecto, no filtrar
+            filter_reason = f"Sin filtro aplicado - {regime} con confianza {market_confidence:.1%}"
 
             # 🔴 FILTROS BEARISH - Restricciones de seguridad en mercado bajista (OPTIMIZADO INTEGRAL)
             if regime == 'BEARISH' and market_confidence > 0.7:
@@ -1530,17 +1569,116 @@ class SimpleProfessionalTradingManager:
                         signal = 'HOLD'
                         filter_reason = f"Altcoins underperforming vs BTC - {symbol} BUY requiere >{required_alt_confidence}% confianza"
 
-            # 📊 LOG DEL FILTRO APLICADO
-            if signal != original_signal:
-                print(f"  🛡️ FILTRO CONTEXTO: {symbol} {original_signal}→{signal}")
-                print(f"      Régimen: {regime} (conf: {market_confidence:.1%})")
-                print(f"      Razón: {filter_reason}")
-
             return signal, filter_reason
 
         except Exception as e:
-            print(f"❌ Error aplicando filtro de contexto: {e}")
-            return signal, f"Error en filtro: {str(e)}"
+            print(f"⚠️ Error en filtro de contexto para {symbol}: {e}")
+            return signal, f"Error en filtro: {e}"
+
+    def _apply_signal_stability_filter(self, symbol: str, signal: str, confidence: float, current_price: float) -> tuple:
+        """
+        🛡️ FILTRO DE ESTABILIDAD Y COOLDOWN PARA SEÑALES
+        ---
+        Previene cambios frecuentes de señal mediante:
+        1. Sistema de cooldown por símbolo
+        2. Confirmación de señales para ETH
+        3. Protección contra ruido del modelo
+        4. Validación de consistencia temporal
+
+        Returns:
+            tuple: (señal_filtrada, razón_del_filtro)
+        """
+
+        try:
+            current_time = datetime.now()
+
+            # Inicializar historial del símbolo si no existe
+            if symbol not in self.signal_history:
+                self.signal_history[symbol] = {
+                    'last_signal': None,
+                    'last_signal_time': None,
+                    'signal_count': 0,
+                    'consecutive_same_signal': 0
+                }
+
+            history = self.signal_history[symbol]
+            cooldown_minutes = self.signal_cooldown.get(symbol, 10)
+
+            # ✅ VERIFICAR COOLDOWN GENERAL
+            if history['last_signal_time']:
+                time_since_last = (current_time - history['last_signal_time']).total_seconds() / 60
+
+                # Si estamos en cooldown y la señal cambió
+                if time_since_last < cooldown_minutes and history['last_signal'] != signal:
+                    # ✅ EXCEPCIÓN: Permitir si es señal HOLD (más conservador)
+                    if signal != 'HOLD':
+                        return 'HOLD', f"Cooldown activo: {time_since_last:.1f}min < {cooldown_minutes}min desde última señal {history['last_signal']}"
+
+            # ✅ PROTECCIÓN ESPECÍFICA PARA ETH
+            if symbol == 'ETHUSDT':
+                eth_protection = self.eth_position_protection
+
+                # Verificar si hay posiciones existentes de ETH
+                existing_positions = self._get_positions_for_symbol(symbol)
+
+                if existing_positions and signal == 'SELL':
+                    # ✅ PROTECCIÓN: Tiempo mínimo de retención para posiciones ETH
+                    for position in existing_positions:
+                        # Obtener el tiempo de creación de la posición (approximation)
+                        if hasattr(position, 'entry_time'):
+                            position_age_minutes = (current_time - position.entry_time).total_seconds() / 60
+                        else:
+                            # Si no tenemos entry_time, usar última acción conocida
+                            last_action_time = self.last_position_action.get(symbol, current_time - timedelta(minutes=eth_protection['min_hold_time_minutes']))
+                            position_age_minutes = (current_time - last_action_time).total_seconds() / 60
+
+                        if position_age_minutes < eth_protection['min_hold_time_minutes']:
+                            # ✅ EXCEPCIÓN: Permitir SELL solo con confianza EXTREMA (>90%) y pérdida significativa
+                            if confidence >= 90.0 and position.pnl_percent < -3.0:
+                                filter_reason = f"ETH SELL permitido por confianza extrema ({confidence:.1f}%) y pérdida > 3%"
+                                break
+                            else:
+                                return 'HOLD', f"ETH protegido: posición muy reciente ({position_age_minutes:.1f}min < {eth_protection['min_hold_time_minutes']}min)"
+
+                # ✅ SISTEMA DE CONFIRMACIÓN PARA ETH
+                # Requerir múltiples señales consecutivas iguales
+                if history['last_signal'] == signal:
+                    history['consecutive_same_signal'] += 1
+                else:
+                    history['consecutive_same_signal'] = 1
+
+                required_confirmations = eth_protection['signal_confirmation_required']
+
+                # Solo aplicar confirmación para señales de SELL en ETH
+                if signal == 'SELL' and history['consecutive_same_signal'] < required_confirmations:
+                    return 'HOLD', f"ETH SELL requiere {required_confirmations} confirmaciones consecutivas (actual: {history['consecutive_same_signal']})"
+
+            # ✅ FILTRO DE CONFIANZA AUMENTADA PARA CAMBIOS DE SEÑAL
+            if history['last_signal'] and history['last_signal'] != signal:
+                # Requerir confianza más alta para cambios de señal
+                min_confidence_for_change = {
+                    'ETHUSDT': 78.0,  # ETH requiere 78% para cambiar señal
+                    'BTCUSDT': 75.0,  # BTC requiere 75%
+                    'BNBUSDT': 72.0,  # BNB requiere 72%
+                    'XRPUSDT': 75.0   # XRP requiere 75%
+                }.get(symbol, 75.0)
+
+                if confidence < min_confidence_for_change:
+                    return 'HOLD', f"Cambio de señal {history['last_signal']}→{signal} requiere >{min_confidence_for_change:.0f}% confianza (actual: {confidence:.1f}%)"
+
+            # ✅ ACTUALIZAR HISTORIAL
+            history['last_signal'] = signal
+            history['last_signal_time'] = current_time
+            history['signal_count'] += 1
+
+            # Actualizar timestamp de última acción para el símbolo
+            self.last_position_action[symbol] = current_time
+
+            return signal, f"Señal estable: {signal} con {confidence:.1f}% confianza"
+
+        except Exception as e:
+            print(f"⚠️ Error en filtro de estabilidad para {symbol}: {e}")
+            return signal, f"Error en filtro estabilidad: {e}"
 
     async def _process_signal(self, symbol: str, signal_data: Dict):
         """⚡ Procesar una señal individual - CON DEBUG DETALLADO"""
@@ -1608,8 +1746,9 @@ class SimpleProfessionalTradingManager:
         # ✅ NUEVO: Verificar diversificación del portafolio ANTES de risk management
         print(f"    🎯 PASO 1: Verificando diversificación para {symbol}...")
         try:
-            await self._check_portfolio_diversification_before_trade(symbol, signal_data)
-            print(f"    ✅ PASO 1: Diversificación OK para {symbol}")
+            # ✅ CORRECCIÓN: Usar el tamaño ajustado de la posición
+            adjusted_position_usd = await self._check_portfolio_diversification_before_trade(symbol, signal_data)
+            print(f"    ✅ PASO 1: Diversificación OK para {symbol}. Tamaño ajustado: ${adjusted_position_usd:.2f}")
         except Exception as e:
             if "Trade bloqueado por diversificación" in str(e):
                 print(f"    ❌ PASO 1: DIVERSIFICACIÓN BLOQUEÓ: {symbol}: {str(e)}")
@@ -1618,9 +1757,22 @@ class SimpleProfessionalTradingManager:
             else:
                 print(f"    ⚠️ PASO 1: Error verificando diversificación para {symbol}: {e}")
                 # Continuar con el trade si es un error técnico
+                adjusted_position_usd = None # Usar tamaño por defecto
 
         # Verificar límites de riesgo
         print(f"    🛡️ PASO 2: Verificando límites de riesgo para {symbol}...")
+
+        # ✅ CORRECCIÓN: Verificar circuit breaker ANTES de otros límites
+        try:
+            if await self._daily_loss_exceeds_limit():
+                print(f"    ❌ BLOQUEADO: Límite de pérdida diaria excedido. No se abrirán nuevas posiciones.")
+                # Opcional: Pausar el trading completamente
+                if not self.pause_trading:
+                    await self.pause_trading_with_reason(f"Circuit breaker: Límite de pérdida diaria excedido")
+                return
+        except Exception as e:
+            print(f"    ⚠️ Error verificando límite de pérdida diaria: {e}")
+
         can_trade = True
         reason = ""
 
@@ -1645,7 +1797,10 @@ class SimpleProfessionalTradingManager:
         position = None
         if self.risk_manager:
             print(f"    💰 PASO 3: Risk manager disponible, ejecutando open_position...")
-            position = await self.risk_manager.open_position(symbol, signal, confidence, current_price)
+            # ✅ CORRECCIÓN: Usar tamaño ajustado por diversificación si está disponible
+            position = await self.risk_manager.open_position(
+                symbol, signal, confidence, current_price, adjusted_position_usd=adjusted_position_usd
+            )
             if position:
                 print(f"    ✅ PASO 3: POSICIÓN CREADA: {symbol} - Order ID: {position.order_id}")
             else:
@@ -1784,17 +1939,55 @@ class SimpleProfessionalTradingManager:
                 should_close = False
                 close_reason = ""
 
-                # Solo cerrar si cumple criterios estrictos
-                if confidence >= 75.0:  # Confianza alta
-                    if position.pnl_percent > 2.0:  # Si está en ganancia > 2%
-                        should_close = True
-                        close_reason = "SIGNAL_SELL_HIGH_CONF_PROFIT"
-                    elif position.pnl_percent < -1.5:  # O pérdida > 1.5%
-                        should_close = True
-                        close_reason = "SIGNAL_SELL_HIGH_CONF_LOSS"
-                elif confidence >= 85.0:  # Confianza muy alta
-                    should_close = True  # Cerrar independientemente del PnL
-                    close_reason = "SIGNAL_SELL_VERY_HIGH_CONF"
+                # ✅ PROTECCIÓN ESPECÍFICA PARA ETH - Criterios MÁS ESTRICTOS
+                if symbol == 'ETHUSDT':
+                    # ETH requiere criterios mucho más estrictos para cerrar posiciones
+                    current_time = datetime.now()
+
+                    # Verificar tiempo mínimo de retención
+                    if hasattr(position, 'entry_time'):
+                        position_age_minutes = (current_time - position.entry_time).total_seconds() / 60
+                    else:
+                        # Usar timestamp de última acción como aproximación
+                        last_action_time = self.last_position_action.get(symbol, current_time - timedelta(minutes=30))
+                        position_age_minutes = (current_time - last_action_time).total_seconds() / 60
+
+                    min_hold_time = self.eth_position_protection['min_hold_time_minutes']
+
+                    # CRITERIOS ESPECÍFICOS PARA ETH:
+                    if confidence >= 90.0:  # Confianza EXTREMA (90%+)
+                        if position.pnl_percent < -4.0:  # Pérdida significativa >4%
+                            should_close = True
+                            close_reason = "ETH_SELL_EXTREME_CONF_BIG_LOSS"
+                        elif position.pnl_percent > 5.0 and position_age_minutes > min_hold_time:  # Ganancia >5% y tiempo suficiente
+                            should_close = True
+                            close_reason = "ETH_SELL_EXTREME_CONF_BIG_PROFIT"
+                    elif confidence >= 85.0 and position_age_minutes > min_hold_time:  # Confianza muy alta y tiempo mínimo
+                        if position.pnl_percent < -3.0:  # Pérdida >3%
+                            should_close = True
+                            close_reason = "ETH_SELL_HIGH_CONF_LOSS_PROTECTION"
+                        elif position.pnl_percent > 6.0:  # Ganancia muy alta >6%
+                            should_close = True
+                            close_reason = "ETH_SELL_HIGH_CONF_PROFIT_TAKING"
+
+                    if not should_close:
+                        print(f"  🛡️ ETH PROTEGIDO: Manteniendo posición {position.order_id}")
+                        print(f"      📊 PnL: {position.pnl_percent:.1f}%, Edad: {position_age_minutes:.1f}min, Conf: {confidence:.1f}%")
+                        print(f"      ✅ ETH requiere criterios más estrictos para cierre de posición")
+
+                # ✅ CRITERIOS ORIGINALES PARA OTROS SÍMBOLOS
+                else:
+                    # Criterios menos estrictos para BTC, BNB, XRP
+                    if confidence >= 75.0:  # Confianza alta
+                        if position.pnl_percent > 2.0:  # Si está en ganancia > 2%
+                            should_close = True
+                            close_reason = "SIGNAL_SELL_HIGH_CONF_PROFIT"
+                        elif position.pnl_percent < -1.5:  # O pérdida > 1.5%
+                            should_close = True
+                            close_reason = "SIGNAL_SELL_HIGH_CONF_LOSS"
+                    elif confidence >= 85.0:  # Confianza muy alta
+                        should_close = True  # Cerrar independientemente del PnL
+                        close_reason = "SIGNAL_SELL_VERY_HIGH_CONF"
 
                 if should_close:
                     print(f"  🔥 Cerrando posición {position.order_id}: PnL {position.pnl_percent:.1f}% - {close_reason}")
@@ -1803,17 +1996,26 @@ class SimpleProfessionalTradingManager:
                     print(f"  ⏸️ Manteniendo posición {position.order_id}: PnL {position.pnl_percent:.1f}% - Confianza SELL insuficiente")
 
         # ✅ CORRECCIÓN: Lógica de reversión más estricta (solo para confianza extrema)
-        reversal_threshold = float(os.getenv('SIGNAL_REVERSAL_THRESHOLD', '0.90'))  # Aumentado de 85% a 90%
+        # ETH requiere umbrales aún más altos para reversión
+        reversal_threshold = 90.0 if symbol == 'ETHUSDT' else float(os.getenv('SIGNAL_REVERSAL_THRESHOLD', '0.90'))  # ETH: 90%, otros: config
         if confidence >= reversal_threshold:
             print(f"🔄 Evaluando reversión de señal con confianza extrema: {confidence:.1f}%")
             for position in existing_positions:
                 if (position.side == 'BUY' and signal == 'SELL') or (position.side == 'SELL' and signal == 'BUY'):
-                    # ✅ ADICIONAL: Solo si la posición no está en buena ganancia (>3%)
-                    if position.pnl_percent <= 3.0:
-                        print(f"  🔄 Reversión ejecutada para {position.order_id}: PnL {position.pnl_percent:.1f}%")
-                        await self._close_position(position.order_id, "SIGNAL_REVERSAL")
+                    # ✅ PROTECCIÓN ADICIONAL PARA ETH: Solo reversión si pérdida significativa
+                    if symbol == 'ETHUSDT':
+                        if position.pnl_percent <= -2.0:  # Solo si pérdida > 2% para ETH
+                            print(f"  🔄 Reversión ETH ejecutada para {position.order_id}: PnL {position.pnl_percent:.1f}%")
+                            await self._close_position(position.order_id, "ETH_SIGNAL_REVERSAL")
+                        else:
+                            print(f"  🛡️ Reversión ETH omitida para {position.order_id}: PnL no justifica reversión ({position.pnl_percent:.1f}%)")
                     else:
-                        print(f"  ⏸️ Reversión omitida para {position.order_id}: PnL muy positivo {position.pnl_percent:.1f}%")
+                        # ✅ LÓGICA ORIGINAL PARA OTROS SÍMBOLOS: Solo si no está en buena ganancia (>3%)
+                        if position.pnl_percent <= 3.0:
+                            print(f"  🔄 Reversión ejecutada para {position.order_id}: PnL {position.pnl_percent:.1f}%")
+                            await self._close_position(position.order_id, "SIGNAL_REVERSAL")
+                        else:
+                            print(f"  ⏸️ Reversión omitida para {position.order_id}: PnL muy positivo {position.pnl_percent:.1f}%")
 
     async def _close_position(self, order_id: str, reason: str):
         """📉 Cerrar posición específica por ID de orden"""
@@ -1878,6 +2080,14 @@ class SimpleProfessionalTradingManager:
             del self.portfolio_manager.position_registry[order_id]
             print(f"🗑️ Posición {order_id} eliminada del registry")
 
+        # ✅ NUEVO: Actualizar timestamp de última acción para protección ETH
+        if symbol == 'ETHUSDT':
+            self.eth_position_protection['last_close_time'] = datetime.now()
+            print(f"🛡️ ETH: Timestamp de cierre actualizado para protección")
+
+        # Actualizar registro de última acción por símbolo
+        self.last_position_action[symbol] = datetime.now()
+
         # Log y notificación
         color = "🟢" if pnl_usd > 0 else "🔴"
         await self.database.log_event(
@@ -1893,7 +2103,7 @@ class SimpleProfessionalTradingManager:
 
         print(f"📉 Posición cerrada: {symbol} (ID de orden: {order_id}) - PnL: {pnl_percent:.2f}% (${pnl_usd:.2f})")
 
-    async def _check_portfolio_diversification_before_trade(self, symbol: str, signal_data: Dict):
+    async def _check_portfolio_diversification_before_trade(self, symbol: str, signal_data: Dict) -> Optional[float]:
         """
         🎯 SISTEMA DE DIVERSIFICACIÓN INTELIGENTE CON LÍMITES POR PAR
         ---
@@ -1906,6 +2116,10 @@ class SimpleProfessionalTradingManager:
         - XRP: máximo 15% del portafolio
 
         Priorización: BTC > ETH > BNB > XRP en señales simultáneas
+
+        Returns:
+            Optional[float]: El tamaño ajustado de la posición en USD si es válida,
+                             o lanza una excepción si se bloquea.
         """
 
         try:
@@ -1915,6 +2129,8 @@ class SimpleProfessionalTradingManager:
             await self.update_balance_from_binance()
 
             # Obtener snapshot actual del portafolio
+            if self.portfolio_manager is None:
+                raise Exception("Portfolio Manager no inicializado")
             snapshot = await self.portfolio_manager.get_portfolio_snapshot()
 
             # ✅ CONFIGURACIÓN: Límites específicos por par
@@ -2074,26 +2290,32 @@ class SimpleProfessionalTradingManager:
                         status = "✅" if exposure_percent <= limit * 0.8 else "⚠️" if exposure_percent <= limit else "🔴"
                         print(f"   {status} {sym}: {exposure['count']} pos, {exposure_percent:.1f}%/{limit}% (${current_market_value:.2f} actual, ${exposure['total_invested']:.2f} invertido)")
 
+            # ✅ DEVOLVER TAMAÑO AJUSTADO
+            return proposed_position_usd
+
         except Exception as e:
             if "Trade bloqueado por diversificación" in str(e) or "Trade pausado por priorización" in str(e):
                 # Bloqueos legítimos de diversificación
                 print(f"🚫 {str(e)}")
-                await self.database.log_event('WARNING', 'DIVERSIFICATION', str(e), symbol)
+                if self.database:
+                    await self.database.log_event('WARNING', 'DIVERSIFICATION', str(e), symbol)
 
                 # Notificación Discord informativa
-                await self._send_discord_notification(
-                    f"⚖️ **DIVERSIFICACIÓN INTELIGENTE**\n"
-                    f"📊 {symbol}: {signal_data['signal']}\n"
-                    f"💡 {str(e).replace('Trade bloqueado por diversificación: ', '').replace('Trade pausado por priorización: ', '')}\n"
-                    f"🎯 Confianza: {signal_data['confidence']:.1%}\n"
-                    f"🏆 Límites: BTC≤50%, ETH≤20%, BNB≤15%, XRP≤15%"
-                )
+                if self.discord_notifier:
+                    await self.discord_notifier.send_system_notification(
+                        f"⚖️ **DIVERSIFICACIÓN INTELIGENTE**\n"
+                        f"📊 {symbol}: {signal_data['signal']}\n"
+                        f"💡 {str(e).replace('Trade bloqueado por diversificación: ', '').replace('Trade pausado por priorización: ', '')}\n"
+                        f"🎯 Confianza: {signal_data['confidence']:.1%}\n"
+                        f"🏆 Límites: BTC≤50%, ETH≤20%, BNB≤15%, XRP≤15%"
+                    )
 
                 raise  # Re-lanzar bloqueos legítimos
             else:
                 # Errores técnicos no deben bloquear trades
                 print(f"⚠️ Error técnico en diversificación (ignorado): {e}")
                 print(f"✅ Continuando con el trade para {symbol}")
+                return None # Devolver None para que se use el tamaño por defecto
 
     async def _heartbeat_monitor(self):
         """💓 Monitor de latido del sistema"""
@@ -2346,7 +2568,7 @@ class SimpleProfessionalTradingManager:
             # Crear signature
             query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
             signature = hmac.new(
-                self.config.secret_key.encode('utf-8'),
+                self.binance_config.secret_key.encode('utf-8'),
                 query_string.encode('utf-8'),
                 hashlib.sha256
             ).hexdigest()
@@ -2355,7 +2577,7 @@ class SimpleProfessionalTradingManager:
 
             # Headers de autenticación
             headers = {
-                'X-MBX-APIKEY': self.config.api_key,
+                'X-MBX-APIKEY': self.binance_config.api_key,
                 'Content-Type': 'application/x-www-form-urlencoded'
             }
 
@@ -2363,7 +2585,7 @@ class SimpleProfessionalTradingManager:
 
             # Ejecutar orden POST /api/v3/order
             async with aiohttp.ClientSession() as session:
-                url = f"{self.config.base_url}/api/v3/order"
+                url = f"{self.binance_config.base_url}/api/v3/order"
 
                 async with session.post(url, data=params, headers=headers) as response:
                     if response.status == 200:
@@ -2384,7 +2606,7 @@ class SimpleProfessionalTradingManager:
         try:
             # Obtener información del símbolo
             async with aiohttp.ClientSession() as session:
-                url = f"{self.config.base_url}/api/v3/exchangeInfo"
+                url = f"{self.binance_config.base_url}/api/v3/exchangeInfo"
                 params = {'symbol': symbol}
 
                 async with session.get(url, params=params) as response:
@@ -2486,30 +2708,40 @@ class SimpleProfessionalTradingManager:
     async def _save_periodic_metrics(self):
         """💾 Guardar métricas periódicamente"""
         try:
-            # Actualizar balance actual en risk manager
-            total_balance = self.current_balance + self.session_pnl
-            await self.risk_manager.update_balance(total_balance)
-
             trades_today = await self._get_total_trades_today()
             win_rate = await self._calculate_win_rate()
 
-            # Calcular exposición total
-            total_exposure = 0
-            for position in self.active_positions.values():
-                if hasattr(position, 'current_price') and position.current_price > 0:
-                    total_exposure += position.quantity * position.current_price
-                else:
-                    total_exposure += position.quantity * position.entry_price
+            # ✅ CORRECCIÓN: Usar el snapshot del portfolio manager para obtener datos consistentes y reales
+            if self.portfolio_manager:
+                snapshot = await self.portfolio_manager.get_portfolio_snapshot()
+                total_exposure = snapshot.total_balance_usd - snapshot.free_usdt
+                total_balance = snapshot.total_balance_usd
+                # El PnL de la sesión es el PnL no realizado del snapshot
+                self.session_pnl = snapshot.total_unrealized_pnl
+            else:
+                # Fallback por si el portfolio manager no está listo (menos preciso)
+                total_exposure = 0
+                for position in self.active_positions.values():
+                    if hasattr(position, 'current_price') and position.current_price > 0:
+                        total_exposure += position.quantity * position.current_price
+                    else:
+                        total_exposure += position.quantity * position.entry_price
+                total_balance = self.current_balance + total_exposure
 
-            exposure_percent = (total_exposure / self.current_balance) * 100 if self.current_balance > 0 else 0
+            # ✅ CORRECCIÓN: Usar el balance total real para el cálculo de exposición
+            exposure_percent = (total_exposure / total_balance) * 100 if total_balance > 0 else 0
+
+            # Actualizar balance actual en risk manager con el valor correcto
+            if self.risk_manager:
+                await self.risk_manager.update_balance(total_balance)
 
             metrics_data = {
                 'timestamp': datetime.now(),
                 'total_balance': total_balance,
                 'daily_pnl': self.session_pnl,
                 'total_pnl': self.session_pnl,  # Para sesión actual
-                'daily_return_percent': (self.session_pnl / self.current_balance) * 100 if self.current_balance > 0 else 0,
-                'total_return_percent': (self.session_pnl / self.current_balance) * 100 if self.current_balance > 0 else 0,
+                'daily_return_percent': (self.session_pnl / total_balance) * 100 if total_balance > 0 else 0,
+                'total_return_percent': (self.session_pnl / total_balance) * 100 if total_balance > 0 else 0,
                 'current_drawdown': 0.0,  # Calcular en futuras versiones
                 'max_drawdown': 0.0,
                 'sharpe_ratio': None,
@@ -2525,7 +2757,8 @@ class SimpleProfessionalTradingManager:
                 'last_balance_update': self.metrics.get('last_balance_update', None)
             }
 
-            await self.database.save_performance_metrics(metrics_data)
+            if self.database:
+                await self.database.save_performance_metrics(metrics_data)
 
             # Mostrar resumen de métricas cada 10 ciclos
             if self.metrics['total_checks'] % 10 == 0:
@@ -2666,7 +2899,7 @@ class SimpleProfessionalTradingManager:
 
         return {
             'status': self.status,
-            'environment': self.config.environment,
+            'environment': self.binance_config.environment,
             'symbols_trading': self.symbols,
             'check_interval': self.check_interval,
             'uptime_minutes': uptime_seconds / 60,
@@ -2711,14 +2944,13 @@ class SimpleProfessionalTradingManager:
 
     async def _detect_market_regime_robust(self, market_data: Dict[str, List[float]]) -> Tuple[str, float]:
         """
-        🔍 DETECCIÓN ROBUSTA DE RÉGIMEN DE MERCADO
-        Sistema mejorado que considera múltiples pares y factores de mercado
+        🔍 DETECCIÓN ROBUSTA DE RÉGIMEN DE MERCADO - VERSIÓN CORREGIDA
+        Sistema mejorado más sensible a mercados bajistas graduales
 
-        Returns:
-            Tuple[str, float]: (regime, confidence)
+        CORRECCIÓN: Ajustado para detectar mejor mercados bajistas en los últimos días
         """
         try:
-            print(f"🔍 Detectando régimen de mercado robusto...")
+            print(f"🔍 Detectando régimen de mercado robusto (versión corregida)...")
 
             # 1. ANÁLISIS MULTI-PAR
             pair_regimes = {}
@@ -2735,19 +2967,22 @@ class SimpleProfessionalTradingManager:
 
                 # === INDICADORES POR PAR ===
 
-                # 1. Momentum multitimeframe
+                # 1. Momentum multitimeframe (UMBRALES REDUCIDOS)
                 df['momentum_1h'] = df['close'].pct_change(12)   # 12 * 5m = 1h
                 df['momentum_4h'] = df['close'].pct_change(48)   # 48 * 5m = 4h
                 df['momentum_12h'] = df['close'].pct_change(144) # 144 * 5m = 12h
+                df['momentum_24h'] = df['close'].pct_change(288) # 288 * 5m = 24h (NUEVO)
 
                 # 2. Medias móviles
                 df['sma_20'] = df['close'].rolling(20).mean()
                 df['sma_50'] = df['close'].rolling(50).mean()
                 df['ema_20'] = df['close'].ewm(span=20).mean()
+                df['ema_50'] = df['close'].ewm(span=50).mean()
 
                 # 3. Trend strength
                 df['ma_trend'] = (df['close'] - df['sma_20']) / df['sma_20']
                 df['ma_direction'] = df['sma_20'] > df['sma_50']
+                df['ema_trend'] = (df['close'] - df['ema_20']) / df['ema_20']
 
                 # 4. Volatilidad relativa
                 df['returns'] = df['close'].pct_change()
@@ -2761,44 +2996,79 @@ class SimpleProfessionalTradingManager:
                 rs = gain / loss
                 df['rsi'] = 100 - (100 / (1 + rs))
 
-                # === CLASIFICACIÓN POR PAR ===
+                # 6. NUEVO: Análisis de tendencia reciente (últimos 2 días)
+                df['recent_trend_2d'] = df['close'].pct_change(576)  # 576 * 5m = 48h
+                df['recent_slope'] = df['close'].rolling(144).apply(lambda x: np.polyfit(range(len(x)), x, 1)[0] if len(x) == 144 else 0, raw=True)
+
+                # === CLASIFICACIÓN POR PAR (MEJORADA) ===
                 latest = df.iloc[-1]
 
-                # Contar señales bullish
+                # Contar señales bullish y bearish
                 bullish_count = 0
                 bearish_count = 0
 
-                # Señales de momentum
-                if not pd.isna(latest['momentum_4h']) and latest['momentum_4h'] > 0.02:  # +2%
-                    bullish_count += 2
-                elif not pd.isna(latest['momentum_4h']) and latest['momentum_4h'] < -0.02:  # -2%
-                    bearish_count += 2
+                # ✅ CORREGIDO: Umbrales de momentum MÁS SENSIBLES
+                # Momentum 4h (reducido de 2% a 1%)
+                if not pd.isna(latest['momentum_4h']):
+                    if latest['momentum_4h'] > 0.01:  # +1% (era +2%)
+                        bullish_count += 2
+                    elif latest['momentum_4h'] < -0.01:  # -1% (era -2%)
+                        bearish_count += 2
 
-                if not pd.isna(latest['momentum_12h']) and latest['momentum_12h'] > 0.05:  # +5%
-                    bullish_count += 3
-                elif not pd.isna(latest['momentum_12h']) and latest['momentum_12h'] < -0.05:  # -5%
-                    bearish_count += 3
+                # Momentum 12h (reducido de 5% a 2.5%)
+                if not pd.isna(latest['momentum_12h']):
+                    if latest['momentum_12h'] > 0.025:  # +2.5% (era +5%)
+                        bullish_count += 3
+                    elif latest['momentum_12h'] < -0.025:  # -2.5% (era -5%)
+                        bearish_count += 3
 
-                # Señales de MA
-                if not pd.isna(latest['ma_trend']) and latest['ma_trend'] > 0.01 and latest['ma_direction']:
-                    bullish_count += 2
-                elif not pd.isna(latest['ma_trend']) and latest['ma_trend'] < -0.01 and not latest['ma_direction']:
-                    bearish_count += 2
+                # ✅ NUEVO: Momentum 24h para detectar tendencias de 1-2 días
+                if not pd.isna(latest['momentum_24h']):
+                    if latest['momentum_24h'] > 0.03:  # +3% en 24h
+                        bullish_count += 4
+                    elif latest['momentum_24h'] < -0.03:  # -3% en 24h (CRÍTICO)
+                        bearish_count += 4
 
-                # Señales de RSI extremas
+                # ✅ NUEVO: Trend reciente de 2 días (MUY IMPORTANTE)
+                if not pd.isna(latest['recent_trend_2d']):
+                    if latest['recent_trend_2d'] > 0.04:  # +4% en 2 días
+                        bullish_count += 3
+                    elif latest['recent_trend_2d'] < -0.04:  # -4% en 2 días
+                        bearish_count += 5  # PESO EXTRA para tendencias bajistas de 2 días
+
+                # Señales de MA (umbrales reducidos)
+                if not pd.isna(latest['ma_trend']):
+                    if latest['ma_trend'] > 0.005 and latest['ma_direction']:  # +0.5% (era +1%)
+                        bullish_count += 2
+                    elif latest['ma_trend'] < -0.005 and not latest['ma_direction']:  # -0.5% (era -1%)
+                        bearish_count += 2
+
+                # ✅ NUEVO: EMA trend adicional
+                if not pd.isna(latest['ema_trend']):
+                    if latest['ema_trend'] < -0.01:  # -1% respecto a EMA
+                        bearish_count += 2
+
+                # RSI con contexto de momentum
                 if not pd.isna(latest['rsi']):
                     if latest['rsi'] > 70 and not pd.isna(latest['momentum_1h']) and latest['momentum_1h'] > 0:
                         bullish_count += 1
                     elif latest['rsi'] < 30 and not pd.isna(latest['momentum_1h']) and latest['momentum_1h'] < 0:
                         bearish_count += 1
+                    # ✅ NUEVO: RSI en zona de venta pero no extrema
+                    elif 45 < latest['rsi'] < 55 and not pd.isna(latest['momentum_4h']) and latest['momentum_4h'] < -0.005:
+                        bearish_count += 1  # Momentum bajista con RSI neutral
 
-                # Clasificar este par
-                if bullish_count > bearish_count + 1:
-                    pair_regime = 'BULLISH'
-                    bullish_signals += bullish_count
-                elif bearish_count > bullish_count + 1:
+                # ✅ NUEVO: Pendiente reciente negativa
+                if not pd.isna(latest['recent_slope']) and latest['recent_slope'] < -0.5:
+                    bearish_count += 2
+
+                # ✅ CLASIFICACIÓN MEJORADA: Más sensible a bearish
+                if bearish_count >= bullish_count:  # Cambio: era > bullish_count + 1
                     pair_regime = 'BEARISH'
                     bearish_signals += bearish_count
+                elif bullish_count > bearish_count + 1:  # Mantener umbral para bullish
+                    pair_regime = 'BULLISH'
+                    bullish_signals += bullish_count
                 else:
                     pair_regime = 'NEUTRAL'
 
@@ -2808,6 +3078,8 @@ class SimpleProfessionalTradingManager:
                     'bearish_signals': bearish_count,
                     'momentum_4h': latest['momentum_4h'] if not pd.isna(latest['momentum_4h']) else 0,
                     'momentum_12h': latest['momentum_12h'] if not pd.isna(latest['momentum_12h']) else 0,
+                    'momentum_24h': latest['momentum_24h'] if not pd.isna(latest['momentum_24h']) else 0,
+                    'recent_trend_2d': latest['recent_trend_2d'] if not pd.isna(latest['recent_trend_2d']) else 0,
                     'ma_trend': latest['ma_trend'] if not pd.isna(latest['ma_trend']) else 0,
                     'rsi': latest['rsi'] if not pd.isna(latest['rsi']) else 50
                 }
@@ -2815,6 +3087,7 @@ class SimpleProfessionalTradingManager:
                 total_signals += bullish_count + bearish_count
 
                 print(f"   📊 {symbol}: {pair_regime} (Bull: {bullish_count}, Bear: {bearish_count})")
+                print(f"      📈 Mom4h: {latest['momentum_4h']:.3f} | Mom24h: {latest['momentum_24h']:.3f} | Trend2d: {latest['recent_trend_2d']:.3f}")
 
             # 2. ANÁLISIS AGREGADO DEL MERCADO
 
@@ -2840,33 +3113,45 @@ class SimpleProfessionalTradingManager:
             max_votes = max(regime_votes.values())
             consensus_strength = max_votes / total_pairs
 
-            # 4. CLASIFICACIÓN FINAL ROBUSTA
+            # 4. ✅ CLASIFICACIÓN FINAL CORREGIDA - MÁS SENSIBLE A BEARISH
 
-            # Umbrales más estrictos para mayor precisión
-            if (regime_votes['BULLISH'] > regime_votes['BEARISH'] + 1 and
-                bullish_ratio > 0.6 and consensus_strength > 0.6):
+            # Umbrales REDUCIDOS para mayor sensibilidad
+            if (regime_votes['BEARISH'] >= regime_votes['BULLISH'] and  # Cambio: era > bullish + 1
+                bearish_ratio > 0.45 and  # Cambio: era 0.6, ahora 0.45
+                consensus_strength > 0.4):  # Cambio: era 0.6, ahora 0.4
+                final_regime = 'BEARISH'
+                confidence = min(0.95, 0.6 + (bearish_ratio - 0.45) * 0.8 + (consensus_strength - 0.4) * 0.6)
+
+            elif (regime_votes['BULLISH'] > regime_votes['BEARISH'] + 1 and
+                  bullish_ratio > 0.55 and  # Mantener umbral más alto para bullish
+                  consensus_strength > 0.5):  # Mantener umbral más alto para bullish
                 final_regime = 'BULLISH'
                 confidence = min(0.95, 0.5 + (bullish_ratio - 0.5) + (consensus_strength - 0.5))
-
-            elif (regime_votes['BEARISH'] > regime_votes['BULLISH'] + 1 and
-                  bearish_ratio > 0.6 and consensus_strength > 0.6):
-                final_regime = 'BEARISH'
-                confidence = min(0.95, 0.5 + (bearish_ratio - 0.5) + (consensus_strength - 0.5))
 
             else:
                 final_regime = 'NEUTRAL'
                 confidence = 0.5 + (1 - consensus_strength) * 0.3  # Mayor incertidumbre
 
-            # 5. LOGGING DETALLADO
+            # 5. ✅ OVERRIDE PARA MERCADOS CLARAMENTE BAJISTAS
+            # Si la mayoría de pares muestran tendencia bajista de 2 días, forzar BEARISH
+            avg_trend_2d = np.mean([data['recent_trend_2d'] for data in pair_regimes.values()])
+            if avg_trend_2d < -0.03 and final_regime == 'NEUTRAL':  # -3% promedio en 2 días
+                final_regime = 'BEARISH'
+                confidence = 0.75
+                print(f"   🔴 OVERRIDE: Tendencia 2d promedio {avg_trend_2d:.3f} < -3% → BEARISH forzado")
+
+            # 6. LOGGING DETALLADO
             print(f"   📊 Votos por régimen: {regime_votes}")
             print(f"   📊 Ratio señales: Bull {bullish_ratio:.2f}, Bear {bearish_ratio:.2f}")
             print(f"   📊 Consenso: {consensus_strength:.2f}")
+            print(f"   📊 Tendencia 2d promedio: {avg_trend_2d:.3f}")
             print(f"   🎯 RÉGIMEN FINAL: {final_regime} (Confianza: {confidence:.2f})")
 
             # Mostrar detalles por par
             for symbol, data in pair_regimes.items():
                 print(f"     {symbol}: {data['regime']} | Mom4h: {data['momentum_4h']:.3f} | "
-                      f"Mom12h: {data['momentum_12h']:.3f} | MA: {data['ma_trend']:.3f} | RSI: {data['rsi']:.1f}")
+                      f"Mom24h: {data['momentum_24h']:.3f} | Trend2d: {data['recent_trend_2d']:.3f} | "
+                      f"MA: {data['ma_trend']:.3f} | RSI: {data['rsi']:.1f}")
 
             return final_regime, confidence
 

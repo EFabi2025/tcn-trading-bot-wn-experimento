@@ -270,3 +270,9 @@ dev_settings.py
 # models/tcn_final_*.h5 (modelos de producción)
 .env.backup_old_keys
 *.env.backup
+
+# Scripts de diagnóstico y temporales
+get_current_balance.py
+
+# Bases de datos
+*.db

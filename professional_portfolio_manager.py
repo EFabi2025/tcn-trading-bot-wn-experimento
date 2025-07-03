@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from decimal import Decimal, ROUND_DOWN
 import pandas as pd
 from dotenv import load_dotenv
+from pathlib import Path
 
 load_dotenv()
 
@@ -140,6 +141,9 @@ class ProfessionalPortfolioManager:
         self.orders_cache = {}
         self.last_orders_update = None
 
+        self.trailing_state_cache_file = Path("trailing_states.json")
+        self.trailing_state_cache = self._load_trailing_cache()
+
     def _generate_signature(self, params: str) -> str:
         """🔐 Generar firma HMAC SHA256 para Binance"""
         return hmac.new(
@@ -148,7 +152,7 @@ class ProfessionalPortfolioManager:
             hashlib.sha256
         ).hexdigest()
 
-    async def _make_authenticated_request(self, endpoint: str, params: Dict = None) -> Dict:
+    async def _make_authenticated_request(self, endpoint: str, params: Optional[Dict] = None) -> Dict:
         """🔗 Realizar petición autenticada a Binance"""
         if params is None:
             params = {}
@@ -266,7 +270,7 @@ class ProfessionalPortfolioManager:
             print(f"❌ Error obteniendo balances: {e}")
             return {}
 
-    async def get_order_history(self, symbol: str = None, days_back: int = None) -> List[TradeOrder]:
+    async def get_order_history(self, symbol: Optional[str] = None, days_back: Optional[int] = None) -> List[TradeOrder]:
         """📋 Obtener historial de órdenes ejecutadas"""
         try:
             if days_back is None:
@@ -817,7 +821,7 @@ class ProfessionalPortfolioManager:
                         min_profit_protection = current_gain_percent * 0.8
                     else:
                         # Protección mínima base del 0.75% para ganancias menores a 2%
-                        min_profit_protection = 0.75
+                        min_profit_protection = 0.85
 
                     min_trailing_price = position.entry_price * (1 + min_profit_protection / 100)
 
@@ -849,7 +853,7 @@ class ProfessionalPortfolioManager:
                         min_profit_protection = current_gain_percent * 0.8
                     else:
                         # Protección mínima base del 0.75% para ganancias menores a 2%
-                        min_profit_protection = 0.75
+                        min_profit_protection = 0.85
 
                     min_trailing_price = position.entry_price * (1 + min_profit_protection / 100)
 
@@ -860,7 +864,7 @@ class ProfessionalPortfolioManager:
                     new_trailing_price = max(trailing_from_peak, min_trailing_price)
 
                     # ✅ MOVER el stop solo si el nuevo precio es más alto que el anterior
-                    if new_trailing_price > position.trailing_stop_price:
+                    if position.trailing_stop_price is None or new_trailing_price > position.trailing_stop_price:
                         old_price = position.trailing_stop_price
                         position.trailing_stop_price = new_trailing_price
                         position.last_trailing_update = datetime.now()
@@ -877,12 +881,13 @@ class ProfessionalPortfolioManager:
                         print(f"   📊 Protección proporcional: +{min_profit_protection:.1f}% (80% de +{current_gain_percent:.2f}%)")
                     else:
                         # ✅ NUEVO: Log detallado cuando el trailing no se mueve
-                        current_protection = ((position.trailing_stop_price - position.entry_price) / position.entry_price) * 100
-                        print(f"📊 TRAILING STOP MANTIENE {position.symbol}: ${position.trailing_stop_price:.4f} (+{current_protection:.2f}%)")
-                        print(f"   💡 Calculado: ${new_trailing_price:.4f} | Desde pico: ${trailing_from_peak:.4f} | Mín: ${min_trailing_price:.4f}")
+                        if position.trailing_stop_price is not None:
+                            current_protection = ((position.trailing_stop_price - position.entry_price) / position.entry_price) * 100
+                            print(f"📊 TRAILING STOP MANTIENE {position.symbol}: ${position.trailing_stop_price:.4f} (+{current_protection:.2f}%)")
+                            print(f"   💡 Calculado: ${new_trailing_price:.4f} | Desde pico: ${trailing_from_peak:.4f} | Mín: ${min_trailing_price:.4f}")
 
                 # 5. Verificar si el precio actual ha caído por debajo del trailing stop
-                if position.trailing_stop_active and current_price <= position.trailing_stop_price:
+                if position.trailing_stop_active and position.trailing_stop_price is not None and current_price <= position.trailing_stop_price:
                     stop_triggered = True
                     trigger_reason = "TRAILING_STOP"
                     final_pnl = ((current_price - position.entry_price) / position.entry_price) * 100
@@ -917,14 +922,14 @@ class ProfessionalPortfolioManager:
                 # 4. Actualizar trailing
                 elif position.trailing_stop_active:
                     new_trailing_price = position.lowest_price_since_entry * (1 + trailing_percent / 100)
-                    if new_trailing_price < position.trailing_stop_price:
+                    if position.trailing_stop_price is not None and new_trailing_price < position.trailing_stop_price:
                         position.trailing_stop_price = new_trailing_price
                         position.last_trailing_update = datetime.now()
                         self._save_trailing_state(position)
                         print(f"📈 TRAILING STOP (SHORT) MOVIDO para {position.symbol} a ${new_trailing_price:.4f}")
 
                 # 5. Verificar disparo del stop
-                if position.trailing_stop_active and current_price >= position.trailing_stop_price:
+                if position.trailing_stop_active and position.trailing_stop_price is not None and current_price >= position.trailing_stop_price:
                     stop_triggered = True
                     trigger_reason = "TRAILING_STOP"
                     print(f"🛑 TRAILING STOP (SHORT) EJECUTADO para {position.symbol}")
