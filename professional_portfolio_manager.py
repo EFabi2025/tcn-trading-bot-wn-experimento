@@ -42,7 +42,7 @@ class Position:
     # ✅ NUEVO: Sistema de Trailing Stop Profesional
     trailing_stop_active: bool = False
     trailing_stop_price: Optional[float] = None
-    trailing_stop_percent: float = 2.0  # Default 2%
+    trailing_stop_percent: float = 0.6  # Default 0.6%
     highest_price_since_entry: Optional[float] = None  # Para tracking del máximo
     lowest_price_since_entry: Optional[float] = None   # Para shorts
     trailing_activation_threshold: float = 1.0  # Activar trailing después de +1% ganancia
@@ -52,7 +52,7 @@ class Position:
     # Stop Loss y Take Profit tradicionales
     stop_loss_price: Optional[float] = None
     take_profit_price: Optional[float] = None
-    stop_loss_percent: float = 3.0  # Default 3%
+    stop_loss_percent: float = 1.5  # Se configura dinámicamente desde .env
     take_profit_percent: float = None  # Se asigna desde config centralizada
 
 @dataclass
@@ -656,6 +656,9 @@ class ProfessionalPortfolioManager:
     def initialize_position_stops(self, position: Position) -> Position:
         """🛡️ Inicializar stops tradicionales y trailing para nueva posición"""
         try:
+            # ✅ CENTRALIZADO: Asignar stop loss desde configuración del .env
+            position.stop_loss_percent = trading_config.STOP_LOSS_PERCENT
+            
             # ✅ CENTRALIZADO: Asignar take profit desde configuración
             if position.take_profit_percent is None:
                 position.take_profit_percent = trading_config.TAKE_PROFIT_PERCENT
@@ -706,17 +709,14 @@ class ProfessionalPortfolioManager:
                 # 2. Calcular ganancia actual
                 current_pnl_percent = ((current_price - position.entry_price) / position.entry_price) * 100
                 
-                # 3. ✅ LÓGICA CORREGIDA: Verificar si debe activarse el trailing stop
-                # Solo activar cuando la ganancia sea suficiente para proteger ganancias reales
-                min_activation_needed = position.trailing_stop_percent + 0.5  # 2% + 0.5% buffer = 2.5%
-                
-                if not position.trailing_stop_active and current_pnl_percent >= min_activation_needed:
+                # 3. ✅ CORREGIDO: Usar trailing_activation_threshold configurado (1%)
+                if not position.trailing_stop_active and current_pnl_percent >= position.trailing_activation_threshold:
                     position.trailing_stop_active = True
                     
                     # ✅ NUEVA LÓGICA: Asegurar que el trailing inicial proteja ganancias
-                    # Trailing = max(precio_actual * (1-trailing%), precio_entrada * (1+0.5%))
+                    # Trailing = max(precio_actual * (1-trailing%), precio_entrada * (1+0.85%))
                     trailing_by_percent = current_price * (1 - position.trailing_stop_percent / 100)
-                    trailing_min_profit = position.entry_price * (1 + 0.5 / 100)  # Mínimo +0.5% ganancia
+                    trailing_min_profit = position.entry_price * (1 + 0.85 / 100)  # Mínimo +0.85% ganancia
                     
                     position.trailing_stop_price = max(trailing_by_percent, trailing_min_profit)
                     position.last_trailing_update = datetime.now()
@@ -725,6 +725,7 @@ class ProfessionalPortfolioManager:
                     
                     print(f"📈 TRAILING ACTIVADO {position.symbol} Pos #{position.order_id}:")
                     print(f"   🎯 Ganancia actual: +{current_pnl_percent:.2f}%")
+                    print(f"   🔥 Umbral activación: +{position.trailing_activation_threshold}% ✅")
                     print(f"   📈 Trailing Stop: ${position.trailing_stop_price:.4f}")
                     print(f"   🛡️ Ganancia protegida: +{protected_profit:.2f}%")
                 
@@ -787,10 +788,8 @@ class ProfessionalPortfolioManager:
                 # Calcular ganancia para short
                 current_pnl_percent = ((position.entry_price - current_price) / position.entry_price) * 100
                 
-                # Activar trailing solo con ganancia suficiente
-                min_activation_needed = position.trailing_stop_percent + 0.5
-                
-                if not position.trailing_stop_active and current_pnl_percent >= min_activation_needed:
+                # ✅ CORREGIDO: Usar trailing_activation_threshold configurado (1%)
+                if not position.trailing_stop_active and current_pnl_percent >= position.trailing_activation_threshold:
                     position.trailing_stop_active = True
                     
                     # Para shorts: trailing arriba del precio actual
@@ -799,6 +798,11 @@ class ProfessionalPortfolioManager:
                     
                     position.trailing_stop_price = min(trailing_by_percent, trailing_max_loss)
                     position.last_trailing_update = datetime.now()
+                    
+                    print(f"📈 TRAILING ACTIVADO (SHORT) {position.symbol} Pos #{position.order_id}:")
+                    print(f"   🎯 Ganancia actual: +{current_pnl_percent:.2f}%")
+                    print(f"   🔥 Umbral activación: +{position.trailing_activation_threshold}% ✅")
+                    print(f"   📈 Trailing Stop: ${position.trailing_stop_price:.4f}")
                 
                 # Actualizar trailing (solo hacia abajo para shorts)
                 elif position.trailing_stop_active:

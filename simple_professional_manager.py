@@ -249,38 +249,45 @@ class TradingManager:
             self.logger.error(f"❌ Error generando el reporte de estado: {e}", exc_info=True)
 
     async def run(self):
-        """Bucle principal de trading, ahora reestructurado."""
-        if self.status != TradingManagerStatus.RUNNING:
-            self.logger.error("El manager no está en estado RUNNING. No se puede iniciar el bucle.")
-            return
-
-        self.logger.info("🎯 Iniciando bucle principal de trading...")
+        """▶️ El bucle principal que ejecuta la estrategia de trading."""
+        self.logger.info("🤖 Iniciando ciclo principal de trading...")
+        
         while self.status == TradingManagerStatus.RUNNING:
             try:
-                loop_start_time = datetime.now()
-                
-                # --- NUEVO ORDEN ---
-                # 1. Obtener precios y contexto de mercado
-                prices = await self._get_current_prices()
+                start_time = datetime.now()
+                self.logger.info("--- 🔄 Nuevo Ciclo de Trading 🔄 ---")
+
+                # 1. OBTENER ESTADO ACTUAL DEL PORTAFOLIO Y SINCRONIZAR RIESGO
+                self.logger.info("📊 Obteniendo snapshot del portafolio...")
+                snapshot = await self.portfolio_manager.get_portfolio_snapshot()
+                if snapshot:
+                    await self._sync_positions_with_risk_manager(snapshot.active_positions)
+                    self.logger.info(f"   ✅ Snapshot obtenido: {len(snapshot.all_assets)} activos, {len(snapshot.active_positions)} posiciones activas, {len(snapshot.small_positions)} posiciones pequeñas")
+                else:
+                    self.logger.warning("   ⚠️ No se pudo obtener el snapshot del portafolio. Se reintentará.")
+                    await asyncio.sleep(self.config.CHECK_INTERVAL_SECONDS)
+                    continue
+
+                # 2. OBTENER RÉGIMEN DE MERCADO
                 market_regime, risk_adjustment_factor = await self._get_market_regime_and_risk_factor()
 
-                # 2. Generar TODAS las predicciones TCN para el reporte
-                all_predictions = await self._generate_tcn_predictions(prices)
+                # 3. GENERAR TODAS LAS PREDICCIONES TCN PARA EL REPORTE
+                all_predictions = await self._generate_tcn_predictions(await self._get_current_prices())
 
-                # 3. Mostrar el reporte de estado COMPLETO
+                # 4. MOSTRAR EL REPORTE DE ESTADO COMPLETO
                 await self._display_status_report(market_regime, all_predictions)
 
-                # 4. Filtrar solo las señales válidas para operar
+                # 5. FILTRAR SOLO LAS SEÑALES VÁLIDAS PARA OPERAR
                 valid_signals = self._filter_valid_signals(all_predictions, market_regime)
                 
-                # 5. Procesar señales válidas
+                # 6. PROCESAR SEÑALES VÁLIDAS
                 if valid_signals:
                     await self._process_signals(valid_signals, risk_adjustment_factor)
                 else:
                     self.logger.info("🤔 No se generaron señales de trading válidas en este ciclo.")
 
-                # 6. Esperar al siguiente ciclo
-                loop_duration = (datetime.now() - loop_start_time).total_seconds()
+                # 7. ESPERAR AL SIGUIENTE CICLO
+                loop_duration = (datetime.now() - start_time).total_seconds()
                 sleep_time = max(0, self.config.CHECK_INTERVAL_SECONDS - loop_duration)
                 self.logger.info(f"Ciclo completado en {loop_duration:.2f}s. Durmiendo por {sleep_time:.2f}s.")
                 await asyncio.sleep(sleep_time)

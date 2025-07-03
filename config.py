@@ -26,7 +26,7 @@ class TradingConfig:
         self.TRADING_SYMBOLS: list[str] = [s.strip().upper() for s in symbols_str.split(',')]
 
         # --- Parámetros de Riesgo ---
-        self.MAX_POSITION_SIZE_PERCENT: float = float(os.getenv('MAX_POSITION_SIZE_PERCENT', '22.0'))
+        self.MAX_POSITION_SIZE_PERCENT: float = float(os.getenv('MAX_POSITION_SIZE_PERCENT', '20.0'))
         self.MAX_TOTAL_EXPOSURE_PERCENT: float = float(os.getenv('MAX_TOTAL_EXPOSURE_PERCENT', '85.0'))
         self.MAX_DAILY_LOSS_PERCENT: float = float(os.getenv('MAX_DAILY_LOSS_PERCENT', '10.0'))
         self.MAX_DRAWDOWN_PERCENT: float = float(os.getenv('MAX_DRAWDOWN_PERCENT', '15.0'))

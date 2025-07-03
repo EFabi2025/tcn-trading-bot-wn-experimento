@@ -1,139 +1,191 @@
 #!/usr/bin/env python3
 """
-🏛️ Filtro de Régimen de Mercado
-================================
+🏛️ Filtro de Régimen de Mercado Profesional
+============================================
 
-Este módulo analiza la condición general del mercado utilizando un activo de referencia
-(como BTCUSDT) para determinar el "régimen" actual. Actúa como una capa de
-seguridad para evitar operaciones en condiciones de mercado desfavorables.
+Este módulo implementa un sistema avanzado para determinar el régimen de mercado
+basado en un consenso de múltiples indicadores y pares de trading. El objetivo es
+identificar con alta precisión si el mercado se encuentra en una fase alcista,
+bajista o neutral, para adaptar las estrategias de trading y gestionar el riesgo.
 """
-
 import logging
-from enum import Enum
+import numpy as np
 import pandas as pd
-from ta.trend import ema_indicator, adx
-from ta.volatility import average_true_range
+from typing import List, Dict, Tuple
 
-# Importar desde el proyecto actual
+# Importaciones del proyecto
 from real_binance_predictor import BinanceDataProvider
 from config import trading_config
 
-class MarketRegime(Enum):
-    """Define los posibles estados del régimen de mercado."""
-    BULLISH = "BULLISH"          # Tendencia alcista clara
-    BEARISH = "BEARISH"          # Tendencia bajista clara
-    RANGING = "RANGING"          # Mercado lateral, sin tendencia definida
-    HIGH_VOLATILITY = "HIGH_VOLATILITY" # Movimientos bruscos, pánico o euforia
+# Constantes de configuración (podrían moverse a config.py si se usan en otros lugares)
+TRADING_SYMBOLS = trading_config.TRADING_PAIRS
+MARKET_REGIME_TIMEFRAME = '5m'
+MARKET_REGIME_DATA_LIMIT = 600  # Puntos de datos para 5m (~2 días)
 
 class MarketRegimeFilter:
     """
-    Clase que determina el régimen de mercado actual para una gestión de
-    riesgo a nivel macro.
+    Determina el régimen de mercado mediante un análisis de consenso profesional
+    a través de múltiples activos e indicadores.
     """
     def __init__(self, data_provider: BinanceDataProvider, logger: logging.Logger):
-        """
-        Inicializa el filtro de régimen de mercado.
-
-        Args:
-            data_provider (BinanceDataProvider): Instancia para obtener datos de mercado.
-            logger (logging.Logger): Logger para registrar información y errores.
-        """
         self.data_provider = data_provider
         self.logger = logger
-        self.config = trading_config
-        
-        # ✅ ROBUSTO: Verificar que los atributos existan antes de usarlos
-        try:
-            self.symbol = getattr(self.config, 'MARKET_REGIME_SYMBOL', 'BTCUSDT')
-            self.timeframe = getattr(self.config, 'MARKET_REGIME_TIMEFRAME', '4h')
-            
-            # Verificar que todos los atributos necesarios existan
-            required_attrs = [
-                'MARKET_REGIME_EMA_SHORT', 'MARKET_REGIME_EMA_LONG',
-                'MARKET_REGIME_ATR_PERIOD', 'MARKET_REGIME_ATR_MULTIPLIER'
-            ]
-            
-            for attr in required_attrs:
-                if not hasattr(self.config, attr):
-                    raise AttributeError(f"Configuración faltante: {attr}")
-            
-            self.logger.info(
-                f"🏛️ Filtro de Régimen de Mercado inicializado para {self.symbol} "
-                f"en temporalidad de {self.timeframe}."
-            )
-            
-        except AttributeError as e:
-            self.logger.error(f"❌ Error de configuración en MarketRegimeFilter: {e}")
-            self.logger.error(f"❌ Atributos disponibles en config: {[attr for attr in dir(self.config) if not attr.startswith('_')]}")
-            raise
+        self.trading_symbols = TRADING_SYMBOLS
+        self.timeframe = MARKET_REGIME_TIMEFRAME
+        self.limit = MARKET_REGIME_DATA_LIMIT
 
-    async def get_market_regime(self) -> tuple[MarketRegime, dict]:
+    async def get_market_regime(self) -> Tuple[str, float, Dict]:
         """
-        Analiza los datos del mercado y devuelve el régimen actual.
+        Calcula el régimen de mercado general basado en un consenso de los pares de trading.
 
         Returns:
-            tuple[MarketRegime, dict]: Una tupla con el régimen de mercado
-                                       y un diccionario con detalles del análisis.
+            Tuple[str, float, Dict]: Una tupla con el régimen final ('BULLISH', 'BEARISH', 'NEUTRAL'),
+                                     la confianza del consenso, y un diccionario con detalles.
         """
-        try:
-            # 1. Obtener datos históricos (klines)
-            klines = await self.data_provider.get_klines(
-                symbol=self.symbol,
-                interval=self.timeframe,
-                limit=self.config.MARKET_REGIME_EMA_LONG + 50 # Datos suficientes para EMAs
-            )
-            if not klines or len(klines) < self.config.MARKET_REGIME_EMA_LONG:
-                self.logger.warning(f"No se pudieron obtener suficientes datos para {self.symbol} en {self.timeframe}.")
-                return MarketRegime.RANGING, {"reason": "Datos insuficientes"}
+        self.logger.info("🏛️  Iniciando análisis de régimen de mercado profesional...")
+        
+        pair_regimes = {}
 
-            # 2. Convertir a DataFrame de Pandas
-            df = pd.DataFrame(klines, columns=[
-                'timestamp', 'open', 'high', 'low', 'close', 'volume',
-                'close_time', 'quote_asset_volume', 'number_of_trades',
-                'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
-            ])
-            for col in ['open', 'high', 'low', 'close', 'volume']:
-                df[col] = pd.to_numeric(df[col])
+        # 1. Analizar cada par de trading individualmente
+        for symbol in self.trading_symbols:
+            try:
+                regime_details = await self._analyze_pair_regime(symbol)
+                if regime_details:
+                    pair_regimes[symbol] = regime_details
+            except Exception as e:
+                self.logger.error(f"❌ Error analizando régimen para {symbol}: {e}")
 
-            # 3. Calcular Indicadores Técnicos
-            # Medias Móviles Exponenciales (EMAs)
-            ema_short = ema_indicator(df['close'], window=self.config.MARKET_REGIME_EMA_SHORT)
-            ema_long = ema_indicator(df['close'], window=self.config.MARKET_REGIME_EMA_LONG)
+        if not pair_regimes:
+            self.logger.warning("No se pudo analizar el régimen para ningún par. Asumiendo NEUTRAL.")
+            return 'NEUTRAL', 0.0, {}
 
-            # Average True Range (ATR) para volatilidad
-            atr = average_true_range(df['high'], df['low'], df['close'], window=self.config.MARKET_REGIME_ATR_PERIOD)
+        # 2. Consolidar los resultados para un consenso final
+        final_regime, confidence, consensus_details = self._get_consensus_regime(pair_regimes)
+
+        self.logger.info(f"🏛️  Régimen de Mercado Final: {final_regime} (Confianza: {confidence:.2%})")
+        if final_regime == 'BEARISH':
+            self.logger.warning(f"🚨 ¡MERCADO BAJISTA DETECTADO! Operaciones de compra limitadas. 🚨")
+        
+        return final_regime, confidence, consensus_details
+
+    async def _analyze_pair_regime(self, symbol: str) -> Dict:
+        """
+        Analiza un único par para determinar su régimen de mercado local.
+        """
+        klines = await self.data_provider.get_klines(symbol, self.timeframe, self.limit)
+        if not klines or len(klines) < 577: # Mínimo para trend de 2d (576 periodos)
+            self.logger.warning(f"Datos insuficientes para {symbol} para el análisis de régimen completo, saltando.")
+            return None
+
+        df = pd.DataFrame(klines, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'])
+        for col in ['open', 'high', 'low', 'close']:
+            df[col] = pd.to_numeric(df[col])
+
+        # --- Calcular indicadores ---
+        # 1. Momentum (4h, 12h, 24h)
+        df['momentum_4h'] = df['close'].pct_change(48)   # 4h = 48 * 5m
+        df['momentum_12h'] = df['close'].pct_change(144) # 12h = 144 * 5m
+        df['momentum_24h'] = df['close'].pct_change(288) # 24h = 288 * 5m
+
+        # 2. Tendencia reciente de 2 días
+        df['recent_trend_2d'] = df['close'].pct_change(576) # 48h = 576 * 5m
+
+        # 3. EMA Trend
+        df['ema_20'] = df['close'].ewm(span=20, adjust=False).mean()
+        df['ema_trend'] = (df['close'] - df['ema_20']) / df['ema_20']
+        
+        latest = df.iloc[-1]
+        bullish_count = 0
+        bearish_count = 0
+
+        # --- Lógica de votación con pesos ---
+        # Momentum 4h
+        if latest['momentum_4h'] > 0.01: bullish_count += 2
+        if latest['momentum_4h'] < -0.01: bearish_count += 3 # Más peso a caídas
+        
+        # Momentum 12h
+        if latest['momentum_12h'] > 0.025: bullish_count += 3
+        if latest['momentum_12h'] < -0.025: bearish_count += 4 # Más peso
+        
+        # Momentum 24h
+        if latest['momentum_24h'] > 0.03: bullish_count += 3
+        if latest['momentum_24h'] < -0.03: bearish_count += 4
+        
+        # Tendencia 2 días
+        if latest['recent_trend_2d'] > 0.04: bullish_count += 4
+        if latest['recent_trend_2d'] < -0.04: bearish_count += 5 # Peso extra a bajistas
+
+        # EMA Trend
+        if latest['ema_trend'] > 0.01: bullish_count += 1
+        if latest['ema_trend'] < -0.01: bearish_count += 2
+
+        # --- Determinar régimen del par ---
+        if bearish_count >= bullish_count:
+            pair_regime = 'BEARISH'
+        elif bullish_count > bearish_count + 1:
+            pair_regime = 'BULLISH'
+        else:
+            pair_regime = 'NEUTRAL'
             
-            # Obtener los últimos valores
-            last_close = df['close'].iloc[-1]
-            last_ema_short = ema_short.iloc[-1]
-            last_ema_long = ema_long.iloc[-1]
-            last_atr_percentage = (atr.iloc[-1] / last_close) * 100
+        return {
+            'regime': pair_regime,
+            'bullish_score': bullish_count,
+            'bearish_score': bearish_count,
+            'recent_trend_2d': latest['recent_trend_2d']
+        }
 
-            # 4. Determinar el Régimen de Mercado
-            
-            # Chequeo de alta volatilidad (prioritario)
-            volatility_threshold = self.config.MARKET_REGIME_ATR_MULTIPLIER
-            if last_atr_percentage > volatility_threshold:
-                details = {"reason": f"ATR ({last_atr_percentage:.2f}%) > Umbral ({volatility_threshold:.2f}%)"}
-                self.logger.warning(f"Régimen detectado: ALTA VOLATILIDAD para {self.symbol}. {details['reason']}")
-                return MarketRegime.HIGH_VOLATILITY, details
-            
-            # Chequeo de tendencia (Bullish/Bearish)
-            is_bullish = last_ema_short > last_ema_long and last_close > last_ema_short
-            is_bearish = last_ema_short < last_ema_long and last_close < last_ema_short
+    def _get_consensus_regime(self, pair_regimes: Dict) -> Tuple[str, float, Dict]:
+        """
+        Consolida los regímenes de pares individuales en un régimen de mercado final.
+        """
+        regime_votes = {'BULLISH': 0, 'BEARISH': 0, 'NEUTRAL': 0}
+        total_pairs = len(pair_regimes)
 
-            if is_bullish:
-                details = {"reason": f"EMA{self.config.MARKET_REGIME_EMA_SHORT} > EMA{self.config.MARKET_REGIME_EMA_LONG}"}
-                return MarketRegime.BULLISH, details
-            
-            if is_bearish:
-                details = {"reason": f"EMA{self.config.MARKET_REGIME_EMA_SHORT} < EMA{self.config.MARKET_REGIME_EMA_LONG}"}
-                return MarketRegime.BEARISH, details
+        for symbol, details in pair_regimes.items():
+            regime_votes[details['regime']] += 1
 
-            # Si no hay tendencia clara, es un mercado en rango
-            details = {"reason": "Sin una tendencia clara definida por las EMAs."}
-            return MarketRegime.RANGING, details
+        # Calcular ratios y fuerza del consenso
+        bullish_ratio = regime_votes['BULLISH'] / total_pairs
+        bearish_ratio = regime_votes['BEARISH'] / total_pairs
+        consensus_strength = max(bullish_ratio, bearish_ratio) if total_pairs > 0 else 0
 
-        except Exception as e:
-            self.logger.error(f"❌ Error al determinar el régimen de mercado: {e}", exc_info=True)
-            return MarketRegime.RANGING, {"reason": "Error en análisis", "error": str(e)} 
+        final_regime = 'NEUTRAL'
+        confidence = 0.5
+
+        # --- Lógica de decisión de consenso ---
+        # Condición BEARISH (más sensible)
+        if (regime_votes['BEARISH'] >= regime_votes['BULLISH'] and
+            bearish_ratio > 0.45 and consensus_strength > 0.4):
+            final_regime = 'BEARISH'
+            confidence = consensus_strength * bearish_ratio
+
+        # Condición BULLISH (requiere más confirmación)
+        elif (regime_votes['BULLISH'] > regime_votes['BEARISH'] and
+              regime_votes['BULLISH'] > regime_votes['NEUTRAL'] and
+              bullish_ratio > 0.5):
+            final_regime = 'BULLISH'
+            confidence = consensus_strength * bullish_ratio
+        
+        # --- Override automático por tendencia bajista ---
+        # Asegurarse de que hay valores válidos para calcular la media
+        valid_trends = [data['recent_trend_2d'] for data in pair_regimes.values() if 'recent_trend_2d' in data and pd.notna(data['recent_trend_2d'])]
+        if valid_trends:
+            avg_trend_2d = np.mean(valid_trends)
+            if pd.notna(avg_trend_2d) and avg_trend_2d < -0.03 and final_regime == 'NEUTRAL':
+                final_regime = 'BEARISH'
+                confidence = 0.75  # Asignar confianza alta por ser un override de seguridad
+                self.logger.warning(f"OVERRIDE: Tendencia promedio de 2 días ({avg_trend_2d:.2%}) es muy negativa. Forzando régimen a BEARISH.")
+        else:
+            avg_trend_2d = np.nan
+
+
+        details = {
+            'votes': regime_votes,
+            'bullish_ratio': bullish_ratio,
+            'bearish_ratio': bearish_ratio,
+            'consensus_strength': consensus_strength,
+            'avg_trend_2d': avg_trend_2d,
+            'individual_regimes': {s: d['regime'] for s, d in pair_regimes.items()}
+        }
+
+        return final_regime, confidence, details 
