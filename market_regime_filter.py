@@ -18,7 +18,7 @@ from real_binance_predictor import BinanceDataProvider
 from config import trading_config
 
 # Constantes de configuración (podrían moverse a config.py si se usan en otros lugares)
-TRADING_SYMBOLS = trading_config.TRADING_PAIRS
+TRADING_SYMBOLS = trading_config.TRADING_SYMBOLS
 MARKET_REGIME_TIMEFRAME = '5m'
 MARKET_REGIME_DATA_LIMIT = 600  # Puntos de datos para 5m (~2 días)
 
