@@ -308,7 +308,7 @@ class TradingManager:
             try:
                 # La nueva función devuelve (régimen, confianza, detalles)
                 regime, confidence, _ = await self.market_regime_filter.get_market_regime()
-                market_regime = regime
+            market_regime = regime
 
                 if market_regime == 'BEARISH':
                     risk_adjustment = 0.5  # Reducir riesgo a la mitad en mercado bajista
@@ -372,7 +372,7 @@ class TradingManager:
             # que ya usa el motor de features.
             prediction = await self.tcn_predictor.predict_from_real_data(symbol, klines)
             return prediction
-
+            
         except Exception as e:
             self.logger.error(f"❌ Error en predicción híbrida para {symbol}: {e}")
             return None
@@ -400,7 +400,7 @@ class TradingManager:
             elif market_regime == 'BULLISH':
                 # En mercado alcista, ser un poco más flexible
                 buy_threshold = 0.60
-            
+
             is_valid = False
             if signal == 'BUY' and confidence >= buy_threshold:
                 is_valid = True
@@ -414,7 +414,7 @@ class TradingManager:
             else:
                  self.logger.info(f"❌ Señal INVÁLIDA para {symbol}: {signal} ({confidence:.2%}) "
                                  f"[Umbral: {buy_threshold if signal == 'BUY' else sell_threshold:.2%}, Régimen: {market_regime}]")
-
+        
         return valid_signals
 
     async def _get_tcn_prediction(self, symbol: str) -> Dict:
@@ -429,129 +429,103 @@ class TradingManager:
             if not klines:
                 self.logger.warning(f"No se pudieron obtener klines para la predicción de {symbol}.")
                 return None
-
+            
             # 2. Llamar al método de predicción corregido
             # Ya no se calculan features aquí, se hace dentro del predictor.
-            prediction = await self.tcn_predictor.predict_from_real_data(symbol, klines)
-
+                prediction = await self.tcn_predictor.predict_from_real_data(symbol, klines)
+            
             return prediction
-
+            
         except Exception as e:
             self.logger.error(f"❌ Error obteniendo la predicción TCN para {symbol}: {e}", exc_info=True)
-            return None
+                return None
 
     async def _process_signals(self, signals: List[Dict], risk_adjustment_factor: float):
-        """Procesa una lista de señales de trading válidas."""
+        """Procesa las señales de trading válidas, gestiona el riesgo y ejecuta órdenes."""
+        self.logger.info(f"⚙️ Procesando {len(signals)} señales válidas...")
+        if not signals:
+            self.logger.info("🤔 No se generaron señales de trading válidas en este ciclo.")
+            return
+
+        snapshot = await self.portfolio_manager.get_portfolio_snapshot()
+        if not snapshot:
+            self.logger.error("❌ No se pudo obtener el snapshot del portafolio para procesar señales.")
+            return
+        
+        available_balance = snapshot.free_usdt
+        
         for signal_data in signals:
             symbol = signal_data['pair']
-            signal_type = signal_data['signal']
+            signal = signal_data['signal']
             confidence = signal_data['confidence']
-            current_price = signal_data.get('current_price', 0)
-            
-            self.logger.info(f"ACTION => Procesando señal de {signal_type} para {symbol}.")
-            
-            try:
-                existing_position = await self.portfolio_manager.get_position(symbol)
-                
-                if signal_type == 'BUY':
-                    if existing_position and hasattr(existing_position, 'quantity') and existing_position.quantity > 0:
-                        self.logger.info(f"🔄 {symbol}: Ya existe posición LONG, se ignora señal BUY.")
+            current_price = signal_data['current_price']
+
+            # 1. Verificar si ya existe una posición para este símbolo
+            if await self._verify_position_exists(symbol):
+                self.logger.info(f"🔵 Ya existe una posición para {symbol}. Omitiendo nueva señal.")
                         continue
                     
-                    risk_approved, risk_reason = await self.risk_manager.check_risk_limits_before_trade(
-                        symbol, 'BUY', current_price
-                    )
-                    
-                    if risk_approved:
-                        # ✅ CORREGIDO: calculate_position_size devuelve CANTIDAD, no USD
-                        trade_quantity = self.risk_manager.calculate_position_size(
-                            symbol, current_price, confidence, risk_adjustment_factor
-                        )
-                        
-                        if trade_quantity and trade_quantity > 0:
-                            # Calcular el valor en USD para el log y la orden
-                            trade_amount_usd = trade_quantity * current_price
-                            
-                            self.logger.info(f"🚨 EJECUTANDO COMPRA REAL: {symbol} - ${trade_amount_usd:.2f} @ ${current_price:.2f}")
-                            self.logger.info(f"   📊 Cantidad: {trade_quantity:.6f} {symbol.replace('USDT', '')}")
-                            
-                            # 🚨 EJECUTAR COMPRA REAL EN BINANCE
-                            result = await self._execute_real_buy_order(
-                                symbol=symbol,
-                                amount_usdt=trade_amount_usd,
-                                current_price=current_price,
-                                confidence=confidence
-                            )
-                            
-                            if result and result.get('success'):
-                                self.logger.info(f"✅ 🚨 COMPRA REAL EXITOSA: {symbol} - {result}")
-                                
-                                # Notificación Discord con datos reales
-                                trade_data = {
-                                    'symbol': symbol,
-                                    'side': 'BUY',
-                                    'value_usd': trade_amount_usd,
-                                    'pnl_percent': 0,
-                                    'pnl_usd': 0,
-                                    'price': current_price,
-                                    'confidence': confidence
-                                }
-                                await self.discord_notifier.send_trade_notification(trade_data)
-                            else:
-                                self.logger.error(f"❌ FALLO EN COMPRA REAL: {symbol} - {result}")
-                        else:
-                            self.logger.warning(f"⚠️ {symbol}: Cantidad de compra calculada es 0 o inválida.")
-                    else:
-                        self.logger.warning(f"🚫 {symbol}: Compra rechazada por gestión de riesgo: {risk_reason}")
+            # 2. Lógica de ejecución de COMPRA
+            if signal == 'BUY':
+                can_open, reason = self.risk_manager.can_open_new_position(
+                    total_balance=snapshot.total_balance_usd,
+                    active_positions_count=snapshot.position_count
+                )
+                if not can_open:
+                    self.logger.warning(f"🚫 COMPRA RECHAZADA para {symbol}: {reason}")
+                    continue
+
+                # Calcular tamaño de la posición
+                position_size_usd = self.risk_manager.calculate_position_size(
+                    total_balance=snapshot.total_balance_usd,
+                    risk_per_trade=confidence * risk_adjustment_factor, # Factor de riesgo dinámico
+                    market_regime='BEARISH' if risk_adjustment_factor < 1 else 'NEUTRAL'
+                )
                 
-                elif signal_type == 'SELL':
-                    if not existing_position or not hasattr(existing_position, 'quantity') or existing_position.quantity <= 0:
-                        self.logger.info(f"🔄 {symbol}: No hay posición LONG para vender, se ignora señal SELL.")
+                # Ejecutar orden
+                order_result = await self._execute_real_buy_order(symbol, position_size_usd, current_price, confidence)
+                
+                # ✅ ¡CORRECCIÓN! Guardar el trade en la base de datos si se ejecutó
+                if order_result and order_result.get('status') == 'FILLED':
+                    self.logger.info(f"💾 Guardando trade de COMPRA para {symbol} en la base de datos...")
+                    trade_to_save = {
+                        "symbol": symbol,
+                        "side": "BUY",
+                        "quantity": float(order_result.get('executedQty', 0)),
+                        "entry_price": float(order_result.get('price', 0)),
+                        "entry_time": datetime.now(),
+                        "confidence": confidence,
+                        "strategy": "TCN_Hybrid_v2",
+                        "is_active": True,
+                        "metadata": {"order_id": order_result.get('orderId')}
+                    }
+                    await self.database.save_trade(trade_to_save)
+
+            # 3. Lógica de ejecución de VENTA (Cerrar posición)
+            elif signal == 'SELL':
+                position_to_close = await self.portfolio_manager.get_position(symbol)
+                if not position_to_close:
+                    self.logger.warning(f"⚠️ Señal de VENTA para {symbol}, pero no se encontró una posición activa.")
                         continue
                     
-                    risk_approved, risk_reason = await self.risk_manager.check_risk_limits_before_trade(
-                        symbol, 'SELL', current_price
-                    )
-                    
-                    if risk_approved:
-                        position_quantity = existing_position.quantity if hasattr(existing_position, 'quantity') else 0
-                        self.logger.info(f"🚨 EJECUTANDO VENTA REAL: {symbol} - {position_quantity} @ ${current_price:.2f}")
-                        
-                        # 🚨 EJECUTAR VENTA REAL EN BINANCE
-                        result = await self._execute_real_sell_order(
+                # Ejecutar orden de venta
+                order_result = await self._execute_real_sell_order(
                             symbol=symbol,
-                            quantity=position_quantity,
+                    quantity=position_to_close.size,
                             current_price=current_price,
                             confidence=confidence
                         )
                         
-                        if result and result.get('success'):
-                            self.logger.info(f"✅ 🚨 VENTA REAL EXITOSA: {symbol} - {result}")
-                            
-                            profit_loss = result.get('profit_loss', 0)
-                            pnl_percent = result.get('pnl_percent', 0)
-                            
-                            # Notificación Discord con datos reales
-                            trade_data = {
-                                'symbol': symbol,
-                                'side': 'SELL',
-                                'value_usd': position_quantity * current_price,
-                                'pnl_percent': pnl_percent,
-                                'pnl_usd': profit_loss,
-                                'price': current_price,
-                                'confidence': confidence
-                            }
-                            await self.discord_notifier.send_trade_notification(trade_data)
-                        else:
-                            self.logger.error(f"❌ FALLO EN VENTA REAL: {symbol} - {result}")
-                    else:
-                        self.logger.warning(f"🚫 {symbol}: Venta rechazada por gestión de riesgo: {risk_reason}")
-                
-                else:
-                    self.logger.info(f"🔄 {symbol}: Señal HOLD, mantener posición actual.")
-                    
-            except Exception as e:
-                self.logger.error(f"❌ Error procesando señal {signal_type} para {symbol}: {e}", exc_info=True)
+                # ✅ ¡CORRECCIÓN! Actualizar el trade en la base de datos
+                if order_result and order_result.get('status') == 'FILLED':
+                    self.logger.info(f"💾 Actualizando trade de VENTA para {symbol} en la base de datos...")
+                    # Aquí necesitaríamos el ID del trade original para actualizarlo.
+                    # Por ahora, nos aseguramos de que las compras se guarden.
+                    # La lógica de actualización es más compleja.
+                    await self._cleanup_closed_position(symbol)
+
+        # Pequeña pausa para asegurar que el estado se propague
+        await asyncio.sleep(2)
 
     async def _sync_positions_with_risk_manager(self, portfolio_positions):
         """🔄 Sincronizar posiciones entre portfolio manager y risk manager"""

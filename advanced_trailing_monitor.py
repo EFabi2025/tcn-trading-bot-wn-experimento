@@ -194,7 +194,7 @@ class AdvancedTrailingMonitor:
                     self.logger.info(f"   📊 Movimiento #{position.trailing_movements}")
             
             # 5. VERIFICAR EJECUCIÓN DEL TRAILING STOP
-            if position.trailing_stop_active and current_price <= position.trailing_stop_price:
+            if position.trailing_stop_active and position.trailing_stop_price is not None and current_price <= position.trailing_stop_price:
                 stop_triggered = True
                 trigger_reason = "TRAILING_STOP"
                 
@@ -240,7 +240,7 @@ class AdvancedTrailingMonitor:
                     self.logger.info(f"📈 TRAILING MOVIDO SHORT {position.symbol}: ${old_price:.4f} → ${new_trailing_price:.4f}")
             
             # 5. Verificar ejecución
-            if position.trailing_stop_active and current_price >= position.trailing_stop_price:
+            if position.trailing_stop_active and position.trailing_stop_price is not None and current_price >= position.trailing_stop_price:
                 stop_triggered = True
                 trigger_reason = "TRAILING_STOP"
                 
@@ -248,7 +248,7 @@ class AdvancedTrailingMonitor:
                 self.logger.warning(f"🛑 TRAILING STOP EJECUTADO SHORT {position.symbol}: PnL +{final_pnl:.2f}%")
         
         # VERIFICAR STOP LOSS TRADICIONAL (solo si trailing no está activo)
-        if not position.trailing_stop_active and position.stop_loss_price:
+        if not position.trailing_stop_active and position.stop_loss_price is not None:
             if position.side == 'BUY' and current_price <= position.stop_loss_price:
                 stop_triggered = True
                 trigger_reason = "STOP_LOSS"

@@ -754,7 +754,7 @@ class ProfessionalPortfolioManager:
                         print(f"   📊 Movimiento #{position.trailing_movements}")
                 
                 # 5. Verificar si se debe cerrar por trailing stop
-                if position.trailing_stop_active and current_price <= position.trailing_stop_price:
+                if position.trailing_stop_active and position.trailing_stop_price is not None and current_price <= position.trailing_stop_price:
                     stop_triggered = True
                     trigger_reason = "TRAILING_STOP"
                     
@@ -769,8 +769,8 @@ class ProfessionalPortfolioManager:
                     print(f"   🚀 ORDEN AUTOMÁTICA: Se ejecutará venta automática")
                 
                 # 6. Verificar stop loss tradicional (solo si trailing no está activo o es menor)
-                elif current_price <= position.stop_loss_price:
-                    if not position.trailing_stop_active or position.stop_loss_price > position.trailing_stop_price:
+                elif position.stop_loss_price is not None and current_price <= position.stop_loss_price:
+                    if not position.trailing_stop_active or (position.stop_loss_price > (position.trailing_stop_price or 0)):
                         stop_triggered = True
                         trigger_reason = "STOP_LOSS"
                         
