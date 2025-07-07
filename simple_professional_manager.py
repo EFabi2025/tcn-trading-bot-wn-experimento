@@ -22,7 +22,7 @@ import sqlite3
 import pandas as pd
 import numpy as np
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_DOWN
 from typing import Dict, List, Optional, Any, Tuple
@@ -1745,6 +1745,7 @@ class SimpleProfessionalTradingManager:
 
         # ✅ NUEVO: Verificar diversificación del portafolio ANTES de risk management
         print(f"    🎯 PASO 1: Verificando diversificación para {symbol}...")
+        adjusted_position_usd = None
         try:
             # ✅ CORRECCIÓN: Usar el tamaño ajustado de la posición
             adjusted_position_usd = await self._check_portfolio_diversification_before_trade(symbol, signal_data)
@@ -1761,35 +1762,20 @@ class SimpleProfessionalTradingManager:
 
         # Verificar límites de riesgo
         print(f"    🛡️ PASO 2: Verificando límites de riesgo para {symbol}...")
-
-        # ✅ CORRECCIÓN: Verificar circuit breaker ANTES de otros límites
-        try:
-            if await self._daily_loss_exceeds_limit():
-                print(f"    ❌ BLOQUEADO: Límite de pérdida diaria excedido. No se abrirán nuevas posiciones.")
-                # Opcional: Pausar el trading completamente
-                if not self.pause_trading:
-                    await self.pause_trading_with_reason(f"Circuit breaker: Límite de pérdida diaria excedido")
-                return
-        except Exception as e:
-            print(f"    ⚠️ Error verificando límite de pérdida diaria: {e}")
-
-        can_trade = True
-        reason = ""
-
+        can_trade = False
+        risk_reason = ""
         if self.risk_manager:
             print(f"    🛡️ PASO 2: Risk manager disponible, ejecutando check_risk_limits_before_trade...")
-            can_trade, reason = await self.risk_manager.check_risk_limits_before_trade(
-                symbol, signal, confidence
-            )
-            print(f"    🛡️ PASO 2: Risk Manager resultado: can_trade={can_trade}, reason='{reason}'")
+            can_trade, risk_reason = await self.risk_manager.check_risk_limits_before_trade(symbol, signal, confidence)
+            print(f"    🛡️ PASO 2: Risk Manager resultado: can_trade={can_trade}, reason='{risk_reason}'")
         else:
-            print("    ⚠️ PASO 2: Risk manager no disponible, usando verificaciones básicas")
+            print(f"    ❌ PASO 2: Risk manager no disponible")
+            await self._send_discord_notification(f"❌ **RISK MANAGER NO DISPONIBLE**: {symbol}")
+            return
 
         if not can_trade:
-            print(f"    ❌ PASO 2: RISK MANAGER BLOQUEÓ: {symbol}: {reason}")
-            await self._send_discord_notification(f"❌ **RISK MANAGER BLOQUEÓ**: {symbol}: {reason}")
-            if self.database:
-                await self.database.log_event('WARNING', 'RISK', f'Trade rechazado {symbol}: {reason}', symbol)
+            print(f"    ❌ PASO 2: RISK MANAGER BLOQUEÓ: {symbol}: {risk_reason}")
+            await self._send_discord_notification(f"❌ **RISK MANAGER BLOQUEÓ**: {symbol}: {risk_reason}")
             return
 
         # Abrir nueva posición
@@ -1797,10 +1783,17 @@ class SimpleProfessionalTradingManager:
         position = None
         if self.risk_manager:
             print(f"    💰 PASO 3: Risk manager disponible, ejecutando open_position...")
-            # ✅ CORRECCIÓN: Usar tamaño ajustado por diversificación si está disponible
-            position = await self.risk_manager.open_position(
-                symbol, signal, confidence, current_price, adjusted_position_usd=adjusted_position_usd
-            )
+            # ✅ CORRECCIÓN CRÍTICA: Pasar el tamaño ajustado por diversificación al risk manager
+            if adjusted_position_usd is not None:
+                # Usar método especial que respeta el tamaño de diversificación
+                position = await self._execute_position_with_diversification_size(
+                    symbol, signal, confidence, current_price, adjusted_position_usd
+                )
+            else:
+                # Usar método normal del risk manager
+                position = await self.risk_manager.open_position(
+                    symbol, signal, confidence, current_price
+                )
             if position:
                 print(f"    ✅ PASO 3: POSICIÓN CREADA: {symbol} - Order ID: {position.order_id}")
             else:
@@ -2135,10 +2128,10 @@ class SimpleProfessionalTradingManager:
 
             # ✅ CONFIGURACIÓN: Límites específicos por par
             SYMBOL_LIMITS = {
-                'BTCUSDT': 50.0,  # BTC máximo 50% del portafolio
-                'ETHUSDT': 20.0,  # ETH máximo 20% del portafolio
-                'BNBUSDT': 15.0,  # BNB máximo 15% del portafolio
-                'XRPUSDT': 15.0   # XRP máximo 15% del portafolio
+                'BTCUSDT': 35.0,  # BTC máximo 35% del portafolio (reducido de 50%)
+                'ETHUSDT': 25.0,  # ETH máximo 15% del portafolio (reducido de 20%)
+                'BNBUSDT': 25.0,  # BNB máximo 25% del portafolio (aumentado de 15%)
+                'XRPUSDT': 15.0   # XRP máximo 15% del portafolio (sin cambios)
             }
 
             # ✅ PRIORIZACIÓN: Orden de preferencia para señales simultáneas
@@ -2269,7 +2262,7 @@ class SimpleProfessionalTradingManager:
 
             # ✅ INFORMACIÓN: Mostrar análisis detallado
             print(f"✅ DIVERSIFICACIÓN: Trade aprobado para {symbol}")
-            print(f"   🎯 Límite específico: {symbol_limit}% (BTC:50%, ETH:20%, BNB:15%, XRP:15%)")
+            print(f"   🎯 Límite específico: {symbol_limit}% (BTC:35%, ETH:25%, BNB:25%, XRP:15%)")
             print(f"   📊 Exposición actual en {symbol}: {current_symbol_exposure_percent:.1f}%")
             print(f"   📊 Nueva exposición en {symbol}: {new_symbol_exposure_percent:.1f}%/{symbol_limit}%")
             print(f"   💰 Tamaño propuesto: ${proposed_position_usd:.2f} ({base_size_percent:.1f}%)")
@@ -2307,7 +2300,7 @@ class SimpleProfessionalTradingManager:
                         f"📊 {symbol}: {signal_data['signal']}\n"
                         f"💡 {str(e).replace('Trade bloqueado por diversificación: ', '').replace('Trade pausado por priorización: ', '')}\n"
                         f"🎯 Confianza: {signal_data['confidence']:.1%}\n"
-                        f"🏆 Límites: BTC≤50%, ETH≤20%, BNB≤15%, XRP≤15%"
+                        f"🏆 Límites: BTC≤35%, ETH≤25%, BNB≤25%, XRP≤15%"
                     )
 
                 raise  # Re-lanzar bloqueos legítimos
@@ -3087,7 +3080,11 @@ class SimpleProfessionalTradingManager:
                 total_signals += bullish_count + bearish_count
 
                 print(f"   📊 {symbol}: {pair_regime} (Bull: {bullish_count}, Bear: {bearish_count})")
-                print(f"      📈 Mom4h: {latest['momentum_4h']:.3f} | Mom24h: {latest['momentum_24h']:.3f} | Trend2d: {latest['recent_trend_2d']:.3f}")
+                # ✅ CORREGIDO: Mostrar valores reales en lugar de NaN
+                mom_4h_display = latest['momentum_4h'] if not pd.isna(latest['momentum_4h']) else 0.0
+                mom_24h_display = latest['momentum_24h'] if not pd.isna(latest['momentum_24h']) else 0.0
+                trend_2d_display = latest['recent_trend_2d'] if not pd.isna(latest['recent_trend_2d']) else 0.0
+                print(f"      📈 Mom4h: {mom_4h_display:.3f} | Mom24h: {mom_24h_display:.3f} | Trend2d: {trend_2d_display:.3f}")
 
             # 2. ANÁLISIS AGREGADO DEL MERCADO
 
@@ -3113,14 +3110,20 @@ class SimpleProfessionalTradingManager:
             max_votes = max(regime_votes.values())
             consensus_strength = max_votes / total_pairs
 
-            # 4. ✅ CLASIFICACIÓN FINAL CORREGIDA - MÁS SENSIBLE A BEARISH
+            # 4. ✅ CLASIFICACIÓN FINAL CORREGIDA
 
-            # Umbrales REDUCIDOS para mayor sensibilidad
-            if (regime_votes['BEARISH'] >= regime_votes['BULLISH'] and  # Cambio: era > bullish + 1
-                bearish_ratio > 0.45 and  # Cambio: era 0.6, ahora 0.45
-                consensus_strength > 0.4):  # Cambio: era 0.6, ahora 0.4
+            # ✅ CORRECCIÓN CRÍTICA: Si hay unanimidad BEARISH (4 votos), debe ser BEARISH
+            if regime_votes['BEARISH'] == total_pairs and regime_votes['BEARISH'] > 0:
                 final_regime = 'BEARISH'
-                confidence = min(0.95, 0.6 + (bearish_ratio - 0.45) * 0.8 + (consensus_strength - 0.4) * 0.6)
+                confidence = 0.95  # Alta confianza en unanimidad
+                print(f"   🔴 UNANIMIDAD BEARISH: {regime_votes['BEARISH']}/{total_pairs} pares → BEARISH forzado")
+
+            # Umbrales REDUCIDOS para mayor sensibilidad (mantener lógica original mejorada)
+            elif (regime_votes['BEARISH'] >= regime_votes['BULLISH'] and
+                  bearish_ratio > 0.3 and  # Reducido aún más de 0.45 a 0.3
+                  consensus_strength > 0.3):  # Reducido de 0.4 a 0.3
+                final_regime = 'BEARISH'
+                confidence = min(0.95, 0.6 + (bearish_ratio - 0.3) * 0.8 + (consensus_strength - 0.3) * 0.6)
 
             elif (regime_votes['BULLISH'] > regime_votes['BEARISH'] + 1 and
                   bullish_ratio > 0.55 and  # Mantener umbral más alto para bullish
@@ -3134,11 +3137,15 @@ class SimpleProfessionalTradingManager:
 
             # 5. ✅ OVERRIDE PARA MERCADOS CLARAMENTE BAJISTAS
             # Si la mayoría de pares muestran tendencia bajista de 2 días, forzar BEARISH
-            avg_trend_2d = np.mean([data['recent_trend_2d'] for data in pair_regimes.values()])
-            if avg_trend_2d < -0.03 and final_regime == 'NEUTRAL':  # -3% promedio en 2 días
-                final_regime = 'BEARISH'
-                confidence = 0.75
-                print(f"   🔴 OVERRIDE: Tendencia 2d promedio {avg_trend_2d:.3f} < -3% → BEARISH forzado")
+            valid_trends = [data['recent_trend_2d'] for data in pair_regimes.values() if data['recent_trend_2d'] != 0]
+            if valid_trends:
+                avg_trend_2d = np.mean(valid_trends)
+                if avg_trend_2d < -0.03 and final_regime == 'NEUTRAL':  # -3% promedio en 2 días
+                    final_regime = 'BEARISH'
+                    confidence = 0.75
+                    print(f"   🔴 OVERRIDE: Tendencia 2d promedio {avg_trend_2d:.3f} < -3% → BEARISH forzado")
+            else:
+                avg_trend_2d = 0.0
 
             # 6. LOGGING DETALLADO
             print(f"   📊 Votos por régimen: {regime_votes}")
@@ -3158,6 +3165,66 @@ class SimpleProfessionalTradingManager:
         except Exception as e:
             print(f"❌ Error en detección de régimen: {e}")
             return 'NEUTRAL', 0.5
+
+    async def _execute_position_with_diversification_size(self, symbol: str, side: str, confidence: float,
+                                                        current_price: float, position_size_usd: float) -> Optional:
+        """💰 Ejecutar posición con tamaño específico calculado por diversificación"""
+        try:
+            print(f"🎯 EJECUTANDO POSICIÓN CON TAMAÑO DE DIVERSIFICACIÓN:")
+            print(f"   📊 {symbol}: {side}")
+            print(f"   💰 Tamaño USD: ${position_size_usd:.2f}")
+            print(f"   💲 Precio: ${current_price:.4f}")
+
+            # Calcular cantidad basada en el tamaño USD especificado por diversificación
+            quantity = position_size_usd / current_price
+            print(f"   🔢 Cantidad calculada: {quantity:.8f}")
+
+            # Usar el método interno del risk manager para ejecutar la orden real
+            order_result = await self.risk_manager._execute_real_order(symbol, side, quantity)
+
+            if not order_result or 'orderId' not in order_result:
+                print(f"❌ Falló la ejecución de la orden real para {symbol}. No se abre posición.")
+                return None
+
+            real_entry_price = float(order_result.get('fills', [{}])[0].get('price', current_price))
+            real_quantity = float(order_result.get('executedQty', quantity))
+            order_id = str(order_result['orderId'])
+
+            print(f"🎉 Orden real ejecutada para {symbol}: ID {order_id}")
+            print(f"   - Precio Real: ${real_entry_price:.4f}, Cantidad Real: {real_quantity:.6f}")
+
+            # Crear posición usando la misma estructura que AdvancedRiskManager
+            from advanced_risk_manager import Position
+            from datetime import timezone
+
+            position = Position(
+                symbol=symbol,
+                side=side,
+                quantity=real_quantity,
+                entry_price=real_entry_price,
+                current_price=real_entry_price,
+                entry_time=datetime.now(timezone.utc),
+                stop_loss=real_entry_price * (1 - self.risk_manager.limits.stop_loss_percent / 100),
+                take_profit=real_entry_price * (1 + self.risk_manager.limits.take_profit_percent / 100),
+                trade_id=order_id,
+                order_id=order_id,
+                is_active=True
+            )
+
+            # Registrar la posición en el risk manager
+            self.risk_manager.active_positions[order_id] = position
+
+            # Actualizar balance del risk manager
+            await self.risk_manager.update_balance(self.risk_manager.current_balance - (real_quantity * real_entry_price))
+
+            print(f"✅ POSICIÓN CREADA CON TAMAÑO DE DIVERSIFICACIÓN: {symbol} - Order ID: {order_id}")
+            print(f"   💰 Valor real invertido: ${real_quantity * real_entry_price:.2f}")
+
+            return position
+
+        except Exception as e:
+            print(f"❌ Error ejecutando posición con tamaño de diversificación para {symbol}: {e}")
+            return None
 
 async def main():
     """🎯 Función principal para testing directo"""

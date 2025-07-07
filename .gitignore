@@ -3,7 +3,7 @@
 
 # 🔐 SEGURIDAD - Archivos de configuración sensibles
 # ==================================================
-.env
+.env*
 .env.local
 .env.production
 .env.staging
@@ -276,3 +276,42 @@ get_current_balance.py
 
 # Bases de datos
 *.db
+
+# Archivos de entorno
+.env*
+
+# Bases de datos locales
+*.db
+*.sqlite3
+db.sqlite3
+
+# Archivos de cache y logs
+__pycache__/
+*.pyc
+*.log
+*.swp
+
+# Reportes y artefactos de construcción
+.pytest_cache/
+.mypy_cache/
+.tox/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+/node_modules
+
+# Configuraciones de IDE
+.vscode/
+.idea/
+
+# Archivos específicos de sistema operativo
+.DS_Store
+Thumbs.db
+
+# Credenciales y configuraciones sensibles
+api_keys.txt
+config.py
+# ✅ CORREGIDO: ignorar cualquier archivo .env* para no exponer credenciales
+# .env
