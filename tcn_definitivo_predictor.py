@@ -392,6 +392,7 @@ class TCNDefinitivoPredictor:
             predicted_class = np.argmax(probabilities)
             confidence = float(np.max(probabilities))
 
+            # ✅ CORREGIDO: Unificar interpretación de clases a [SELL, HOLD, BUY] para coincidir con el entrenamiento
             class_names = ['SELL', 'HOLD', 'BUY']
             signal = class_names[predicted_class]
 
@@ -547,7 +548,9 @@ class TCNDefinitivoPredictor:
             # Determinar señal y confianza
             signal_idx = np.argmax(weighted_prediction)
             confidence = float(weighted_prediction[signal_idx])
-            signal_map = {0: 'BUY', 1: 'HOLD', 2: 'SELL'}
+
+            # ✅ CORREGIDO: El orden de salida del modelo es [SELL, HOLD, BUY] para coincidir con el entrenamiento
+            signal_map = {0: 'SELL', 1: 'HOLD', 2: 'BUY'}
             signal = signal_map[signal_idx]
 
             # 🔧 FILTRO DE CORDURA: Validar predicción contra indicadores técnicos básicos
@@ -558,10 +561,11 @@ class TCNDefinitivoPredictor:
                 confidence = sanity_check_result['corrected_confidence']
 
             # Log de la predicción
+            # ✅ CORREGIDO: El orden de las probabilidades debe coincidir con el signal_map
             probabilities = {
-                'BUY': float(weighted_prediction[0]),
+                'SELL': float(weighted_prediction[0]),
                 'HOLD': float(weighted_prediction[1]),
-                'SELL': float(weighted_prediction[2])
+                'BUY': float(weighted_prediction[2])
             }
 
             logger.info(f"🎯 {symbol}: {signal} (conf: {confidence:.3f})")
@@ -831,8 +835,8 @@ def test_definitivo_predictor():
         predictions = predictor.predict_all_symbols(test_data)
 
         print(f"\n🎯 Predicciones realizadas: {len(predictions)}")
-        for symbol, pred in predictions.items():
-            print(f"  {symbol}: {pred['signal']} (conf: {pred['confidence']:.3f})")
+        for symbol, result in predictions.items():
+            print(f"  {symbol}: {result['signal']} (conf: {result['confidence']:.3f})")
 
         return True
     else:
