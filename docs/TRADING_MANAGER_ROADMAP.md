@@ -14,7 +14,7 @@
 
 ### 🛡️ **Advanced Risk Manager** ✅
 - ✅ Stop Loss automático
-- ✅ Take Profit automático  
+- ✅ Take Profit automático
 - ✅ Trailing Stops
 - ✅ Position Sizing dinámico (Kelly Criterion)
 - ✅ Circuit Breakers

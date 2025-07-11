@@ -2,9 +2,9 @@
 
 ## 📋 INFORMACIÓN GENERAL
 
-**Fecha**: 10 de Junio, 2025  
-**Proceso**: Re-entrenamiento completo del modelo TCN Anti-Bias  
-**Objetivo**: Eliminar sesgo extremo hacia señales BUY detectado en modelo original  
+**Fecha**: 10 de Junio, 2025
+**Proceso**: Re-entrenamiento completo del modelo TCN Anti-Bias
+**Objetivo**: Eliminar sesgo extremo hacia señales BUY detectado en modelo original
 
 ---
 
@@ -19,7 +19,7 @@
 ```
 📊 Distribución Original:
    - BUY: 910 (100.0%) ❌ EXTREMO
-   - HOLD: 0 (0.0%)   ❌ AUSENTE  
+   - HOLD: 0 (0.0%)   ❌ AUSENTE
    - SELL: 0 (0.0%)   ❌ AUSENTE
 
 🚨 SESGO CRÍTICO: 200% de desviación
@@ -39,13 +39,13 @@
 ```
 📊 Regímenes Balanceados:
    - BEAR: 245 (24.5%)     ✅ BALANCEADO
-   - SIDEWAYS: 510 (51.0%) ✅ BALANCEADO  
+   - SIDEWAYS: 510 (51.0%) ✅ BALANCEADO
    - BULL: 245 (24.5%)     ✅ BALANCEADO
 ```
 
 ### 3. Feature Engineering Comprehensivo
 - **Total Features**: 66 técnicas
-- **Categorías**: 
+- **Categorías**:
   - OHLCV básicos (5)
   - SMAs/EMAs (18)
   - RSI multi-período (4)
@@ -93,7 +93,7 @@
 
 🎯 Test de Sesgo: 3/5 (RECHAZADO)
    - Clase dominante: 71.6% > 60% ❌
-   - Clase minoritaria: 0.0% < 15% ❌  
+   - Clase minoritaria: 0.0% < 15% ❌
    - Sesgo temporal: 11.8% ✅
    - Confianza: 0.379 ✅
 ```
@@ -210,7 +210,7 @@ scripts/
 - 🚨 **CATASTRÓFICO**: Pérdidas garantizadas en bear markets
 - 🚨 **INUTILIZABLE**: Para trading real
 
-### **DESPUÉS** (Modelo Re-entrenado)  
+### **DESPUÉS** (Modelo Re-entrenado)
 - ✅ **SEGURO**: 71.6% señales conservadoras (HOLD)
 - ✅ **BALANCEADO**: Eliminó sesgo extremo BUY
 - ⚠️ **LIMITADO**: No detecta bear markets (0% SELL)
@@ -220,5 +220,5 @@ scripts/
 
 ---
 
-*Documento generado: 10 de Junio, 2025*  
-*Estado: RE-ENTRENAMIENTO COMPLETADO CON MEJORAS SUSTANCIALES* 
+*Documento generado: 10 de Junio, 2025*
+*Estado: RE-ENTRENAMIENTO COMPLETADO CON MEJORAS SUSTANCIALES*

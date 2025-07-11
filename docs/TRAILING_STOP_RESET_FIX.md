@@ -104,7 +104,7 @@ Posición BTCUSDT: Trailing +2.5% → Nueva orden → Trailing PRESERVADO ✅
 order_id=f"pos_{buy_order.order_id}"
 
 # Líneas 591-620: Logging mejorado en _restore_trailing_state
-# Líneas 576-590: Logging mejorado en _save_trailing_state  
+# Líneas 576-590: Logging mejorado en _save_trailing_state
 # Líneas 894-915: Nueva función debug_trailing_cache
 ```
 
@@ -157,4 +157,4 @@ portfolio_manager.debug_trailing_cache()
 
 **PROBLEMA RESUELTO**: El trailing stop ahora se preserva correctamente cuando se abren nuevas posiciones del mismo par, manteniendo la protección de ganancias acumulada.
 
-**ESTADO**: ✅ **PRODUCCIÓN LISTA** 
+**ESTADO**: ✅ **PRODUCCIÓN LISTA**

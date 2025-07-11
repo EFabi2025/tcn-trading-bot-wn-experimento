@@ -164,4 +164,4 @@ Una vez configurado tu `.env`, ejecuta:
 python real_trading_setup.py
 ```
 
-Y selecciona la opción que desees. ¡El sistema usará tus API keys reales de Binance! 
+Y selecciona la opción que desees. ¡El sistema usará tus API keys reales de Binance!

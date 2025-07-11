@@ -212,4 +212,4 @@ Ahora el trading manager:
 - 🛡️ **Maneja errores** robustamente
 - 📊 **Proporciona métricas** detalladas de performance
 
-¡El problema del balance "pegado" en $102 está **completamente solucionado**! 🎉 
+¡El problema del balance "pegado" en $102 está **completamente solucionado**! 🎉

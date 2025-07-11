@@ -195,4 +195,4 @@ Si encuentras problemas:
 1. 🔍 Revisa los logs en `trading_bot.db`
 2. 📊 Ejecuta `verify_sync_results.py`
 3. 🔧 Verifica configuración de API keys
-4. 📝 Revisa los mensajes de error en consola 
+4. 📝 Revisa los mensajes de error en consola

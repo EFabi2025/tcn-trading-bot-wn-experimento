@@ -23,7 +23,7 @@ if current_pnl_percent >= 1.0:  # Activar en +1%
 if current_pnl_percent >= 1.0:
     max_price_reached = position.highest_price_since_entry
     proposed_trailing = max_price_reached * (1 - 2.0/100)
-    
+
     # GARANTIZAR que trailing esté ARRIBA del precio de entrada + comisiones
     min_trailing_price = position.entry_price * (1 + 0.009)  # +0.9%
     position.trailing_stop_price = max(proposed_trailing, min_trailing_price)
@@ -175,4 +175,4 @@ if final_pnl >= 0.9:
 3. **Optimización por volatilidad**: Ajustes dinámicos
 4. **Alertas en tiempo real**: Notificaciones de ejecución
 
-**🏆 CONCLUSIÓN: Sistema de trailing stop profesional listo para trading en vivo** 
+**🏆 CONCLUSIÓN: Sistema de trailing stop profesional listo para trading en vivo**

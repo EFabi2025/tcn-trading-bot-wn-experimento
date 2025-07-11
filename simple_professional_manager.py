@@ -1112,8 +1112,19 @@ class SimpleProfessionalTradingManager:
                 'volatility_level': 'MEDIUM'
             }
 
-        # Obtener umbral de confianza
-        threshold = float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.70')) * 100  # Convertir a porcentaje
+        # ✅ ADAPTATIVO: Umbral de confianza inteligente según contexto de mercado
+        base_threshold = float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.70')) * 100  # Convertir a porcentaje
+
+        # Relajar umbral general en mercados BULLISH claros
+        if market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.9:
+            threshold = base_threshold * 0.8  # 70% * 0.8 = 56% para mercado muy bullish
+            print(f"🎯 UMBRAL ADAPTATIVO: {threshold:.1f}% (base: {base_threshold:.1f}%) - Mercado BULLISH {market_context['confidence']:.1%}")
+        elif market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.7:
+            threshold = base_threshold * 0.85  # 70% * 0.85 = 59.5% para mercado bullish
+            print(f"🎯 UMBRAL ADAPTATIVO: {threshold:.1f}% (base: {base_threshold:.1f}%) - Mercado BULLISH {market_context['confidence']:.1%}")
+        else:
+            threshold = base_threshold
+            print(f"🎯 UMBRAL ESTÁNDAR: {threshold:.1f}% - Mercado {market_context['regime']}")
 
         # ✅ VERSIÓN HÍBRIDA: Combinar lógica actual con simplicidad de Gemini
         for symbol in self.symbols:
@@ -1142,7 +1153,7 @@ class SimpleProfessionalTradingManager:
 
                 # ✅ NUEVO: Aplicar filtros de estabilidad y cooldown
                 filtered_signal, filter_reason = self._apply_signal_stability_filter(
-                    symbol, signal, confidence_level, current_price
+                    symbol, signal, confidence_level, current_price, market_context
                 )
 
                 if filtered_signal != signal:
@@ -1166,10 +1177,19 @@ class SimpleProfessionalTradingManager:
                 self.last_signals[symbol] = signal
                 print(f"💡 Señal TCN para {symbol}: {signal} (Confianza: {confidence_level:.2f}%) (Umbral: {threshold:.1f}%)")
 
-                # 🔧 **CORRECCIÓN CRÍTICA** - SELL también requiere confianza mínima
+                # 🔧 **CORRECCIÓN CRÍTICA** - SELL también requiere confianza mínima (ADAPTATIVO)
                 # Aplicar umbral de confianza tanto para BUY como para SELL
-                min_sell_confidence = float(os.getenv('MIN_SELL_CONFIDENCE_THRESHOLD', '0.75')) * 100
-                sell_threshold = max(min_sell_confidence, threshold * 0.85)  # SELL requiere al menos config% o 85% del umbral BUY
+                base_sell_confidence = float(os.getenv('MIN_SELL_CONFIDENCE_THRESHOLD', '0.75')) * 100
+
+                # ✅ ADAPTATIVO: Relajar umbral SELL en mercados BULLISH para tomar ganancias
+                if market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.9:
+                    sell_threshold = base_sell_confidence * 0.8  # 75% * 0.8 = 60% para mercado muy bullish
+                    print(f"🎯 UMBRAL SELL ADAPTATIVO: {sell_threshold:.1f}% (base: {base_sell_confidence:.1f}%) - Mercado BULLISH {market_context['confidence']:.1%}")
+                elif market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.7:
+                    sell_threshold = base_sell_confidence * 0.85  # 75% * 0.85 = 63.75% para mercado bullish
+                    print(f"🎯 UMBRAL SELL ADAPTATIVO: {sell_threshold:.1f}% (base: {base_sell_confidence:.1f}%) - Mercado BULLISH {market_context['confidence']:.1%}")
+                else:
+                    sell_threshold = max(base_sell_confidence, threshold * 0.85)  # SELL requiere al menos config% o 85% del umbral BUY
                 if (signal == 'BUY' and confidence_level >= threshold) or (signal == 'SELL' and confidence_level >= sell_threshold):
                     log_emoji = "📈" if signal == "BUY" else "📉"
                     log_action = "COMPRA" if signal == "BUY" else "VENTA"
@@ -1235,6 +1255,10 @@ class SimpleProfessionalTradingManager:
             return prioritized_signals
         else:
             print("📊 No se generaron señales TCN válidas en este ciclo")
+            # ✅ INFORMACIÓN: Mostrar por qué no se generaron señales válidas
+            print(f"💡 Umbrales aplicados - BUY: {threshold:.1f}% | SELL: {sell_threshold:.1f}%")
+            if market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.7:
+                print(f"🎯 Umbrales relajados por mercado BULLISH ({market_context['confidence']:.1%})")
             return signals
 
     def _apply_signal_prioritization(self, signals: Dict) -> Dict:
@@ -1502,42 +1526,71 @@ class SimpleProfessionalTradingManager:
                     else:
                         filter_reason = f"SELL favorecido en mercado BEARISH con confianza {confidence:.1f}%"
 
-            # 🟢 FILTROS BULLISH - Aprovechar momentum alcista
+            # 🟢 FILTROS BULLISH - Aprovechar momentum alcista (RELAJADOS)
             elif regime == 'BULLISH' and market_confidence > 0.7:
                 if signal == 'BUY':
-                    # En bullish fuerte, relajar ligeramente el umbral para BUY
-                    if confidence < 65:  # Reducir de 70% a 65% para BUY en bullish
-                        signal = 'HOLD'
-                        filter_reason = f"BUY en BULLISH requiere >65% confianza"
+                    # ✅ RELAJADO: En bullish fuerte, ser más agresivo con BUY
+                    if market_confidence > 0.9:  # Mercado BULLISH muy confiable
+                        min_buy_confidence = 55  # Reducir a 55% para mercado muy bullish
                     else:
-                        filter_reason = f"BUY favorecido en mercado BULLISH"
+                        min_buy_confidence = 62  # Reducir a 62% para mercado bullish normal
+
+                    if confidence < min_buy_confidence:
+                        signal = 'HOLD'
+                        filter_reason = f"BUY en BULLISH requiere >{min_buy_confidence}% confianza"
+                    else:
+                        filter_reason = f"BUY favorecido en mercado BULLISH (conf: {market_confidence:.1%})"
 
                 elif signal == 'SELL':
-                    # ✅ CORRECCIÓN: En bullish, SELL requiere confianza muy alta para evitar pérdidas
-                    if confidence < 85:  # SELL en bullish requiere confianza extrema
-                        signal = 'HOLD'
-                        filter_reason = f"Mercado BULLISH (score: {market_score:.2f}) - SELL requiere >85% confianza (actual: {confidence:.1f}%)"
+                    # ✅ RELAJADO: En bullish extremo, relajar SELL para tomar ganancias
+                    if market_confidence > 0.9:  # Mercado BULLISH muy confiable
+                        min_sell_confidence = 75  # Reducir a 75% para mercado muy bullish
+                    else:
+                        min_sell_confidence = 80  # Reducir a 80% para mercado bullish normal
 
-            # 🟡 FILTROS DE VOLATILIDAD - Ajustar según volatilidad del mercado (OPTIMIZADO INTEGRAL)
+                    if confidence < min_sell_confidence:
+                        signal = 'HOLD'
+                        filter_reason = f"Mercado BULLISH (score: {market_score:.2f}) - SELL requiere >{min_sell_confidence}% confianza (actual: {confidence:.1f}%)"
+                    else:
+                        filter_reason = f"SELL permitido en BULLISH para tomar ganancias ({confidence:.1f}%)"
+
+            # 🟡 FILTROS DE VOLATILIDAD - Ajustar según volatilidad del mercado (RELAJADOS EN BULLISH)
             if volatility == 'HIGH' and fear_factor > 0.8:
-                # ✅ UMBRALES DIFERENCIADOS POR ACTIVO EN ALTA VOLATILIDAD
-                volatility_thresholds = {
-                    'BTCUSDT': 78,   # BTC más estable - umbral menor
-                    'ETHUSDT': 75,   # ETH volátil - umbral medio
-                    'BNBUSDT': 72,   # BNB exchange - umbral menor
-                    'XRPUSDT': 76    # XRP moderadamente volátil - umbral medio
-                }
+                # ✅ RELAJADO: En mercado BULLISH, la volatilidad puede ser oportunidad
+                if regime == 'BULLISH' and market_confidence > 0.9:
+                    # En mercado muy bullish, relajar filtros de volatilidad
+                    volatility_thresholds = {
+                        'BTCUSDT': 65,   # BTC: relajado de 78% a 65%
+                        'ETHUSDT': 62,   # ETH: relajado de 75% a 62%
+                        'BNBUSDT': 60,   # BNB: relajado de 72% a 60%
+                        'XRPUSDT': 63    # XRP: relajado de 76% a 63%
+                    }
+                    vol_adjustment = "RELAJADO_BULLISH"
+                else:
+                    # Umbrales normales para otros contextos
+                    volatility_thresholds = {
+                        'BTCUSDT': 78,   # BTC más estable - umbral menor
+                        'ETHUSDT': 75,   # ETH volátil - umbral medio
+                        'BNBUSDT': 72,   # BNB exchange - umbral menor
+                        'XRPUSDT': 76    # XRP moderadamente volátil - umbral medio
+                    }
+                    vol_adjustment = "NORMAL"
 
                 if signal == 'BUY':
                     required_vol_confidence = volatility_thresholds.get(symbol, 80)
                     if confidence < required_vol_confidence:
                         signal = 'HOLD'
-                        filter_reason = f"Alta volatilidad (miedo: {fear_factor:.2f}) - {symbol} BUY requiere >{required_vol_confidence}% confianza"
+                        filter_reason = f"Alta volatilidad ({vol_adjustment}) - {symbol} BUY requiere >{required_vol_confidence}% confianza"
                 elif signal == 'SELL':
-                    min_sell_vol_conf = float(os.getenv('MIN_SELL_CONFIDENCE_THRESHOLD', '0.75')) * 100
-                    if confidence < min_sell_vol_conf:  # Usar configuración dinámica
+                    # ✅ RELAJADO: En bullish extremo, relajar SELL en volatilidad
+                    if regime == 'BULLISH' and market_confidence > 0.9:
+                        min_sell_vol_conf = 70  # Relajar a 70% en mercado muy bullish
+                    else:
+                        min_sell_vol_conf = float(os.getenv('MIN_SELL_CONFIDENCE_THRESHOLD', '0.75')) * 100
+
+                    if confidence < min_sell_vol_conf:
                         signal = 'HOLD'
-                        filter_reason = f"Alta volatilidad - SELL requiere >{min_sell_vol_conf:.0f}% confianza (actual: {confidence:.1f}%)"
+                        filter_reason = f"Alta volatilidad ({vol_adjustment}) - SELL requiere >{min_sell_vol_conf:.0f}% confianza (actual: {confidence:.1f}%)"
 
             # 🔵 FILTROS ESPECÍFICOS POR ACTIVO
             if symbol == 'BTCUSDT':
@@ -1575,7 +1628,7 @@ class SimpleProfessionalTradingManager:
             print(f"⚠️ Error en filtro de contexto para {symbol}: {e}")
             return signal, f"Error en filtro: {e}"
 
-    def _apply_signal_stability_filter(self, symbol: str, signal: str, confidence: float, current_price: float) -> tuple:
+    def _apply_signal_stability_filter(self, symbol: str, signal: str, confidence: float, current_price: float, market_context: Optional[Dict] = None) -> tuple:
         """
         🛡️ FILTRO DE ESTABILIDAD Y COOLDOWN PARA SEÑALES
         ---
@@ -1653,18 +1706,35 @@ class SimpleProfessionalTradingManager:
                 if signal == 'SELL' and history['consecutive_same_signal'] < required_confirmations:
                     return 'HOLD', f"ETH SELL requiere {required_confirmations} confirmaciones consecutivas (actual: {history['consecutive_same_signal']})"
 
-            # ✅ FILTRO DE CONFIANZA AUMENTADA PARA CAMBIOS DE SEÑAL
+            # ✅ FILTRO DE CONFIANZA AUMENTADA PARA CAMBIOS DE SEÑAL (RELAJADO EN BULLISH)
             if history['last_signal'] and history['last_signal'] != signal:
-                # Requerir confianza más alta para cambios de señal
-                min_confidence_for_change = {
-                    'ETHUSDT': 78.0,  # ETH requiere 78% para cambiar señal
-                    'BTCUSDT': 75.0,  # BTC requiere 75%
-                    'BNBUSDT': 72.0,  # BNB requiere 72%
-                    'XRPUSDT': 75.0   # XRP requiere 75%
-                }.get(symbol, 75.0)
+                # ✅ RELAJADO: En mercado BULLISH muy confiable, relajar cambios de señal
+                # Verificar si el mercado es muy bullish usando el contexto recibido
+                market_is_very_bullish = market_context and \
+                                       market_context.get('regime') == 'BULLISH' and \
+                                       market_context.get('confidence', 0) > 0.9
+
+                if market_is_very_bullish:
+                    # Umbrales relajados para mercado muy bullish
+                    min_confidence_for_change = {
+                        'ETHUSDT': 65.0,  # ETH: relajado de 78% a 65%
+                        'BTCUSDT': 62.0,  # BTC: relajado de 75% a 62%
+                        'BNBUSDT': 60.0,  # BNB: relajado de 72% a 60%
+                        'XRPUSDT': 63.0   # XRP: relajado de 75% a 63%
+                    }.get(symbol, 65.0)
+                    signal_context = "RELAJADO_BULLISH"
+                else:
+                    # Umbrales normales para otros contextos
+                    min_confidence_for_change = {
+                        'ETHUSDT': 78.0,  # ETH requiere 78% para cambiar señal
+                        'BTCUSDT': 75.0,  # BTC requiere 75%
+                        'BNBUSDT': 72.0,  # BNB requiere 72%
+                        'XRPUSDT': 75.0   # XRP requiere 75%
+                    }.get(symbol, 75.0)
+                    signal_context = "NORMAL"
 
                 if confidence < min_confidence_for_change:
-                    return 'HOLD', f"Cambio de señal {history['last_signal']}→{signal} requiere >{min_confidence_for_change:.0f}% confianza (actual: {confidence:.1f}%)"
+                    return 'HOLD', f"Cambio de señal {history['last_signal']}→{signal} requiere >{min_confidence_for_change:.0f}% confianza (actual: {confidence:.1f}%) [{signal_context}]"
 
             # ✅ ACTUALIZAR HISTORIAL
             history['last_signal'] = signal

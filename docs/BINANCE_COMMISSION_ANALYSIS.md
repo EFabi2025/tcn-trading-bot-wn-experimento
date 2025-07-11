@@ -15,7 +15,7 @@
 ```
 OPERACIÓN COMPLETA:
 ├─ Compra inicial: 0.1% comisión
-├─ Venta por trailing: 0.1% comisión  
+├─ Venta por trailing: 0.1% comisión
 └─ TOTAL: 0.2% en comisiones
 ```
 
@@ -175,4 +175,4 @@ La protección mínima de **0.9%** garantiza:
 - ✅ Margen de seguridad robusto
 - ✅ Sistema profesional y confiable
 
-**🏆 RESULTADO: Sistema de trailing stop optimizado para rentabilidad real** 
+**🏆 RESULTADO: Sistema de trailing stop optimizado para rentabilidad real**
