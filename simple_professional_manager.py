@@ -200,6 +200,8 @@ class SimpleProfessionalTradingManager:
         except Exception as e:
             print(f"❌ ERROR CRÍTICO: No se pudo inicializar TCN definitivo en constructor: {e}")
             print("🚨 SISTEMA REQUIERE TCN REAL - NO PUEDE CONTINUAR SIN ÉL")
+            import traceback
+            print(f"🔍 Traceback completo: {traceback.format_exc()}")
             raise Exception(f"TCN REAL requerido pero falló en constructor: {e}")
 
     def _load_config(self) -> BinanceConfig:

@@ -5,9 +5,18 @@ Predictor unificado que utiliza los 3 modelos definitivos entrenados
 """
 
 import os
+# Configurar TensorFlow ANTES de importarlo para carga rápida
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Silenciar logs de TensorFlow
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Forzar uso de CPU solamente
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+
+# Configurar TensorFlow para máximo rendimiento en CPU
+tf.config.threading.set_intra_op_parallelism_threads(0)  # Usar todos los cores
+tf.config.threading.set_inter_op_parallelism_threads(0)  # Usar todos los cores
+
 import pickle
 import logging
 from datetime import datetime
@@ -87,6 +96,8 @@ class TCNDefinitivoPredictor:
                 logger.warning("⚠️ No se pudo pre-cargar BTC, se cargará bajo demanda")
         except Exception as e:
             logger.error(f"❌ Error pre-cargando BTC: {e}")
+            import traceback
+            print(f"   🔍 Traceback completo: {traceback.format_exc()}")
 
     def load_all_models(self) -> bool:
         """Cargar todos los modelos definitivos"""
@@ -109,6 +120,7 @@ class TCNDefinitivoPredictor:
 
     def _load_model_for_symbol(self, symbol: str) -> bool:
         """Cargar modelo, scaler y features para un símbolo específico"""
+
         try:
             model_dir = f"models/definitivo_{symbol.lower()}"
 
@@ -119,44 +131,70 @@ class TCNDefinitivoPredictor:
 
             # Cargar modelo
             model_path = os.path.join(model_dir, "best_model.h5")
+
             if os.path.exists(model_path):
-                self.models[symbol] = tf.keras.models.load_model(model_path)
-                logger.info(f"  📊 Modelo cargado: {model_path}")
+
+                try:
+                    self.models[symbol] = tf.keras.models.load_model(model_path)
+                    logger.info(f"  📊 Modelo cargado: {model_path}")
+                except Exception as model_error:
+                    logger.error(f"Error cargando modelo {symbol}: {model_error}")
+                    return False
             else:
                 logger.error(f"  ❌ Modelo no encontrado: {model_path}")
                 return False
 
             # Cargar scaler
             scaler_path = os.path.join(model_dir, "scaler.pkl")
+
             if os.path.exists(scaler_path):
-                with open(scaler_path, 'rb') as f:
-                    self.scalers[symbol] = pickle.load(f)
-                logger.info(f"  🔧 Scaler cargado: {scaler_path}")
+                try:
+                    with open(scaler_path, 'rb') as f:
+                        self.scalers[symbol] = pickle.load(f)
+                    logger.info(f"  🔧 Scaler cargado: {scaler_path}")
+                except Exception as scaler_error:
+                    logger.error(f"Error cargando scaler {symbol}: {scaler_error}")
+                    return False
             else:
                 logger.error(f"  ❌ Scaler no encontrado: {scaler_path}")
                 return False
 
             # Cargar feature columns
             features_path = os.path.join(model_dir, "feature_columns.pkl")
+
             if os.path.exists(features_path):
-                with open(features_path, 'rb') as f:
-                    self.feature_columns[symbol] = pickle.load(f)
-                logger.info(f"  📋 Features cargadas: {len(self.feature_columns[symbol])} columnas")
+                try:
+                    with open(features_path, 'rb') as f:
+                        self.feature_columns[symbol] = pickle.load(f)
+                    logger.info(f"  📋 Features cargadas: {len(self.feature_columns[symbol])} columnas")
+                except Exception as features_error:
+                    logger.error(f"Error cargando features {symbol}: {features_error}")
+                    return False
             else:
                 logger.error(f"  ❌ Features no encontradas: {features_path}")
                 return False
 
             # Cargar class weights (opcional)
             weights_path = os.path.join(model_dir, "class_weights.pkl")
-            if os.path.exists(weights_path):
-                with open(weights_path, 'rb') as f:
-                    self.class_weights[symbol] = pickle.load(f)
-                logger.info(f"  ⚖️ Class weights cargados")
 
+            if os.path.exists(weights_path):
+                try:
+                    with open(weights_path, 'rb') as f:
+                        self.class_weights[symbol] = pickle.load(f)
+                    logger.info(f"  ⚖️ Class weights cargados")
+                except Exception as weights_error:
+                    logger.warning(f"Error cargando class weights {symbol}: {weights_error}")
+                    # Class weights son opcionales, no fallar por esto
+            else:
+                logger.warning(f"⚠️ Archivo de class weights no encontrado (opcional): {weights_path}")
+
+            logger.info(f"   🎉 Modelo {symbol} cargado completamente")
             return True
 
         except Exception as e:
-            logger.error(f"Error cargando modelo {symbol}: {e}")
+            logger.error(f"Error general cargando modelo {symbol}: {e}")
+            import traceback
+            print(f"   🔍 Traceback completo: {traceback.format_exc()}")
             return False
 
     def create_features(self, df: pd.DataFrame) -> pd.DataFrame:
