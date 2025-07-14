@@ -464,9 +464,9 @@ class TCNDefinitivoPredictor:
                 'confidence': float(confidence),
                 'predicted_return': float(predicted_return),
                 'probabilities': {
-                    'sell': float(sell_prob),
-                    'hold': float(hold_prob),
-                    'buy': float(buy_prob)
+                    'SELL': float(sell_prob),
+                    'HOLD': float(hold_prob),
+                    'BUY': float(buy_prob)
                 },
                 'model_accuracy': self.model_stats[symbol]['accuracy'],
                 'features_count': actual_features,
