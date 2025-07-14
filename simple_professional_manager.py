@@ -1192,6 +1192,7 @@ class SimpleProfessionalTradingManager:
                     print(f"🎯 UMBRAL SELL ADAPTATIVO: {sell_threshold:.1f}% (base: {base_sell_confidence:.1f}%) - Mercado BULLISH {market_context['confidence']:.1%}")
                 else:
                     sell_threshold = max(base_sell_confidence, threshold * 0.85)  # SELL requiere al menos config% o 85% del umbral BUY
+
                 if (signal == 'BUY' and confidence_level >= threshold) or (signal == 'SELL' and confidence_level >= sell_threshold):
                     log_emoji = "📈" if signal == "BUY" else "📉"
                     log_action = "COMPRA" if signal == "BUY" else "VENTA"
