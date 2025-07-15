@@ -41,6 +41,9 @@ from professional_portfolio_manager import ProfessionalPortfolioManager, Positio
 # ✅ NUEVO: Importar Portfolio Diversification Manager
 from portfolio_diversification_manager import PortfolioDiversificationManager, PortfolioPosition
 
+# ✅ NUEVO: Importar Real Market Data Provider
+from real_market_data_provider import RealMarketDataProvider
+
 load_dotenv()
 
 @dataclass
@@ -1508,11 +1511,11 @@ class SimpleProfessionalTradingManager:
                 if signal == 'BUY':
                     # ✅ UMBRALES DIFERENCIADOS POR ACTIVO EN BEARISH
                     required_confidence = {
-                        'BTCUSDT': 85,   # BTC líder - umbral moderado
-                        'ETHUSDT': 82,   # ETH principal altcoin - umbral medio
+                        'BTCUSDT': 80,   # BTC líder - umbral moderado
+                        'ETHUSDT': 80,   # ETH principal altcoin - umbral medio
                         'BNBUSDT': 80,   # BNB exchange token - umbral más bajo
-                        'XRPUSDT': 83    # XRP altcoin establecida - umbral medio-alto
-                    }.get(symbol, 88)  # Otros activos: 88%
+                        'XRPUSDT': 80    # XRP altcoin establecida - umbral medio-alto
+                    }.get(symbol, 85)  # Otros activos: 88%
 
                     if confidence >= required_confidence:
                         filter_reason = f"{symbol.replace('USDT', '')} permitido en BEARISH por alta confianza ({confidence:.1f}% > {required_confidence}%)"
@@ -1536,7 +1539,7 @@ class SimpleProfessionalTradingManager:
                     if market_confidence > 0.9:  # Mercado BULLISH muy confiable
                         min_buy_confidence = 55  # Reducir a 55% para mercado muy bullish
                     else:
-                        min_buy_confidence = 62  # Reducir a 62% para mercado bullish normal
+                        min_buy_confidence = 60  # Reducir a 62% para mercado bullish normal
 
                     if confidence < min_buy_confidence:
                         signal = 'HOLD'
@@ -1546,7 +1549,7 @@ class SimpleProfessionalTradingManager:
 
                 elif signal == 'SELL':
                     # ✅ RELAJADO: En bullish extremo, relajar SELL para tomar ganancias
-                    if market_confidence > 0.9:  # Mercado BULLISH muy confiable
+                    if market_confidence > 0.98:  # Mercado BULLISH muy confiable
                         min_sell_confidence = 75  # Reducir a 75% para mercado muy bullish
                     else:
                         min_sell_confidence = 80  # Reducir a 80% para mercado bullish normal
@@ -1572,10 +1575,10 @@ class SimpleProfessionalTradingManager:
                 else:
                     # Umbrales normales para otros contextos
                     volatility_thresholds = {
-                        'BTCUSDT': 78,   # BTC más estable - umbral menor
-                        'ETHUSDT': 75,   # ETH volátil - umbral medio
-                        'BNBUSDT': 72,   # BNB exchange - umbral menor
-                        'XRPUSDT': 76    # XRP moderadamente volátil - umbral medio
+                        'BTCUSDT': 70,   # BTC más estable - umbral menor
+                        'ETHUSDT': 70,   # ETH volátil - umbral medio
+                        'BNBUSDT': 70,   # BNB exchange - umbral menor
+                        'XRPUSDT': 70    # XRP moderadamente volátil - umbral medio
                     }
                     vol_adjustment = "NORMAL"
 
@@ -1587,7 +1590,7 @@ class SimpleProfessionalTradingManager:
                 elif signal == 'SELL':
                     # ✅ RELAJADO: En bullish extremo, relajar SELL en volatilidad
                     if regime == 'BULLISH' and market_confidence > 0.9:
-                        min_sell_vol_conf = 70  # Relajar a 70% en mercado muy bullish
+                        min_sell_vol_conf = 80  # Relajar a 70% en mercado muy bullish
                     else:
                         min_sell_vol_conf = float(os.getenv('MIN_SELL_CONFIDENCE_THRESHOLD', '0.75')) * 100
 
@@ -2162,10 +2165,25 @@ class SimpleProfessionalTradingManager:
             symbol
         )
 
-        await self._send_discord_notification(f"{color} **POSICIÓN CERRADA**\n"
-                                             f"📊 {symbol}: {position.side}\n"
-                                             f"📈 PnL: {pnl_percent:.2f}% (${pnl_usd:.2f})\n"
-                                             f"🔄 Razón: {reason}")
+        # ✅ MEJORADO: Usar Smart Discord Notifier para cierres (consistencia)
+        if hasattr(self, 'discord_notifier'):
+            trade_notification_data = {
+                'symbol': symbol,
+                'side': position.side,
+                'value_usd': position.quantity * position.entry_price,
+                'price': current_price,
+                'confidence': 0.0,  # No aplicable para cierres
+                'pnl_percent': pnl_percent,
+                'pnl_usd': pnl_usd,
+                'reason': reason
+            }
+            await self.discord_notifier.send_trade_notification(trade_notification_data)
+        else:
+            # Fallback al sistema básico
+            await self._send_discord_notification(f"{color} **POSICIÓN CERRADA**\n"
+                                                 f"📊 {symbol}: {position.side}\n"
+                                                 f"📈 PnL: {pnl_percent:.2f}% (${pnl_usd:.2f})\n"
+                                                 f"🔄 Razón: {reason}")
 
         print(f"📉 Posición cerrada: {symbol} (ID de orden: {order_id}) - PnL: {pnl_percent:.2f}% (${pnl_usd:.2f})")
 

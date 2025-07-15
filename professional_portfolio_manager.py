@@ -1156,8 +1156,22 @@ class ProfessionalPortfolioManager:
                 position.unrealized_pnl_usd = position.market_value - entry_value
                 position.unrealized_pnl_percent = (position.unrealized_pnl_usd / entry_value) * 100 if entry_value > 0 else 0
 
-                # Actualizar duración
-                position.duration_minutes = int((datetime.now() - position.entry_time).total_seconds() / 60)
+                # Actualizar duración (corregir timezone awareness)
+                current_time = datetime.now()
+                if position.entry_time.tzinfo is not None:
+                    # Si entry_time tiene timezone, usar UTC para current_time
+                    from datetime import timezone
+                    current_time = datetime.now(timezone.utc)
+                    if position.entry_time.tzinfo != timezone.utc:
+                        # Convertir entry_time a UTC si tiene otro timezone
+                        entry_time_utc = position.entry_time.astimezone(timezone.utc)
+                    else:
+                        entry_time_utc = position.entry_time
+                else:
+                    # Si entry_time es naive, usar current_time naive
+                    entry_time_utc = position.entry_time
+
+                position.duration_minutes = int((current_time - entry_time_utc).total_seconds() / 60)
 
         except Exception as e:
             print(f"❌ Error actualizando precios de posiciones: {e}")

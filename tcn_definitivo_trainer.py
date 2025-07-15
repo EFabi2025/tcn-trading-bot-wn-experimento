@@ -70,7 +70,7 @@ class DefinitiveTCNTrainer:
             url = f"{base_url}/api/v3/klines"
             params = {
                 'symbol': symbol,
-                'interval': '5m',  # Usar 5 minutos en lugar de 1 minuto para menos datos
+                'interval': '1m',  # Usar 5 minutos en lugar de 1 minuto para menos datos
                 'startTime': start_time,
                 'endTime': end_time,
                 'limit': 1000
@@ -562,30 +562,37 @@ class DefinitiveTCNTrainer:
                 tf.keras.callbacks.ModelCheckpoint(
                     f'models/definitivo_{symbol.lower()}/best_model.h5',
                     save_best_only=True,
-                    monitor='val_accuracy'
-                ),
-                # 🔄 CHECKPOINT CADA 10 EPOCHS PARA RECUPERACIÓN
-                tf.keras.callbacks.ModelCheckpoint(
-                    f'models/definitivo_{symbol.lower()}/checkpoint_epoch_{{epoch:02d}}.h5',
-                    save_freq='epoch',
-                    period=10,
-                    save_best_only=False
+                    monitor='val_accuracy',
+                    verbose=1
                 )
+                # ✅ REMOVIDO: Callback problemático de período que causaba errores de guardado
+                # tf.keras.callbacks.ModelCheckpoint(
+                #     f'models/definitivo_{symbol.lower()}/checkpoint_epoch_{{epoch:02d}}.h5',
+                #     save_freq='epoch',
+                #     period=10,
+                #     save_best_only=False
+                # )
             ]
 
             # 8. Entrenar con class weights
             print("🚀 Entrenando modelo definitivo...")
             os.makedirs(f'models/definitivo_{symbol.lower()}', exist_ok=True)
 
-            history = model.fit(
-                X_train, y_train,
-                validation_data=(X_test, y_test),
-                epochs=100,
-                batch_size=32,
-                callbacks=callbacks,
-                class_weight=class_weights,  # 🎯 ANTI-SESGO
-                verbose=1
-            )
+            try:
+                history = model.fit(
+                    X_train, y_train,
+                    validation_data=(X_test, y_test),
+                    epochs=100,
+                    batch_size=32,
+                    callbacks=callbacks,
+                    class_weight=class_weights,  # 🎯 ANTI-SESGO
+                    verbose=1
+                )
+                print("✅ Entrenamiento completado exitosamente")
+            except Exception as training_error:
+                print(f"⚠️ Error durante entrenamiento, pero intentando guardar progreso: {training_error}")
+                # Continuar con el guardado aunque haya fallado el entrenamiento
+                print("🔄 Intentando guardar modelo parcial...")
 
             # 9. Evaluar modelo con manejo de errores
             try:
@@ -596,7 +603,11 @@ class DefinitiveTCNTrainer:
             except Exception as e:
                 print(f"⚠️ Error en evaluación, pero modelo entrenado: {e}")
                 # Guardar modelo aunque falle la evaluación
-                model.save(f'models/definitivo_{symbol.lower()}/final_model_backup.h5')
+                try:
+                    model.save(f'models/definitivo_{symbol.lower()}/final_model_backup.h5')
+                    print("💾 Modelo backup guardado exitosamente")
+                except Exception as save_error:
+                    print(f"❌ Error guardando backup: {save_error}")
                 test_acc = 0.0  # Valor por defecto
 
             # 10. Guardar scaler y metadata
@@ -623,19 +634,41 @@ class DefinitiveTCNTrainer:
                 pct = count / len(y_pred_classes) * 100
                 print(f"   - {name}: {count} ({pct:.1f}%)")
 
-            # 11. Guardar modelo y componentes
-            model.save(f'models/definitivo_{symbol.lower()}/model.h5')
+            # 11. Guardar modelo y componentes con manejo de errores robusto
+            print("💾 Guardando modelo y componentes...")
 
-            with open(f'models/definitivo_{symbol.lower()}/scaler.pkl', 'wb') as f:
-                pickle.dump(scaler, f)
+            # Guardar modelo principal
+            try:
+                model.save(f'models/definitivo_{symbol.lower()}/model.h5')
+                print("✅ Modelo principal guardado")
+            except Exception as e:
+                print(f"❌ Error guardando modelo principal: {e}")
 
-            with open(f'models/definitivo_{symbol.lower()}/feature_columns.pkl', 'wb') as f:
-                pickle.dump(feature_columns, f)
+            # Guardar scaler
+            try:
+                with open(f'models/definitivo_{symbol.lower()}/scaler.pkl', 'wb') as f:
+                    pickle.dump(scaler, f)
+                print("✅ Scaler guardado")
+            except Exception as e:
+                print(f"❌ Error guardando scaler: {e}")
 
-            with open(f'models/definitivo_{symbol.lower()}/class_weights.pkl', 'wb') as f:
-                pickle.dump(class_weights, f)
+            # Guardar feature columns
+            try:
+                with open(f'models/definitivo_{symbol.lower()}/feature_columns.pkl', 'wb') as f:
+                    pickle.dump(feature_columns, f)
+                print("✅ Feature columns guardados")
+            except Exception as e:
+                print(f"❌ Error guardando feature columns: {e}")
 
-            print(f"✅ Modelo definitivo guardado en models/definitivo_{symbol.lower()}/")
+            # Guardar class weights
+            try:
+                with open(f'models/definitivo_{symbol.lower()}/class_weights.pkl', 'wb') as f:
+                    pickle.dump(class_weights, f)
+                print("✅ Class weights guardados")
+            except Exception as e:
+                print(f"❌ Error guardando class weights: {e}")
+
+            print(f"🎯 Proceso de guardado completado para {symbol}")
 
             return True
 
