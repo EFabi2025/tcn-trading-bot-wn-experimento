@@ -315,3 +315,4 @@ api_keys.txt
 config.py
 # ✅ CORREGIDO: ignorar cualquier archivo .env* para no exponer credenciales
 # .env
+.env

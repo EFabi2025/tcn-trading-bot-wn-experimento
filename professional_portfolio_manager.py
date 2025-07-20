@@ -45,7 +45,7 @@ class Position:
     trailing_stop_percent: float = 1.4  # Default 1.4% - Configurado desde .env
     highest_price_since_entry: Optional[float] = None  # Para tracking del máximo
     lowest_price_since_entry: Optional[float] = None   # Para shorts
-    trailing_activation_threshold: float = 1.0  # Activar trailing después de +1% ganancia
+    trailing_activation_threshold: float = 1.0 # Activar trailing después de +1% ganancia
     last_trailing_update: Optional[datetime] = None
     trailing_movements: int = 0  # Contador de movimientos del trailing
 
@@ -816,12 +816,12 @@ class ProfessionalPortfolioManager:
                     current_gain_percent = ((position.highest_price_since_entry - position.entry_price) / position.entry_price) * 100
 
                     # ✅ PROTECCIÓN PROPORCIONAL INTELIGENTE (80% de la ganancia actual)
-                    if current_gain_percent >= 2.0:
+                    if current_gain_percent >= 1.4:
                         # Proteger el 80% de la ganancia actual
-                        min_profit_protection = current_gain_percent * 0.8
+                        min_profit_protection = current_gain_percent * 0.9
                     else:
                         # Protección mínima base del 0.75% para ganancias menores a 2%
-                        min_profit_protection = 0.85
+                        min_profit_protection = 0.4
 
                     min_trailing_price = position.entry_price * (1 + min_profit_protection / 100)
 
@@ -848,12 +848,12 @@ class ProfessionalPortfolioManager:
                     current_gain_percent = ((position.highest_price_since_entry - position.entry_price) / position.entry_price) * 100
 
                     # ✅ PROTECCIÓN PROPORCIONAL INTELIGENTE (80% de la ganancia actual)
-                    if current_gain_percent >= 2.0:
+                    if current_gain_percent >= 1.4:
                         # Proteger el 80% de la ganancia actual
-                        min_profit_protection = current_gain_percent * 0.8
+                        min_profit_protection = current_gain_percent * 0.90
                     else:
                         # Protección mínima base del 0.75% para ganancias menores a 2%
-                        min_profit_protection = 0.85
+                        min_profit_protection = 0.40
 
                     min_trailing_price = position.entry_price * (1 + min_profit_protection / 100)
 

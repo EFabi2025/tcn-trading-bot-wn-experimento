@@ -27,7 +27,7 @@ class NotificationPriority(Enum):
 class NotificationFilter:
     """🔍 Configuración de filtros"""
     min_trade_value_usd: float = 12.0          # Mínimo valor para notificar trade
-    min_pnl_percent_notify: float = 2.0        # Mínimo PnL% para notificar
+    min_pnl_percent_notify: float = 0.5        # Mínimo PnL% para notificar
     max_notifications_per_hour: int = 10       # Máximo notificaciones/hora
     max_notifications_per_day: int = 50        # Máximo notificaciones/día
     suppress_similar_minutes: int = 15         # Suprimir similares por X minutos
@@ -341,7 +341,7 @@ async def test_smart_notifier():
     # Configurar filtros conservadores
     notifier.configure_filters(
         min_trade_value_usd=12.0,
-        min_pnl_percent_notify=2.0,
+                    min_pnl_percent_notify=0.5,
         max_notifications_per_hour=5,
         only_profitable_trades=False
     )
