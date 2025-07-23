@@ -88,16 +88,16 @@ class SimpleProfessionalTradingManager:
         self.signal_history = {}  # Historial de señales por símbolo
         self.last_position_action = {}  # Última acción de posición por símbolo
         self.signal_cooldown = {  # Tiempos de enfriamiento por símbolo (en minutos)
-            'ETHUSDT': 15,  # ETH: 15 minutos entre cambios de señal
-            'BTCUSDT': 10,  # BTC: 10 minutos
-            'BNBUSDT': 12,  # BNB: 12 minutos
-            'XRPUSDT': 12   # XRP: 12 minutos
+            'ETHUSDT': 2,  # ETH: 15 minutos entre cambios de señal
+            'BTCUSDT': 2,  # BTC: 10 minutos
+            'BNBUSDT': 2,  # BNB: 12 minutos
+            'XRPUSDT': 2,  # XRP: 12 minutos
         }
         self.eth_position_protection = {  # Protección específica para ETH
             'last_close_time': None,
             'min_hold_time_minutes': 20,  # Mínimo 20 min antes de cerrar posición ETH
             'consecutive_signals': 0,     # Contador de señales consecutivas
-            'signal_confirmation_required': 2  # Requiere 2 señales consecutivas para ETH
+            'signal_confirmation_required': 1 # Requiere 2 señales consecutivas para ETH
         }
 
         # Configuración de símbolos y gestores
@@ -147,9 +147,9 @@ class SimpleProfessionalTradingManager:
         # Configurar filtros conservadores para evitar spam
         self.discord_notifier.configure_filters(
             min_trade_value_usd=12.0,          # Solo trades > $12
-            min_pnl_percent_notify=2.0,        # Solo PnL > 2%
-            max_notifications_per_hour=8,      # Max 8/hora
-            max_notifications_per_day=40,      # Max 40/día
+            min_pnl_percent_notify=0.5,        # Solo PnL > 2%
+            max_notifications_per_hour=10,      # Max 8/hora
+            max_notifications_per_day=60,      # Max 40/día
             suppress_similar_minutes=10,       # 10 min entre similares
             only_profitable_trades=False,      # Notificar pérdidas también
             emergency_only_mode=False          # Todas las prioridades
@@ -584,7 +584,7 @@ class SimpleProfessionalTradingManager:
                 if self.last_balance_update:
                     time_since_balance_update = (datetime.now() - self.last_balance_update).total_seconds()
 
-                if not self.last_balance_update or (time_since_balance_update is not None and time_since_balance_update > 300):  # 5 minutos
+                if not self.last_balance_update or (time_since_balance_update is not None and time_since_balance_update > 180):  # 5 minutos
                     print("🔄 Actualizando balance desde Binance...")
                     await self.update_balance_from_binance()
 
@@ -865,7 +865,7 @@ class SimpleProfessionalTradingManager:
                     entry_price=pos.entry_price,
                     current_price=pos.current_price,
                     value_usd=pos.market_value,  # ✅ CORREGIDO: usar 'market_value' en lugar de 'value_usd'
-                    percentage=(pos.market_value / snapshot.total_balance_usd * 100) if snapshot.total_balance_usd > 0 else 0,
+                    percentage=(pos.market_value / snapshot.total_balance_usd * 1) if snapshot.total_balance_usd > 0 else 0,
                     category=self.diversification_manager.diversification_config['SYMBOL_CATEGORIES'].get(pos.symbol, 'UNKNOWN'),
                     age_minutes=int((datetime.now() - pos.entry_time).total_seconds() / 60),
                     pnl_percent=pos.unrealized_pnl_percent  # ✅ CORREGIDO: usar 'unrealized_pnl_percent'
@@ -1287,7 +1287,7 @@ class SimpleProfessionalTradingManager:
             print(f"🏆 Aplicando priorización de señales...")
 
             # Orden de prioridad definido
-            PRIORITY_ORDER = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT']
+            PRIORITY_ORDER = ['XRPUSDT', 'BTCUSDT', 'ETHUSDT', 'BNBUSDT']
 
             # Separar señales BUY y SELL
             buy_signals = {symbol: data for symbol, data in signals.items() if data['signal'] == 'BUY'}
@@ -2219,10 +2219,10 @@ class SimpleProfessionalTradingManager:
 
             # ✅ CONFIGURACIÓN: Límites específicos por par
             SYMBOL_LIMITS = {
-                'BTCUSDT': 35.0,  # BTC máximo 35% del portafolio (reducido de 50%)
+                'BTCUSDT': 10.0,  # BTC máximo 35% del portafolio (reducido de 50%)
                 'ETHUSDT': 25.0,  # ETH máximo 15% del portafolio (reducido de 20%)
-                'BNBUSDT': 25.0,  # BNB máximo 25% del portafolio (aumentado de 15%)
-                'XRPUSDT': 15.0   # XRP máximo 15% del portafolio (sin cambios)
+                'BNBUSDT': 30.0,  # BNB máximo 25% del portafolio (aumentado de 15%)
+                'XRPUSDT': 30.0   # XRP máximo 15% del portafolio (sin cambios)
             }
 
             # ✅ PRIORIZACIÓN: Orden de preferencia para señales simultáneas
@@ -2406,7 +2406,7 @@ class SimpleProfessionalTradingManager:
         while self.status == TradingManagerStatus.RUNNING:
             try:
                 # Verificar conectividad cada 5 minutos
-                await asyncio.sleep(300)
+                await asyncio.sleep(180)
 
                 # Ping a Binance
                 test_price = await self.get_current_price("BTCUSDT")

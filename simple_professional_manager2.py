@@ -88,16 +88,16 @@ class SimpleProfessionalTradingManager:
         self.signal_history = {}  # Historial de señales por símbolo
         self.last_position_action = {}  # Última acción de posición por símbolo
         self.signal_cooldown = {  # Tiempos de enfriamiento por símbolo (en minutos)
-            'ETHUSDT': 2,  # ETH: 15 minutos entre cambios de señal
-            'BTCUSDT': 2,  # BTC: 10 minutos
-            'BNBUSDT': 2,  # BNB: 12 minutos
-            'XRPUSDT': 2,  # XRP: 12 minutos
+            'ETHUSDT': 1,  # ETH: 15 minutos entre cambios de señal
+            'BTCUSDT': 1,  # BTC: 10 minutos
+            'BNBUSDT': 1,  # BNB: 12 minutos
+            'XRPUSDT': 1,  # XRP: 12 minutos
         }
         self.eth_position_protection = {  # Protección específica para ETH
             'last_close_time': None,
             'min_hold_time_minutes': 20,  # Mínimo 20 min antes de cerrar posición ETH
             'consecutive_signals': 0,     # Contador de señales consecutivas
-            'signal_confirmation_required': 1 # Requiere 2 señales consecutivas para ETH
+            'signal_confirmation_required': 2 # Requiere 2 señales consecutivas para ETH
         }
 
         # Configuración de símbolos y gestores
@@ -116,6 +116,11 @@ class SimpleProfessionalTradingManager:
         self.database: Optional[TradingDatabase] = None
         self.risk_manager: Optional[AdvancedRiskManager] = None
         self.client = None
+
+        # ✅ NUEVO: Flags para sistema de predicción
+        self.use_ensemble = False  # Flag para determinar si usar ensemble o legacy
+        self.tcn_predictor = None  # Predictor legacy
+        self.tcn_ensemble_predictor = None  # Predictor ensemble
 
         # ✅ NUEVO: Professional Portfolio Manager
         self.portfolio_manager: Optional[ProfessionalPortfolioManager] = None
@@ -141,7 +146,6 @@ class SimpleProfessionalTradingManager:
         self.discord_notifier = SmartDiscordNotifier()
 
         # 🧠 INICIALIZAR TCN REAL OBLIGATORIO
-        self.tcn_predictor = None
         self._initialize_tcn_predictor()
 
         # Configurar filtros conservadores para evitar spam
@@ -192,20 +196,48 @@ class SimpleProfessionalTradingManager:
         }
 
     def _initialize_tcn_predictor(self):
-        """🧠 Inicializar predictor TCN REAL obligatorio"""
+        """🧠 Inicializar predictor TCN ENSEMBLE REAL obligatorio"""
         try:
-            from tcn_adaptive_predictor import TCNDefinitivoPredictor as TCNAdaptativoPredictor
-            self.tcn_predictor = TCNAdaptativoPredictor()
-            print("🎯 Predictor TCN ADAPTATIVO inicializado en constructor")
-            print(f"   📊 Modelos cargados: {len(self.tcn_predictor.models)}")
-            print(f"   🎯 Símbolos: {list(self.tcn_predictor.models.keys())}")
-            return True
-        except Exception as e:
-            print(f"❌ ERROR CRÍTICO: No se pudo inicializar TCN adaptativo en constructor: {e}")
-            print("🚨 SISTEMA REQUIERE TCN ADAPTATIVO - NO PUEDE CONTINUAR SIN ÉL")
-            import traceback
-            print(f"🔍 Traceback completo: {traceback.format_exc()}")
-            raise Exception(f"TCN ADAPTATIVO requerido pero falló en constructor: {e}")
+            # ✅ NUEVO: Usar sistema de ensamble TCN V3
+            from tcn_ensemble_predictor import TCNEnsemblePredictor
+            self.tcn_ensemble_predictor = TCNEnsemblePredictor()
+
+            # Cargar modelos definitivo_v3
+            if self.tcn_ensemble_predictor.load_definitivo_v3_models():
+                print("🎯 Predictor TCN ENSEMBLE V3 inicializado exitosamente")
+                model_info = self.tcn_ensemble_predictor.get_model_info()
+                print(f"   📊 Modelos cargados: {model_info['loaded_models']}/{model_info['total_models']}")
+                print(f"   🏗️ Tipo: {model_info['model_type']}")
+                print(f"   🎯 Símbolos: {list(model_info['symbols'].keys())}")
+
+                # Marcar como ensemble
+                self.use_ensemble = True
+                return True
+            else:
+                raise Exception("No se pudieron cargar modelos definitivo_v3")
+
+        except Exception as ensemble_error:
+            print(f"⚠️ Error inicializando TCN Ensemble: {ensemble_error}")
+            print("🔄 Fallback: Intentando predictor TCN adaptativo legacy...")
+
+            try:
+                # Fallback al sistema anterior
+                from tcn_adaptive_predictor import TCNDefinitivoPredictor as TCNAdaptativoPredictor
+                self.tcn_predictor = TCNAdaptativoPredictor()
+                self.use_ensemble = False
+                print("🎯 Predictor TCN ADAPTATIVO (legacy) inicializado")
+                print(f"   📊 Modelos cargados: {len(self.tcn_predictor.models)}")
+                print(f"   🎯 Símbolos: {list(self.tcn_predictor.models.keys())}")
+                return True
+
+            except Exception as legacy_error:
+                print(f"❌ ERROR CRÍTICO: Ambos predictores fallaron")
+                print(f"   - Ensemble: {ensemble_error}")
+                print(f"   - Legacy: {legacy_error}")
+                print("🚨 SISTEMA REQUIERE TCN - NO PUEDE CONTINUAR")
+                import traceback
+                print(f"🔍 Traceback: {traceback.format_exc()}")
+                raise Exception(f"TCN requerido pero ambos sistemas fallaron")
 
     def _load_config(self) -> BinanceConfig:
         """⚙️ Cargar configuración desde variables de entorno"""
@@ -729,24 +761,22 @@ class SimpleProfessionalTradingManager:
             print(f"❌ Error generando reporte TCN: {e}")
 
     async def _generate_tcn_models_section(self) -> str:
-        """🤖 Generar sección de estado de modelos TCN"""
+        """🤖 Generar sección de estado de modelos TCN con ENSAMBLE V3"""
         try:
             models_section = f"""
 
 🤖 **ESTADO DE MODELOS TCN**
 """
 
-            # ✅ CORREGIDO: Inicializar predictor TCN si no existe (igual que en _generate_tcn_signals)
-            if not hasattr(self, 'tcn_predictor'):
-                try:
-                    from tcn_definitivo_predictor import TCNDefinitivoPredictor
-                    self.tcn_predictor = TCNDefinitivoPredictor()
-                    print("🎯 Predictor TCN DEFINITIVO inicializado para reporte Discord")
-                except Exception as e:
-                    models_section += f"❌ **Error inicializando predictor**: {str(e)[:50]}...\n"
-                    return models_section
+            # ✅ NUEVO: Detectar qué sistema TCN está disponible
+            has_ensemble = hasattr(self, 'tcn_ensemble_predictor') and self.tcn_ensemble_predictor is not None
+            has_legacy = hasattr(self, 'tcn_predictor') and self.tcn_predictor is not None
 
-            # Obtener precios actuales para las predicciones (reutilizar si ya los tenemos)
+            if not has_ensemble and not has_legacy:
+                models_section += f"❌ **Error**: No hay predictor TCN inicializado\n"
+                return models_section
+
+            # Obtener precios actuales para las predicciones
             current_prices = {}
             for symbol in self.symbols:
                 try:
@@ -797,52 +827,126 @@ class SimpleProfessionalTradingManager:
             except Exception as e:
                 models_section += f"⚠️ **Contexto de mercado**: Error al analizar ({str(e)[:30]}...)\n\n"
 
-            # Generar predicciones para cada símbolo
-            for symbol in self.symbols:
+            # 🎯 NUEVO: Sistema de predicción ENSEMBLE V3
+            if getattr(self, 'use_ensemble', False) and has_ensemble:
                 try:
-                    if symbol not in current_prices:
-                        models_section += f"❌ **{symbol}**: Sin precio disponible\n"
-                        continue
+                    # Obtener predicciones de ensamble para reporte Discord
+                    ensemble_results = await self.tcn_ensemble_predictor.predict_all_symbols_v3()
 
-                    # Obtener predicción del modelo
-                    prediction = None
-                    if hasattr(self.tcn_predictor, 'predict_symbol'):
-                        prediction = self.tcn_predictor.predict_symbol(symbol)
+                    if ensemble_results:
+                        for symbol in self.symbols:
+                            try:
+                                if symbol not in current_prices:
+                                    models_section += f"❌ **{symbol}**: Sin precio disponible\n"
+                                    continue
 
-                    if prediction:
-                        signal = prediction['signal']
-                        confidence = prediction['confidence']
-                        probabilities = prediction.get('probabilities', {})
+                                ensemble_result = ensemble_results.get(symbol)
+                                if ensemble_result:
+                                    signal = ensemble_result['ensemble_signal']
+                                    confidence = ensemble_result['ensemble_confidence']
+                                    probabilities = ensemble_result['ensemble_probabilities']
+                                    timeframe_consensus = ensemble_result['timeframe_consensus']
+                                    timeframe_predictions = ensemble_result['timeframe_predictions']
 
-                        # Emoji según la señal
-                        signal_emoji = {
-                            'BUY': '🟢',
-                            'SELL': '🔴',
-                            'HOLD': '🟡'
-                        }.get(signal, '⚪')
+                                    # Emoji según la señal
+                                    signal_emoji = {
+                                        'BUY': '🟢',
+                                        'SELL': '🔴',
+                                        'HOLD': '🟡'
+                                    }.get(signal, '⚪')
 
-                        # Formato de confianza con color
-                        conf_status = "🔥" if confidence >= 0.80 else "✅" if confidence >= 0.70 else "⚠️"
+                                    # Emoji de consenso
+                                    consensus_emoji = "🤝" if timeframe_consensus else "⚠️"
 
-                        models_section += f"{signal_emoji} **{symbol}**: {signal} ({conf_status} {confidence:.1%})\n"
+                                    # ✅ CORRECCIÓN: Usar probabilidad de la señal ganadora en lugar de confianza calibrada
+                                    signal_probability = probabilities.get(signal, 0)
 
-                        # Mostrar distribución de probabilidades si están disponibles
-                        if probabilities:
-                            buy_prob = probabilities.get('BUY', 0)
-                            hold_prob = probabilities.get('HOLD', 0)
-                            sell_prob = probabilities.get('SELL', 0)
-                            models_section += f"   📊 BUY:{buy_prob:.1%} | HOLD:{hold_prob:.1%} | SELL:{sell_prob:.1%}\n"
+                                    # Formato de confianza con color (basado en la probabilidad de la señal)
+                                    conf_status = "🔥" if signal_probability >= 0.80 else "✅" if signal_probability >= 0.70 else "⚠️"
 
-                        # Precio actual
-                        current_price = current_prices[symbol]
-                        models_section += f"   💰 Precio: ${current_price:,.4f}\n"
+                                    models_section += f"{signal_emoji} **{symbol}**: {signal} ({conf_status} {signal_probability:.1%}) {consensus_emoji}\n"
 
+                                    # Mostrar distribución de probabilidades del ensamble
+                                    buy_prob = probabilities.get('BUY', 0)
+                                    hold_prob = probabilities.get('HOLD', 0)
+                                    sell_prob = probabilities.get('SELL', 0)
+                                    models_section += f"   📊 BUY:{buy_prob:.1%} | HOLD:{hold_prob:.1%} | SELL:{sell_prob:.1%}\n"
+
+                                    # Información de timeframes
+                                    tf_count = len(timeframe_predictions)
+                                    models_section += f"   ⏰ Timeframes: {tf_count} | Consenso: {'✅' if timeframe_consensus else '❌'}\n"
+
+                                    # Precio actual
+                                    current_price = current_prices[symbol]
+                                    models_section += f"   💰 Precio: ${current_price:,.4f}\n"
+
+                                else:
+                                    models_section += f"❌ **{symbol}**: Sin resultado de ensamble\n"
+
+                            except Exception as e:
+                                models_section += f"❌ **{symbol}**: Error procesando ensamble ({str(e)[:25]}...)\n"
+                                continue
                     else:
-                        models_section += f"❌ **{symbol}**: Error en predicción\n"
+                        models_section += "❌ **Ensamble**: No se obtuvieron predicciones\n"
 
                 except Exception as e:
-                    models_section += f"❌ **{symbol}**: Error ({str(e)[:30]}...)\n"
-                    continue
+                    print(f"⚠️ Error en sistema ensamble para Discord: {e}")
+                    models_section += f"❌ **Ensamble**: Error ({str(e)[:30]}...)\n"
+
+            # 🔄 SISTEMA LEGACY (fallback)
+            elif has_legacy:
+                try:
+                    models_section += "🔄 **Sistema**: TCN Legacy\n\n"
+
+                    # Generar predicciones legacy para cada símbolo
+                    for symbol in self.symbols:
+                        try:
+                            if symbol not in current_prices:
+                                models_section += f"❌ **{symbol}**: Sin precio disponible\n"
+                                continue
+
+                            # Obtener predicción del modelo legacy
+                            prediction = None
+                            if hasattr(self.tcn_predictor, 'predict_symbol'):
+                                prediction = self.tcn_predictor.predict_symbol(symbol)
+
+                            if prediction:
+                                signal = prediction['signal']
+                                confidence = prediction['confidence']
+                                probabilities = prediction.get('probabilities', {})
+
+                                # Emoji según la señal
+                                signal_emoji = {
+                                    'BUY': '🟢',
+                                    'SELL': '🔴',
+                                    'HOLD': '🟡'
+                                }.get(signal, '⚪')
+
+                                # Formato de confianza con color
+                                conf_status = "🔥" if confidence >= 0.80 else "✅" if confidence >= 0.70 else "⚠️"
+
+                                models_section += f"{signal_emoji} **{symbol}**: {signal} ({conf_status} {confidence:.1%})\n"
+
+                                # Mostrar distribución de probabilidades si están disponibles
+                                if probabilities:
+                                    buy_prob = probabilities.get('BUY', 0)
+                                    hold_prob = probabilities.get('HOLD', 0)
+                                    sell_prob = probabilities.get('SELL', 0)
+                                    models_section += f"   📊 BUY:{buy_prob:.1%} | HOLD:{hold_prob:.1%} | SELL:{sell_prob:.1%}\n"
+
+                                # Precio actual
+                                current_price = current_prices[symbol]
+                                models_section += f"   💰 Precio: ${current_price:,.4f}\n"
+
+                            else:
+                                models_section += f"❌ **{symbol}**: Error en predicción legacy\n"
+
+                        except Exception as e:
+                            models_section += f"❌ **{symbol}**: Error legacy ({str(e)[:30]}...)\n"
+                            continue
+
+                except Exception as e:
+                    models_section += f"❌ **Legacy**: Error ({str(e)[:30]}...)\n"
 
             # Agregar timestamp del análisis
             models_section += f"\n⏰ Análisis: {datetime.now().strftime('%H:%M:%S')}\n"
@@ -1084,10 +1188,8 @@ class SimpleProfessionalTradingManager:
 
     async def _generate_tcn_signals(self, prices: Dict[str, float]) -> Dict:
         """
-        🧠 Genera señales de trading (BUY/SELL) basadas en la confianza del modelo TCN.
-        ---
-        CORREGIDO: Asegura que tanto las señales BUY como SELL se añadan a la cola de procesamiento.
-        Versión híbrida que combina la simplicidad de Gemini con la funcionalidad actual.
+        🧠 Genera señales de trading usando TCN ENSEMBLE V3 o fallback legacy.
+        NUEVO: Soporte para predicciones de ensamble con múltiples timeframes.
         """
         signals = {}
 
@@ -1095,10 +1197,13 @@ class SimpleProfessionalTradingManager:
         if not hasattr(self, 'last_signals'):
             self.last_signals = {}
 
-        # ✅ VERIFICAR que TCN está inicializado (debe estar desde constructor)
-        if not hasattr(self, 'tcn_predictor') or self.tcn_predictor is None:
-            print("❌ ERROR CRÍTICO: TCN no está inicializado")
-            print("🚨 SISTEMA REQUIERE TCN REAL - REINTENTANDO INICIALIZACIÓN")
+        # ✅ VERIFICAR que algún TCN está inicializado
+        has_ensemble = hasattr(self, 'tcn_ensemble_predictor') and self.tcn_ensemble_predictor is not None
+        has_legacy = hasattr(self, 'tcn_predictor') and self.tcn_predictor is not None
+
+        if not has_ensemble and not has_legacy:
+            print("❌ ERROR CRÍTICO: Ningún TCN está inicializado")
+            print("🚨 SISTEMA REQUIERE TCN - REINTENTANDO INICIALIZACIÓN")
             self._initialize_tcn_predictor()
 
         # ✅ NUEVO: Analizar contexto de mercado como capa de seguridad
@@ -1131,21 +1236,195 @@ class SimpleProfessionalTradingManager:
             threshold = base_threshold
             print(f"🎯 UMBRAL ESTÁNDAR: {threshold:.1f}% - Mercado {market_context['regime']}")
 
-        # ✅ VERSIÓN HÍBRIDA: Combinar lógica actual con simplicidad de Gemini
+        # 🎯 NUEVO: Sistema de predicción ENSEMBLE V3
+        if getattr(self, 'use_ensemble', False) and has_ensemble:
+            print("🚀 Usando SISTEMA DE ENSAMBLE TCN V3")
+            try:
+                # Obtener todas las predicciones de ensamble de una vez
+                ensemble_results = await self.tcn_ensemble_predictor.predict_all_symbols_v3()
+
+                if not ensemble_results:
+                    print("❌ No se obtuvieron resultados del ensamble")
+                    return signals
+
+                print(f"🎯 Ensamble generó {len(ensemble_results)} predicciones")
+
+                # Procesar cada resultado del ensamble
+                for symbol, ensemble_result in ensemble_results.items():
+                    current_price = prices.get(symbol)
+                    if not current_price:
+                        continue
+
+                    try:
+                        # Extraer información del ensamble
+                        signal = ensemble_result['ensemble_signal']
+                        confidence_level = ensemble_result['ensemble_confidence'] * 100  # A porcentaje
+                        probabilities = ensemble_result['ensemble_probabilities']
+                        timeframe_consensus = ensemble_result['timeframe_consensus']
+                        timeframe_predictions = ensemble_result['timeframe_predictions']
+
+                        print(f"🔍 {symbol} - ENSAMBLE: {signal} ({confidence_level:.1f}%)")
+                        print(f"   📊 Prob: SELL={probabilities['SELL']*100:.1f}% HOLD={probabilities['HOLD']*100:.1f}% BUY={probabilities['BUY']*100:.1f}%")
+                        print(f"   🤝 Consenso: {'✅' if timeframe_consensus else '❌'} | TF: {len(timeframe_predictions)}")
+
+                        # ✅ NUEVO: Bonus de confianza por consenso entre timeframes
+                        if timeframe_consensus and len(timeframe_predictions) > 1:
+                            confidence_bonus = 5.0  # 5% bonus por consenso
+                            confidence_level += confidence_bonus
+                            print(f"   🎯 BONUS CONSENSO: +{confidence_bonus}% → {confidence_level:.1f}%")
+
+                        # ✅ NUEVO: Penalización por falta de consenso en señales fuertes
+                        if not timeframe_consensus and confidence_level > 75:
+                            confidence_penalty = 10.0  # 10% penalización por falta de consenso en señal fuerte
+                            confidence_level -= confidence_penalty
+                            print(f"   ⚠️ PENALIZACIÓN NO-CONSENSO: -{confidence_penalty}% → {confidence_level:.1f}%")
+
+                        # ✅ APLICAR filtros existentes del sistema
+                        filtered_signal, filter_reason = self._apply_signal_stability_filter(
+                            symbol, signal, confidence_level, current_price, market_context
+                        )
+
+                        if filtered_signal != signal:
+                            print(f"🛡️ FILTRO DE ESTABILIDAD aplicado en {symbol}: {signal} → {filtered_signal} ({filter_reason})")
+                            signal = filtered_signal
+                            if signal == 'HOLD':
+                                confidence_level = min(confidence_level, 65.0)
+
+                        filtered_signal, context_reason = self._apply_market_context_filter(
+                            signal, confidence_level, market_context, symbol
+                        )
+
+                        if filtered_signal != signal:
+                            print(f"🛡️ FILTRO DE CONTEXTO aplicado en {symbol}: {signal} → {filtered_signal} ({context_reason})")
+                            signal = filtered_signal
+
+                        # Continuar con la lógica de procesamiento de señales...
+                        await self._process_ensemble_signal(symbol, signal, confidence_level, current_price,
+                                                          ensemble_result, market_context, threshold, signals)
+
+                    except Exception as e:
+                        print(f"  ❌ Error procesando resultado ensamble para {symbol}: {e}")
+                        continue
+
+            except Exception as e:
+                print(f"❌ Error en sistema de ensamble: {e}")
+                print("🔄 Fallback a sistema legacy...")
+                # Continuar con sistema legacy si falla el ensamble
+
+        # 🔄 SISTEMA LEGACY (fallback o cuando ensemble no está disponible)
+        if not getattr(self, 'use_ensemble', False) or not has_ensemble:
+            print("🔄 Usando SISTEMA TCN LEGACY")
+            return await self._generate_tcn_signals_legacy(prices, market_context, threshold)
+
+        # ✅ NUEVO: Implementar priorización de BTC en señales simultáneas
+        if signals:
+            print(f"🎯 Total señales TCN ENSEMBLE generadas: {len(signals)}")
+            prioritized_signals = self._apply_signal_prioritization(signals)
+            print(f"⚖️ Señales después de priorización: {len(prioritized_signals)}")
+            return prioritized_signals
+        else:
+            print("📊 No se generaron señales TCN válidas en este ciclo")
+            return signals
+
+    async def _process_ensemble_signal(self, symbol: str, signal: str, confidence_level: float,
+                                     current_price: float, ensemble_result: Dict, market_context: Dict,
+                                     threshold: float, signals: Dict):
+        """🎯 Procesa una señal individual del ensamble"""
+
+        # Actualizar registro de última señal
+        self.last_signals[symbol] = signal
+        print(f"💡 Señal ENSEMBLE para {symbol}: {signal} (Confianza: {confidence_level:.2f}%) (Umbral: {threshold:.1f}%)")
+
+        # Calcular umbral SELL adaptativo
+        base_sell_confidence = float(os.getenv('MIN_SELL_CONFIDENCE_THRESHOLD', '0.75')) * 100
+
+        if market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.9:
+            sell_threshold = base_sell_confidence * 0.8
+        elif market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.7:
+            sell_threshold = base_sell_confidence * 0.85
+        else:
+            sell_threshold = max(base_sell_confidence, threshold * 0.85)
+
+        # Verificar si la señal cumple con los umbrales
+        signal_valid = (signal == 'BUY' and confidence_level >= threshold) or \
+                      (signal == 'SELL' and confidence_level >= sell_threshold)
+
+        if signal_valid:
+            # Verificaciones específicas por tipo de señal
+            if signal == 'BUY':
+                existing_positions = self._get_positions_for_symbol(symbol)
+                if len(existing_positions) >= 3:
+                    print(f"  ⏸️ Señal BUY ignorada - Máximo 3 posiciones alcanzado para {symbol}")
+                    return
+
+                min_position_value = 11.0
+                if self.risk_manager and hasattr(self.risk_manager, 'limits'):
+                    min_position_value = self.risk_manager.limits.min_position_value_usdt
+
+                if self.current_balance < min_position_value:
+                    print(f"  💰 Señal BUY generada (solo análisis) - Balance insuficiente")
+                    return
+
+            elif signal == 'SELL':
+                existing_positions = self._get_positions_for_symbol(symbol)
+                if len(existing_positions) == 0:
+                    print(f"  ⏸️ Señal SELL ignorada - No hay posición que vender en {symbol}")
+                    return
+
+            # ✅ SEÑAL VÁLIDA - Agregar a resultados
+            signals[symbol] = {
+                'signal': signal,
+                'price': current_price,
+                'confidence': confidence_level,
+                'timestamp': datetime.utcnow(),
+                'current_price': current_price,
+                'reason': 'TCN_ENSEMBLE_V3_PREDICTION',
+                'available_usdt': self.current_balance,
+                'probabilities': ensemble_result['ensemble_probabilities'],
+                'balance_sufficient': self.current_balance >= (self.risk_manager.limits.min_position_value_usdt if self.risk_manager and self.risk_manager.limits else 11.0),
+                'market_context': market_context,
+                # ✅ NUEVO: Información específica del ensamble
+                'ensemble_info': {
+                    'timeframe_consensus': ensemble_result['timeframe_consensus'],
+                    'timeframe_predictions': ensemble_result['timeframe_predictions'],
+                    'combination_method': ensemble_result['combination_method'],
+                    'model_type': ensemble_result['model_type']
+                }
+            }
+
+            log_emoji = "📈" if signal == "BUY" else "📉"
+            log_action = "COMPRA" if signal == "BUY" else "VENTA"
+            print(f"  ✅ SEÑAL ENSAMBLE AÑADIDA: {symbol} {signal} ({confidence_level:.1f}%)")
+            print(f"{log_emoji} Oportunidad de {log_action} detectada para {symbol} con ENSAMBLE V3")
+
+    async def _generate_tcn_signals_legacy(self, prices: Dict[str, float], market_context: Dict, threshold: float) -> Dict:
+        """🔄 Sistema TCN legacy para compatibilidad hacia atrás"""
+        signals = {}
+
+        # Calcular umbral SELL
+        base_sell_confidence = float(os.getenv('MIN_SELL_CONFIDENCE_THRESHOLD', '0.75')) * 100
+
+        if market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.9:
+            sell_threshold = base_sell_confidence * 0.8
+        elif market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.7:
+            sell_threshold = base_sell_confidence * 0.85
+        else:
+            sell_threshold = max(base_sell_confidence, threshold * 0.85)
+
+        # Procesar cada símbolo individualmente (modo legacy)
         for symbol in self.symbols:
             current_price = prices.get(symbol)
             if not current_price:
                 continue
 
             try:
-                print(f"🔍 Analizando {symbol} con modelo TCN...")
+                print(f"🔍 Analizando {symbol} con modelo TCN LEGACY...")
 
-                # Generar predicción TCN
+                # Generar predicción TCN legacy
                 prediction = None
                 if self.tcn_predictor and hasattr(self.tcn_predictor, 'predict_symbol'):
                     prediction = self.tcn_predictor.predict_symbol(symbol)
                 else:
-                    # Fallback - sin predicción
                     print(f"  ❌ TCN predictor no disponible para {symbol}")
                     continue
 
@@ -1154,9 +1433,9 @@ class SimpleProfessionalTradingManager:
                     continue
 
                 signal = prediction['signal']
-                confidence_level = prediction['confidence'] * 100  # Convertir a porcentaje
+                confidence_level = prediction['confidence'] * 100
 
-                # ✅ NUEVO: Aplicar filtros de estabilidad y cooldown
+                # Aplicar filtros existentes
                 filtered_signal, filter_reason = self._apply_signal_stability_filter(
                     symbol, signal, confidence_level, current_price, market_context
                 )
@@ -1164,11 +1443,9 @@ class SimpleProfessionalTradingManager:
                 if filtered_signal != signal:
                     print(f"🛡️ FILTRO DE ESTABILIDAD aplicado en {symbol}: {signal} → {filtered_signal} ({filter_reason})")
                     signal = filtered_signal
-                    # Si la señal fue filtrada a HOLD, reducir confianza
                     if signal == 'HOLD':
                         confidence_level = min(confidence_level, 65.0)
 
-                # ✅ NUEVO: Aplicar filtro de contexto de mercado
                 filtered_signal, context_reason = self._apply_market_context_filter(
                     signal, confidence_level, market_context, symbol
                 )
@@ -1177,95 +1454,65 @@ class SimpleProfessionalTradingManager:
                     print(f"🛡️ FILTRO DE CONTEXTO aplicado en {symbol}: {signal} → {filtered_signal} ({context_reason})")
                     signal = filtered_signal
 
-                # ✅ CORREGIDO: Procesar señales válidas independientemente de si han cambiado
-                # Actualizar registro de última señal
-                self.last_signals[symbol] = signal
-                print(f"💡 Señal TCN para {symbol}: {signal} (Confianza: {confidence_level:.2f}%) (Umbral: {threshold:.1f}%)")
-
-                # 🔧 **CORRECCIÓN CRÍTICA** - SELL también requiere confianza mínima (ADAPTATIVO)
-                # Aplicar umbral de confianza tanto para BUY como para SELL
-                base_sell_confidence = float(os.getenv('MIN_SELL_CONFIDENCE_THRESHOLD', '0.75')) * 100
-
-                # ✅ ADAPTATIVO: Relajar umbral SELL en mercados BULLISH para tomar ganancias
-                if market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.9:
-                    sell_threshold = base_sell_confidence * 0.8  # 75% * 0.8 = 60% para mercado muy bullish
-                    print(f"🎯 UMBRAL SELL ADAPTATIVO: {sell_threshold:.1f}% (base: {base_sell_confidence:.1f}%) - Mercado BULLISH {market_context['confidence']:.1%}")
-                elif market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.7:
-                    sell_threshold = base_sell_confidence * 0.85  # 75% * 0.85 = 63.75% para mercado bullish
-                    print(f"🎯 UMBRAL SELL ADAPTATIVO: {sell_threshold:.1f}% (base: {base_sell_confidence:.1f}%) - Mercado BULLISH {market_context['confidence']:.1%}")
-                else:
-                    sell_threshold = max(base_sell_confidence, threshold * 0.85)  # SELL requiere al menos config% o 85% del umbral BUY
-
-                if (signal == 'BUY' and confidence_level >= threshold) or (signal == 'SELL' and confidence_level >= sell_threshold):
-                    log_emoji = "📈" if signal == "BUY" else "📉"
-                    log_action = "COMPRA" if signal == "BUY" else "VENTA"
-                    print(f"{log_emoji} Oportunidad de {log_action} detectada para {symbol}. Preparando para posible operación.")
-
-                    # Verificaciones adicionales específicas para BUY
-                    if signal == 'BUY':
-                        # ✅ CORREGIDO: Verificar límite de 3 posiciones por símbolo
-                        existing_positions = self._get_positions_for_symbol(symbol)
-                        if len(existing_positions) >= 3:
-                            print(f"  ⏸️ Señal BUY ignorada - Máximo 3 posiciones alcanzado para {symbol} (actual: {len(existing_positions)})")
-                            continue
-
-                        # Verificar balance suficiente
-                        min_position_value = 11.0  # Valor por defecto si risk_manager no está disponible
-                        if self.risk_manager and hasattr(self.risk_manager, 'limits'):
-                            min_position_value = self.risk_manager.limits.min_position_value_usdt
-
-                        if self.current_balance < min_position_value:
-                            print(f"  💰 Señal BUY generada (solo análisis) - Balance insuficiente para trade")
-                            continue
-
-                    elif signal == 'SELL':
-                        # Verificar si tenemos posición para vender
-                        existing_positions = self._get_positions_for_symbol(symbol)
-                        if len(existing_positions) == 0:
-                            print(f"  ⏸️ Señal SELL ignorada - No hay posición que vender en {symbol}")
-                            continue
-
-                        # ✅ NUEVO: Información sobre umbral SELL aplicado
-                        print(f"  📊 Señal SELL con confianza {confidence_level:.1f}% (umbral: {sell_threshold:.1f}%)")
-                        print(f"  📋 {len(existing_positions)} posición(es) existente(s) serán evaluadas para cierre")
-
-                    # ✅ SEÑAL VÁLIDA - Este bloque ahora se ejecuta para ambas señales
-                    signals[symbol] = {
-                        'signal': signal,
-                        'price': current_price,
-                        'confidence': confidence_level,
-                        'timestamp': datetime.utcnow(),
-                        'current_price': current_price,
-                        'reason': 'TCN_MODEL_PREDICTION',
-                        'available_usdt': self.current_balance,
-                        'probabilities': prediction.get('probabilities', {}),
-                        'balance_sufficient': self.current_balance >= (self.risk_manager.limits.min_position_value_usdt if self.risk_manager and self.risk_manager.limits else 11.0),
-                        # ✅ NUEVO: Información del contexto de mercado
-                        'market_context': market_context,
-                        'context_filter_applied': filtered_signal != prediction['signal']
-                    }
-                    print(f"  ✅ SEÑAL AÑADIDA A LA COLA: {symbol} {signal} ({confidence_level:.1f}%)")
+                # Procesar señal legacy con la misma lógica
+                await self._process_legacy_signal(symbol, signal, confidence_level, current_price,
+                                                prediction, market_context, threshold, sell_threshold, signals)
 
             except Exception as e:
-                print(f"  ❌ Error procesando {symbol}: {e}")
+                print(f"  ❌ Error procesando {symbol} (legacy): {e}")
                 continue
 
-        # ✅ NUEVO: Implementar priorización de BTC en señales simultáneas
-        if signals:
-            print(f"🎯 Total señales TCN generadas: {len(signals)}")
+        return signals
 
-            # Aplicar priorización: BTC > ETH > BNB > XRP
-            prioritized_signals = self._apply_signal_prioritization(signals)
+    async def _process_legacy_signal(self, symbol: str, signal: str, confidence_level: float,
+                                   current_price: float, prediction: Dict, market_context: Dict,
+                                   threshold: float, sell_threshold: float, signals: Dict):
+        """🔄 Procesa una señal individual del sistema legacy"""
 
-            print(f"⚖️ Señales después de priorización: {len(prioritized_signals)}")
-            return prioritized_signals
-        else:
-            print("📊 No se generaron señales TCN válidas en este ciclo")
-            # ✅ INFORMACIÓN: Mostrar por qué no se generaron señales válidas
-            print(f"💡 Umbrales aplicados - BUY: {threshold:.1f}% | SELL: {sell_threshold:.1f}%")
-            if market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.7:
-                print(f"🎯 Umbrales relajados por mercado BULLISH ({market_context['confidence']:.1%})")
-            return signals
+        self.last_signals[symbol] = signal
+        print(f"💡 Señal TCN LEGACY para {symbol}: {signal} (Confianza: {confidence_level:.2f}%) (Umbral: {threshold:.1f}%)")
+
+        if (signal == 'BUY' and confidence_level >= threshold) or (signal == 'SELL' and confidence_level >= sell_threshold):
+
+            # Mismas verificaciones que el sistema de ensamble
+            if signal == 'BUY':
+                existing_positions = self._get_positions_for_symbol(symbol)
+                if len(existing_positions) >= 3:
+                    print(f"  ⏸️ Señal BUY ignorada - Máximo 3 posiciones alcanzado para {symbol}")
+                    return
+
+                min_position_value = 11.0
+                if self.risk_manager and hasattr(self.risk_manager, 'limits'):
+                    min_position_value = self.risk_manager.limits.min_position_value_usdt
+
+                if self.current_balance < min_position_value:
+                    print(f"  💰 Señal BUY generada (solo análisis) - Balance insuficiente")
+                    return
+
+            elif signal == 'SELL':
+                existing_positions = self._get_positions_for_symbol(symbol)
+                if len(existing_positions) == 0:
+                    print(f"  ⏸️ Señal SELL ignorada - No hay posición que vender en {symbol}")
+                    return
+
+            # Agregar señal legacy
+            signals[symbol] = {
+                'signal': signal,
+                'price': current_price,
+                'confidence': confidence_level,
+                'timestamp': datetime.utcnow(),
+                'current_price': current_price,
+                'reason': 'TCN_LEGACY_PREDICTION',
+                'available_usdt': self.current_balance,
+                'probabilities': prediction.get('probabilities', {}),
+                'balance_sufficient': self.current_balance >= (self.risk_manager.limits.min_position_value_usdt if self.risk_manager and self.risk_manager.limits else 11.0),
+                'market_context': market_context,
+                'context_filter_applied': False
+            }
+
+            log_emoji = "📈" if signal == "BUY" else "📉"
+            log_action = "COMPRA" if signal == "BUY" else "VENTA"
+            print(f"  ✅ SEÑAL LEGACY AÑADIDA: {symbol} {signal} ({confidence_level:.1f}%)")
 
     def _apply_signal_prioritization(self, signals: Dict) -> Dict:
         """
@@ -1383,8 +1630,8 @@ class SimpleProfessionalTradingManager:
                     url = f"https://api.binance.com/api/v3/klines"
                     params = {
                         'symbol': symbol,
-                        'interval': '5m',
-                        'limit': 200  # 200 * 5m = ~16.7 horas de datos
+                        'interval': '15m',
+                        'limit': 100  # 100 * 15m = ~16.7 horas de datos
                     }
 
                     async with aiohttp.ClientSession() as session:
@@ -1566,19 +1813,19 @@ class SimpleProfessionalTradingManager:
                 if regime == 'BULLISH' and market_confidence > 0.9:
                     # En mercado muy bullish, relajar filtros de volatilidad
                     volatility_thresholds = {
-                        'BTCUSDT': 65,   # BTC: relajado de 78% a 65%
-                        'ETHUSDT': 62,   # ETH: relajado de 75% a 62%
+                        'BTCUSDT': 60,   # BTC: relajado de 78% a 65%
+                        'ETHUSDT': 60,   # ETH: relajado de 75% a 62%
                         'BNBUSDT': 60,   # BNB: relajado de 72% a 60%
-                        'XRPUSDT': 63    # XRP: relajado de 76% a 63%
+                        'XRPUSDT': 60    # XRP: relajado de 76% a 63%
                     }
                     vol_adjustment = "RELAJADO_BULLISH"
                 else:
                     # Umbrales normales para otros contextos
                     volatility_thresholds = {
-                        'BTCUSDT': 70,   # BTC más estable - umbral menor
-                        'ETHUSDT': 70,   # ETH volátil - umbral medio
-                        'BNBUSDT': 70,   # BNB exchange - umbral menor
-                        'XRPUSDT': 70    # XRP moderadamente volátil - umbral medio
+                        'BTCUSDT': 65,   # BTC más estable - umbral menor
+                        'ETHUSDT': 65,   # ETH volátil - umbral medio
+                        'BNBUSDT': 65,   # BNB exchange - umbral menor
+                        'XRPUSDT': 65    # XRP moderadamente volátil - umbral medio
                     }
                     vol_adjustment = "NORMAL"
 
@@ -1615,9 +1862,9 @@ class SimpleProfessionalTradingManager:
                 if signal == 'BUY' and altcoin_strength < -0.2:  # Altcoins underperforming
                     # Umbrales específicos para cada altcoin
                     altcoin_thresholds = {
-                        'ETHUSDT': 73,   # ETH principal altcoin - umbral medio
-                        'BNBUSDT': 72,   # BNB exchange token - umbral menor
-                        'XRPUSDT': 74    # XRP altcoin establecida - umbral medio-alto
+                        'ETHUSDT': 70,   # ETH principal altcoin - umbral medio
+                        'BNBUSDT': 70,   # BNB exchange token - umbral menor
+                        'XRPUSDT': 70    # XRP altcoin establecida - umbral medio-alto
                     }
 
                     required_alt_confidence = altcoin_thresholds.get(symbol, 75)

@@ -26,7 +26,7 @@ class DefinitiveTCNTrainer:
 
     def __init__(self):
         self.pairs = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
-        self.lookback_window = 24
+        self.lookback_window =24
         self.prediction_horizon = 6
 
         # 🎯 THRESHOLDS BASADOS EN ANÁLISIS DE DATOS REALES

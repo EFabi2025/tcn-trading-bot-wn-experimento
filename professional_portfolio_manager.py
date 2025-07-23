@@ -600,7 +600,7 @@ class ProfessionalPortfolioManager:
             report += f"\n💎 **VALOR TOTAL: ${snapshot.total_balance_usd:,.2f}**\n"
 
             # Footer
-            report += f"\n🔄 *Actualización cada 5 min • {now.strftime('%d/%m/%y, %H:%M')}*"
+            report += f"\n🔄 *Actualización cada 3 min • {now.strftime('%d/%m/%y, %H:%M')}*"
 
             return report
 
@@ -821,7 +821,7 @@ class ProfessionalPortfolioManager:
                         min_profit_protection = current_gain_percent * 0.9
                     else:
                         # Protección mínima base del 0.75% para ganancias menores a 2%
-                        min_profit_protection = 0.4
+                        min_profit_protection = 0.85
 
                     min_trailing_price = position.entry_price * (1 + min_profit_protection / 100)
 
@@ -853,7 +853,7 @@ class ProfessionalPortfolioManager:
                         min_profit_protection = current_gain_percent * 0.90
                     else:
                         # Protección mínima base del 0.75% para ganancias menores a 2%
-                        min_profit_protection = 0.40
+                        min_profit_protection = 0.85
 
                     min_trailing_price = position.entry_price * (1 + min_profit_protection / 100)
 

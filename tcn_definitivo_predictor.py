@@ -55,15 +55,15 @@ class TCNDefinitivoPredictor:
 
         # 🚀 THRESHOLDS AGRESIVOS - MÁS BAJOS para mayor sensibilidad
         self.thresholds = {
-            'BTCUSDT': {'sell': -0.006, 'buy': 0.003},   # 🚀 AGRESIVO: 0.3% para BUY (era 0.14%)
-            'ETHUSDT': {'sell': -0.004, 'buy': 0.002},   # 🚀 AGRESIVO: 0.2% para BUY (era 0.09%)
-            'BNBUSDT': {'sell': -0.006, 'buy': 0.003},   # 🚀 AGRESIVO: 0.3% para BUY (era 0.15%)
-            'XRPUSDT': {'sell': -0.005, 'buy': 0.003}    # 🚀 AGRESIVO: 0.3% para BUY (era 0.11%)
+            'BTCUSDT': {'sell': -0.0014, 'buy': 0.0014},   # 🚀 AGRESIVO: 0.3% para BUY (era 0.14%)
+            'ETHUSDT': {'sell': -0.0012, 'buy': 0.0013},   # 🚀 AGRESIVO: 0.2% para BUY (era 0.09%)
+            'BNBUSDT': {'sell': -0.0009, 'buy': 0.0015},   # 🚀 AGRESIVO: 0.3% para BUY (era 0.15%)
+            'XRPUSDT': {'sell': -0.0018, 'buy': 0.0018}    # 🚀 AGRESIVO: 0.3% para BUY (era 0.11%)
         }
 
         # 🔧 SEQUENCE LENGTH DINÁMICO POR MODELO
         self.sequence_lengths = {
-            'BTCUSDT': 48,  # Modelo antiguo
+            'BTCUSDT': 24,  # Modelo antiguo
             'ETHUSDT': 24,  # Modelo reentrenado
             'BNBUSDT': 48,  # Modelo antiguo
             'XRPUSDT': 24   # ✅ MODELO REENTRENADO con configuración estándar
@@ -506,8 +506,8 @@ class TCNDefinitivoPredictor:
             url = f"https://api.binance.com/api/v3/klines"
             params = {
                 'symbol': symbol,
-                'interval': '5m',
-                'limit': 100
+                'interval': '1m',
+                'limit': 1000
             }
 
             response = requests.get(url, params=params, timeout=10)
