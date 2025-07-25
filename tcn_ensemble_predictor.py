@@ -343,7 +343,17 @@ class TCNEnsemblePredictor:
             # Si hay mucha divergencia entre timeframes, usar más lineal (menos sesgo)
             # Si hay consenso, usar más logarítmico (más bayesiano)
 
-            divergence = np.std([pred['confidence'] for pred in predictions.values()])
+            # ✅ CORRECCIÓN: Verificar que existe 'confidence' antes de acceder
+            confidences = []
+            for pred in predictions.values():
+                if 'confidence' in pred and pred['confidence'] is not None:
+                    confidences.append(pred['confidence'])
+                else:
+                    # Fallback: calcular confidence desde probabilidades
+                    probs = [pred['probabilities']['SELL'], pred['probabilities']['HOLD'], pred['probabilities']['BUY']]
+                    confidences.append(max(probs))
+            
+            divergence = np.std(confidences) if confidences else 0.1
 
             if divergence > 0.15:  # Alta divergencia
                 alpha = 0.7  # Más peso a combinación lineal
@@ -959,7 +969,16 @@ class TCNEnsemblePredictor:
         class_names = ['SELL', 'HOLD', 'BUY']
 
         # 🎯 ESTABILIDAD CORREGIDA: Usar divergencia KL en lugar de varianza
-        confidences = [pred['confidence'] for pred in predictions]
+        # ✅ CORRECCIÓN: Verificar que existe 'confidence' antes de acceder
+        confidences = []
+        for pred in predictions:
+            if 'confidence' in pred and pred['confidence'] is not None:
+                confidences.append(pred['confidence'])
+            else:
+                # Fallback: calcular confidence desde probabilidades
+                probs = [pred['probabilities']['SELL'], pred['probabilities']['HOLD'], pred['probabilities']['BUY']]
+                confidences.append(max(probs))
+        
         stability = self.calculate_corrected_stability(confidences)
 
         return {
@@ -1023,7 +1042,8 @@ class TCNEnsemblePredictor:
             timeframe_info.append({
                 'timeframe': timeframe,
                 'signal': pred['signal'],
-                'confidence': pred['confidence'],
+                # ✅ CORRECCIÓN: Verificar que existe 'confidence' antes de acceder
+                'confidence': pred.get('confidence', max(pred['probabilities']['SELL'], pred['probabilities']['HOLD'], pred['probabilities']['BUY'])),
                 'stability': pred['stability'],
                 'adaptive_weight': adaptive_weights.get(timeframe, 0.5),
                 'iterations': pred['individual_predictions'],
@@ -1040,7 +1060,16 @@ class TCNEnsemblePredictor:
         uncertainty = entropy(combined_probs) / np.log(3)  # Normalizar por log(3)
 
         # 🎯 ESTABILIDAD CORREGIDA de múltiples predicciones
-        all_confidences = [pred['confidence'] for pred in tf_predictions.values()]
+        # ✅ CORRECCIÓN: Verificar que existe 'confidence' antes de acceder
+        all_confidences = []
+        for pred in tf_predictions.values():
+            if 'confidence' in pred and pred['confidence'] is not None:
+                all_confidences.append(pred['confidence'])
+            else:
+                # Fallback: calcular confidence desde probabilidades
+                probs = [pred['probabilities']['SELL'], pred['probabilities']['HOLD'], pred['probabilities']['BUY']]
+                all_confidences.append(max(probs))
+        
         stability = self.calculate_corrected_stability(all_confidences)
 
         # 🎯 CONFIANZA CALIBRADA multi-factor

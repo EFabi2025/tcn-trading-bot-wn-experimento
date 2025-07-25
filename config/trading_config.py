@@ -105,6 +105,34 @@ class TradingConfig:
             'XRPUSDT': 12   # XRP: 12 minutos
         },
 
+        # ✅ NUEVO: Sistema de Penalidad Bearish Gradual
+        'BEARISH_PENALTY_CONFIG': {
+            # Umbrales BEARISH por intensidad
+            'BEARISH_STRONG_BTC_THRESHOLD': 95,
+            'BEARISH_STRONG_ALT_THRESHOLD': 98,
+            'BEARISH_MODERATE_BTC_THRESHOLD': 85,
+            'BEARISH_MODERATE_ALT_THRESHOLD': 90,
+            'BEARISH_LEVE_BTC_THRESHOLD': 80,
+            'BEARISH_LEVE_ALT_THRESHOLD': 85,
+
+            # Favorecer ventas en BEARISH
+            'BEARISH_SELL_THRESHOLD_STRONG': 60,
+            'BEARISH_SELL_THRESHOLD_MODERATE': 65,
+            'BEARISH_SELL_THRESHOLD_LEVE': 70,
+
+            # Duración para relaxar filtros
+            'BEARISH_RELAX_AFTER_HOURS': 48,
+            'BEARISH_TIME_RELAXATION_FACTOR': 0.9,
+
+            # Factor de correlación con BTC
+            'BTC_CORRELATION_PENALTY': 5,
+
+            # Configuración de intensidad
+            'BEARISH_VERY_STRONG_THRESHOLD': 0.9,
+            'BEARISH_STRONG_THRESHOLD': 0.8,
+            'BEARISH_MODERATE_THRESHOLD': 0.7,
+        },
+
         # Protección específica para ETH
         'ETH_PROTECTION': {
             'min_hold_time_minutes': 20,        # Mínimo 20 min antes de cerrar posición ETH
