@@ -32,7 +32,7 @@ class DefinitiveTCNTrainer:
         self.timeframe = "5m"
         self.days = 60  # ✅ OPTIMIZADO: Reducido de 90 a 60 días para menos ruido
         self.limit = 1000
-        
+
         # Aplicar configuración personalizada si se proporciona
         if config:
             self.pairs = [config.get('symbol', 'BNBUSDT')]
@@ -50,7 +50,7 @@ class DefinitiveTCNTrainer:
         self.thresholds = {
             'BTCUSDT': {
                 'strong_sell': -0.012,   # -1.2% para SELL fuerte (2 horas)
-                'weak_sell': -0.006,     # -0.6% para SELL débil 
+                'weak_sell': -0.006,     # -0.6% para SELL débil
                 'weak_buy': 0.008,       # +0.6% para BUY débil
                 'strong_buy': 0.012      # +1.2% para BUY fuerte (2 horas)
             },
@@ -80,7 +80,7 @@ class DefinitiveTCNTrainer:
         # Usar configuración de la instancia si no se especifican días
         if days is None:
             days = self.days
-            
+
         # Usar fechas específicas si están configuradas
         if hasattr(self, 'start_time') and hasattr(self, 'end_time') and self.start_time and self.end_time:
             start_time = int(self.start_time.timestamp() * 1000)
@@ -345,33 +345,33 @@ class DefinitiveTCNTrainer:
         print(f"🎯 Creando etiquetas BALANCEADAS DINÁMICAS para {symbol} (horizonte: {self.prediction_horizon} períodos = {self.prediction_horizon * 5}min)...")
 
         close_prices = df['close'].values
-        
+
         # ✅ NUEVA LÓGICA: PERCENTILES DINÁMICOS EN LUGAR DE THRESHOLDS FIJOS
         print("🔧 Calculando retornos futuros...")
         future_returns = []
-        
+
         for i in range(len(close_prices) - self.prediction_horizon):
             current_price = close_prices[i]
             future_price = close_prices[i + self.prediction_horizon]
             gross_return = (future_price - current_price) / current_price
             future_returns.append(gross_return)
-        
+
         future_returns = np.array(future_returns)
-        
+
         # 🎯 THRESHOLDS DINÁMICOS BASADOS EN PERCENTILES
         # Objetivo: Distribución balanceada 30-40-30 (SELL-HOLD-BUY)
         sell_threshold = np.percentile(future_returns, 30)   # 30% más bajo = SELL
         buy_threshold = np.percentile(future_returns, 70)    # 30% más alto = BUY
-        
+
         # ✅ FILTRO DE RENTABILIDAD: Asegurar que sea rentable después de costos
         min_profitable_move = 0.004  # 0.4% mínimo para superar costos de trading
-        
+
         # Ajustar thresholds si son muy pequeños
         if abs(sell_threshold) < min_profitable_move:
             sell_threshold = -min_profitable_move
         if buy_threshold < min_profitable_move:
             buy_threshold = min_profitable_move
-            
+
         print(f"💡 Thresholds dinámicos calculados:")
         print(f"   📉 SELL threshold: {sell_threshold*100:.3f}% (percentil 30)")
         print(f"   📈 BUY threshold: {buy_threshold*100:.3f}% (percentil 70)")
@@ -379,7 +379,7 @@ class DefinitiveTCNTrainer:
 
         # ✅ CREAR ETIQUETAS CON CONFIRMACIÓN TÉCNICA
         labels = []
-        
+
         for i, return_val in enumerate(future_returns):
             # Clasificación base por percentiles
             if return_val <= sell_threshold:
@@ -388,7 +388,7 @@ class DefinitiveTCNTrainer:
                 candidate_label = 2  # BUY
             else:
                 candidate_label = 1  # HOLD
-            
+
             # 🔧 CONFIRMACIÓN TÉCNICA para mejorar calidad
             try:
                 if i < len(features):
@@ -397,7 +397,7 @@ class DefinitiveTCNTrainer:
                 else:
                     current_rsi = 50
                     current_macd = 0
-                    
+
                 # Filtros de confirmación técnica
                 if candidate_label == 0:  # SELL candidato
                     # Confirmar con indicadores bajistas
@@ -423,11 +423,11 @@ class DefinitiveTCNTrainer:
                             label = 1  # HOLD mantenido
                     else:
                         label = 1  # HOLD
-                        
+
             except:
                 # En caso de error, usar clasificación base
                 label = candidate_label
-                
+
             labels.append(label)
 
         # Agregar labels al DataFrame
@@ -465,49 +465,49 @@ class DefinitiveTCNTrainer:
         try:
             print(f"\n💰 ANÁLISIS DE RENTABILIDAD POTENCIAL MEJORADO - {symbol}")
             print("=" * 70)
-            
+
             close_prices = df['close'].values
             trading_costs = 0.003  # 0.3%
-            
+
             profitable_buys = 0
             profitable_sells = 0
             total_buys = 0
             total_sells = 0
             total_profit_buys = 0.0
             total_profit_sells = 0.0
-            
+
             for i, label in enumerate(labels):
                 if i + self.prediction_horizon >= len(close_prices):
                     break
-                    
+
                 current_price = close_prices[i]
                 future_price = close_prices[i + self.prediction_horizon]
                 gross_return = (future_price - current_price) / current_price
-                
+
                 if label == 2:  # BUY
                     total_buys += 1
                     net_profit = gross_return - trading_costs
                     total_profit_buys += net_profit
                     if net_profit > 0:
                         profitable_buys += 1
-                        
+
                 elif label == 0:  # SELL
                     total_sells += 1
                     net_profit = -gross_return - trading_costs  # Ganancia en short
                     total_profit_sells += net_profit
                     if net_profit > 0:
                         profitable_sells += 1
-            
+
             # Calcular métricas
             buy_win_rate = (profitable_buys / total_buys * 100) if total_buys > 0 else 0
             sell_win_rate = (profitable_sells / total_sells * 100) if total_sells > 0 else 0
             avg_profit_buy = (total_profit_buys / total_buys * 100) if total_buys > 0 else 0
             avg_profit_sell = (total_profit_sells / total_sells * 100) if total_sells > 0 else 0
-            
+
             print(f"📊 THRESHOLDS UTILIZADOS:")
             print(f"   📉 SELL: {sell_threshold*100:.3f}%")
             print(f"   📈 BUY: {buy_threshold*100:.3f}%")
-            
+
             print(f"📊 MÉTRICAS DE RENTABILIDAD:")
             print(f"   🟢 BUY Trades: {total_buys}")
             print(f"      Win Rate: {buy_win_rate:.1f}%")
@@ -515,15 +515,15 @@ class DefinitiveTCNTrainer:
             print(f"   🔴 SELL Trades: {total_sells}")
             print(f"      Win Rate: {sell_win_rate:.1f}%")
             print(f"      Avg Profit: {avg_profit_sell:+.2f}%")
-            
+
             # Evaluación general
             overall_win_rate = ((profitable_buys + profitable_sells) / (total_buys + total_sells) * 100) if (total_buys + total_sells) > 0 else 0
             total_profit = total_profit_buys + total_profit_sells
-            
+
             print(f"   📈 RESUMEN GENERAL:")
             print(f"      Win Rate Total: {overall_win_rate:.1f}%")
             print(f"      Profit Total: {total_profit:+.4f}")
-            
+
             # Validación mejorada
             if overall_win_rate >= 65 and total_profit > 0.01:
                 print(f"   ✅ MODELO ALTAMENTE RENTABLE")
@@ -533,9 +533,9 @@ class DefinitiveTCNTrainer:
                 print(f"   ⚠️ MODELO EN EL LÍMITE (requiere optimización)")
             else:
                 print(f"   ❌ MODELO PROBABLEMENTE NO RENTABLE")
-                
+
             print("=" * 70)
-            
+
         except Exception as e:
             print(f"❌ Error en análisis de rentabilidad: {e}")
 
@@ -603,7 +603,7 @@ class DefinitiveTCNTrainer:
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.Dropout(0.1),
 
-            # TCN Layer 2 - Dilation más conservadora  
+            # TCN Layer 2 - Dilation más conservadora
             tf.keras.layers.Conv1D(filters=64, kernel_size=3, dilation_rate=2, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.Dropout(0.2),
@@ -648,7 +648,7 @@ class DefinitiveTCNTrainer:
 
         try:
             # 1. Obtener datos reales (usar configuración)
-            df = await self.get_real_market_data(symbol)   
+            df = await self.get_real_market_data(symbol)
 
             # 2. Crear 66 features
             features = self.create_66_features(df)
@@ -812,11 +812,165 @@ class DefinitiveTCNTrainer:
             print(f"❌ Error entrenando modelo definitivo para {symbol}: {e}")
             return False
 
+def get_intelligent_lookback_window(timeframe: str, symbol: str) -> int:
+    """🎯 Selección inteligente de lookback window con múltiples opciones"""
+    
+    # Configuraciones específicas por timeframe y tipo de trading
+    lookback_configs = {
+        '1m': {
+            'scalping': {'windows': [12, 15, 18, 24], 'description': 'Trading ultra-rápido (12-24min)'},
+            'short_term': {'windows': [24, 30, 36, 48], 'description': 'Trading corto plazo (24-48min)'},
+            'balanced': {'windows': [48, 60, 72, 84], 'description': 'Balance sensibilidad/estabilidad (48-84min)'},
+            'stable': {'windows': [96, 120, 144, 168], 'description': 'Señales más estables (1.5-3h)'}
+        },
+        '5m': {
+            'reactive': {'windows': [12, 18, 24, 30], 'description': 'Muy reactivo (1-2.5h)'},
+            'balanced': {'windows': [36, 48, 60, 72], 'description': 'Balance óptimo (3-6h)'},
+            'trend_following': {'windows': [84, 96, 120, 144], 'description': 'Seguimiento de tendencias (7-12h)'},
+            'long_context': {'windows': [168, 192, 240, 288], 'description': 'Contexto extendido (14-24h)'}
+        },
+        '15m': {
+            'intraday': {'windows': [16, 24, 32, 48], 'description': 'Trading intradía (4-12h)'},
+            'swing': {'windows': [64, 80, 96, 112], 'description': 'Swing trading (16-28h)'},
+            'position': {'windows': [128, 160, 192, 224], 'description': 'Trading posicional (2-7 días)'}
+        },
+        '1h': {
+            'daily': {'windows': [12, 18, 24, 30], 'description': 'Patrones diarios (12-30h)'},
+            'weekly': {'windows': [48, 72, 96, 120], 'description': 'Patrones semanales (2-5 días)'},
+            'monthly': {'windows': [168, 240, 336, 480], 'description': 'Patrones mensuales (1-4 semanas)'}
+        },
+        '4h': {
+            'weekly': {'windows': [12, 18, 24, 30], 'description': 'Tendencias semanales (2-5 días)'},
+            'monthly': {'windows': [42, 60, 84, 120], 'description': 'Tendencias mensuales (1-4 semanas)'},
+            'quarterly': {'windows': [180, 240, 300, 360], 'description': 'Tendencias trimestrales (1-2 meses)'}
+        }
+    }
+    
+    # Recomendaciones específicas por símbolo
+    symbol_recommendations = {
+        'BTCUSDT': 'balanced',  # BTC más estable, balance es bueno
+        'ETHUSDT': 'balanced',  # ETH similar a BTC
+        'BNBUSDT': 'reactive',  # BNB más volátil, mejor reactividad
+        'XRPUSDT': 'reactive',  # XRP muy volátil
+        'DOTUSDT': 'reactive',  # DOT volátil
+        'ADAUSDT': 'balanced',  # ADA intermedio
+        'SOLUSDT': 'reactive'   # SOL muy volátil
+    }
+    
+    print(f"\n🔍 SELECCIÓN DE LOOKBACK WINDOW PARA {timeframe.upper()}")
+    print("=" * 60)
+    
+    # Obtener configuraciones para el timeframe
+    configs = lookback_configs.get(timeframe, lookback_configs['5m'])
+    
+    # Recomendar categoría basada en el símbolo
+    recommended_category = symbol_recommendations.get(symbol, 'balanced')
+    
+    print(f"💡 Recomendación automática para {symbol}: {recommended_category.upper()}")
+    print(f"   ({configs[recommended_category]['description']})")
+    print()
+    
+    # Mostrar todas las opciones
+    print("📊 OPCIONES DISPONIBLES:")
+    category_list = list(configs.keys())
+    
+    for i, (category, config) in enumerate(configs.items(), 1):
+        windows_str = ', '.join(map(str, config['windows']))
+        marker = " 🎯 RECOMENDADO" if category == recommended_category else ""
+        print(f"   {i}. {category.upper()}: [{windows_str}]{marker}")
+        print(f"      {config['description']}")
+        print()
+    
+    # Agregar opción personalizada
+    print(f"   {len(configs) + 1}. PERSONALIZADA: Ingresar valor manual")
+    print()
+    
+    # Seleccionar categoría
+    while True:
+        try:
+            choice = int(input(f"🎯 Selecciona categoría (1-{len(configs) + 1}): "))
+            if 1 <= choice <= len(configs) + 1:
+                break
+            print(f"❌ Selecciona un número entre 1 y {len(configs) + 1}")
+        except ValueError:
+            print("❌ Ingresa un número válido")
+    
+    if choice == len(configs) + 1:
+        # Opción personalizada
+        print(f"\n🛠️ CONFIGURACIÓN PERSONALIZADA:")
+        print(f"   Rango válido para {timeframe}: 8-500")
+        while True:
+            try:
+                custom_window = int(input("🔍 Ingresa lookback window personalizado: "))
+                if 8 <= custom_window <= 500:
+                    # Mostrar información sobre la ventana personalizada
+                    time_coverage = calculate_time_coverage(custom_window, timeframe)
+                    print(f"✅ Ventana seleccionada: {custom_window} períodos ({time_coverage})")
+                    return custom_window
+                print("❌ Lookback debe estar entre 8 y 500")
+            except ValueError:
+                print("❌ Ingresa un número válido")
+    else:
+        # Seleccionar de opciones predefinidas
+        selected_category = category_list[choice - 1]
+        selected_config = configs[selected_category]
+        windows = selected_config['windows']
+        
+        print(f"\n📊 OPCIONES EN CATEGORÍA {selected_category.upper()}:")
+        for i, window in enumerate(windows, 1):
+            time_coverage = calculate_time_coverage(window, timeframe)
+            marker = " 🎯" if i == 2 else ""  # Marcar el segundo como recomendado
+            print(f"   {i}. {window} períodos ({time_coverage}){marker}")
+        
+        while True:
+            try:
+                window_choice = int(input(f"🔍 Selecciona ventana (1-{len(windows)}): "))
+                if 1 <= window_choice <= len(windows):
+                    selected_window = windows[window_choice - 1]
+                    time_coverage = calculate_time_coverage(selected_window, timeframe)
+                    
+                    print(f"\n✅ LOOKBACK WINDOW SELECCIONADO:")
+                    print(f"   📊 Ventana: {selected_window} períodos")
+                    print(f"   ⏰ Cobertura temporal: {time_coverage}")
+                    print(f"   🎯 Categoría: {selected_category}")
+                    print(f"   📈 Apropiado para: {selected_config['description']}")
+                    
+                    # Mostrar análisis de rendimiento
+                    show_performance = input("\n📊 ¿Ver análisis detallado de rendimiento? (s/n): ").lower().strip()
+                    if show_performance in ['s', 'si', 'yes', 'y']:
+                        show_lookback_performance_implications(selected_window, timeframe, symbol)
+                    
+                    return selected_window
+                print(f"❌ Selecciona un número entre 1 y {len(windows)}")
+            except ValueError:
+                print("❌ Ingresa un número válido")
+
+def calculate_time_coverage(window: int, timeframe: str) -> str:
+    """📊 Calcular cobertura temporal de una ventana"""
+    timeframe_minutes = {
+        '1m': 1,
+        '5m': 5,
+        '15m': 15,
+        '1h': 60,
+        '4h': 240
+    }
+    
+    total_minutes = window * timeframe_minutes.get(timeframe, 5)
+    
+    if total_minutes < 60:
+        return f"{total_minutes}min"
+    elif total_minutes < 1440:  # menos de 24h
+        hours = total_minutes / 60
+        return f"{hours:.1f}h"
+    else:
+        days = total_minutes / 1440
+        return f"{days:.1f} días"
+
 def get_user_configuration():
     """🎯 Obtener configuración del usuario de forma interactiva"""
     print("\n🚀 CONFIGURACIÓN INTERACTIVA DEL ENTRENAMIENTO")
     print("=" * 60)
-    
+
     # 1. Seleccionar par
     available_pairs = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOTUSDT", "SOLUSDT"]
     print(f"\n📊 Pares disponibles: {', '.join(available_pairs)}")
@@ -825,7 +979,7 @@ def get_user_configuration():
         if symbol in available_pairs:
             break
         print(f"❌ Par inválido. Usa uno de: {', '.join(available_pairs)}")
-    
+
     # 2. Seleccionar timeframe
     available_timeframes = ["1m", "5m", "15m", "1h", "4h"]
     print(f"\n⏰ Timeframes disponibles: {', '.join(available_timeframes)}")
@@ -834,18 +988,12 @@ def get_user_configuration():
         if timeframe in available_timeframes:
             break
         print(f"❌ Timeframe inválido. Usa uno de: {', '.join(available_timeframes)}")
-    
-    # 3. Lookback window
-    print(f"\n🔍 Lookback window (ventana de datos históricos para predicción)")
-    while True:
-        try:
-            lookback = int(input("🔍 Ingresa lookback window (recomendado 60-120): "))
-            if 30 <= lookback <= 200:
-                break
-            print("❌ Lookback debe estar entre 30 y 200")
-        except ValueError:
-            print("❌ Ingresa un número válido")
-    
+
+    # 3. Lookback window con opciones inteligentes
+    lookback = get_intelligent_lookback_window(timeframe, symbol)
+    if lookback is None:
+        return None
+
     # 4. Horizonte de predicción
     print(f"\n🎯 Horizonte de predicción (períodos adelante a predecir)")
     while True:
@@ -856,18 +1004,18 @@ def get_user_configuration():
             print("❌ Horizonte debe estar entre 1 y 10")
         except ValueError:
             print("❌ Ingresa un número válido")
-    
+
     # 5. Datos de entrenamiento - opción 1: días
     print(f"\n📅 DATOS DE ENTRENAMIENTO")
     print("1. Especificar días hacia atrás")
     print("2. Especificar fechas start_time/end_time")
-    
+
     while True:
         data_option = input("📅 Selecciona opción (1 o 2): ").strip()
         if data_option in ["1", "2"]:
             break
         print("❌ Selecciona 1 o 2")
-    
+
     if data_option == "1":
         # Opción días
         while True:
@@ -884,7 +1032,7 @@ def get_user_configuration():
         # Opción fechas específicas
         from datetime import datetime
         print("📅 Formato de fecha: YYYY-MM-DD (ej: 2024-01-01)")
-        
+
         while True:
             try:
                 start_str = input("📅 Fecha inicio (YYYY-MM-DD): ").strip()
@@ -892,7 +1040,7 @@ def get_user_configuration():
                 break
             except ValueError:
                 print("❌ Formato de fecha inválido. Usa YYYY-MM-DD")
-        
+
         while True:
             try:
                 end_str = input("📅 Fecha fin (YYYY-MM-DD): ").strip()
@@ -902,23 +1050,23 @@ def get_user_configuration():
                 print("❌ Fecha fin debe ser posterior a fecha inicio")
             except ValueError:
                 print("❌ Formato de fecha inválido. Usa YYYY-MM-DD")
-        
+
         days = None
-    
+
     # 6. Calcular limit ajustado según timeframe
     base_limit_1m = 50000  # Limit base para 1m
     timeframe_multipliers = {
         "1m": 1,
         "5m": 0.2,    # 5x menos datos (1440/288 velas por día)
-        "15m": 0.067, # 15x menos datos 
+        "15m": 0.067, # 15x menos datos
         "1h": 0.017,  # 60x menos datos
         "4h": 0.004   # 240x menos datos
     }
-    
+
     suggested_limit = int(base_limit_1m * timeframe_multipliers[timeframe])
     print(f"\n📊 LIMIT SUGERIDO para {timeframe}: {suggested_limit}")
     print(f"   (Basado en equivalencia de datos vs 1m)")
-    
+
     while True:
         try:
             use_suggested = input(f"📊 ¿Usar limit sugerido {suggested_limit}? (s/n): ").lower().strip()
@@ -931,7 +1079,7 @@ def get_user_configuration():
             print("❌ Responde s/n")
         except ValueError:
             print("❌ Ingresa un número válido")
-    
+
     # Resumen de configuración
     print(f"\n✅ CONFIGURACIÓN SELECCIONADA (OPTIMIZADA PARA RENTABILIDAD):")
     print(f"   📊 Par: {symbol}")
@@ -943,7 +1091,7 @@ def get_user_configuration():
     else:
         print(f"   📅 Período: {start_time.strftime('%Y-%m-%d')} a {end_time.strftime('%Y-%m-%d')}")
     print(f"   📊 Limit: {limit}")
-    
+
     # ✅ NUEVO: Información de rentabilidad
     print(f"\n💰 CONFIGURACIÓN DE RENTABILIDAD:")
     print(f"   🎯 Objetivo: Trades rentables después de costos")
@@ -952,15 +1100,15 @@ def get_user_configuration():
     print(f"   📉 Movimiento mínimo SELL: {0.6 if symbol in ['BTCUSDT', 'BNBUSDT'] else 0.8 if symbol == 'ETHUSDT' else 0.9}%")
     print(f"   ⏰ Tiempo para desarrollo: {horizon * 5}min (vs 30min anterior)")
     print(f"   🎯 Accuracy objetivo: >75% (vs ~60% anterior)")
-    
+
     confirm = input("\n🎯 ¿Continuar con esta configuración? (s/n): ").lower().strip()
     if confirm not in ['s', 'si', 'yes', 'y']:
         print("❌ Entrenamiento cancelado")
         return None
-    
+
     return {
         'symbol': symbol,
-        'timeframe': timeframe, 
+        'timeframe': timeframe,
         'lookback_window': lookback,
         'prediction_horizon': horizon,
         'days': days,
@@ -977,10 +1125,10 @@ def get_optimized_configuration():
     print("🔧 Optimizaciones implementadas:")
     print("   • Etiquetado balanceado dinámico (percentiles)")
     print("   • Modelo simplificado (menos overfitting)")
-    print("   • Menos días de entrenamiento (menos ruido)")
+    print("   • Lookback windows optimizados por símbolo y timeframe")
     print("   • Horizonte reducido (movimientos más realistas)")
     print("=" * 70)
-    
+
     # 1. Seleccionar par
     available_pairs = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOTUSDT", "SOLUSDT"]
     print(f"\n📊 Pares disponibles: {', '.join(available_pairs)}")
@@ -989,68 +1137,234 @@ def get_optimized_configuration():
         if symbol in available_pairs:
             break
         print(f"❌ Par inválido. Usa uno de: {', '.join(available_pairs)}")
+
+    # 2. Seleccionar nivel de optimización
+    print(f"\n⚡ NIVELES DE OPTIMIZACIÓN DISPONIBLES:")
+    print("1. 🚀 ULTRA OPTIMIZADA: Máxima sensibilidad (recomendado para 1m)")
+    print("2. 🎯 BALANCED OPTIMIZADA: Balance sensibilidad/estabilidad (recomendado para 5m)")
+    print("3. 📊 TREND OPTIMIZADA: Seguimiento de tendencias (recomendado para 15m+)")
+    print("4. 🛠️ PERSONALIZADA: Seleccionar lookback window específico")
     
-    # 2. Configuración OPTIMIZADA automática
+    while True:
+        try:
+            opt_level = int(input("🎯 Selecciona nivel (1-4): "))
+            if 1 <= opt_level <= 4:
+                break
+            print("❌ Selecciona 1, 2, 3 o 4")
+        except ValueError:
+            print("❌ Ingresa un número válido")
+
+    # 3. Configuración OPTIMIZADA automática
     print(f"\n⚡ APLICANDO CONFIGURACIÓN OPTIMIZADA PARA {symbol}:")
+
+    # Configuraciones base optimizadas por símbolo
+    base_configs = {
+        'BTCUSDT': {'timeframe': '5m', 'days': 45, 'limit': 10000, 'prediction_horizon': 6},
+        'ETHUSDT': {'timeframe': '5m', 'days': 45, 'limit': 10000, 'prediction_horizon': 6},
+        'BNBUSDT': {'timeframe': '5m', 'days': 60, 'limit': 8000, 'prediction_horizon': 9},
+        'XRPUSDT': {'timeframe': '5m', 'days': 30, 'limit': 6000, 'prediction_horizon': 12},
+        'DOTUSDT': {'timeframe': '5m', 'days': 30, 'limit': 6000, 'prediction_horizon': 12},
+        'ADAUSDT': {'timeframe': '5m', 'days': 45, 'limit': 8000, 'prediction_horizon': 9},
+        'SOLUSDT': {'timeframe': '5m', 'days': 30, 'limit': 6000, 'prediction_horizon': 12}
+    }
     
-    # Configuración optimizada basada en el par
-    if symbol in ['BTCUSDT', 'ETHUSDT']:
-        # Pares principales: más estables
-        config = {
-            'symbol': symbol,
-            'timeframe': '5m',
-            'lookback_window': 48,     # Más contexto para pares estables
-            'prediction_horizon': 6,   # 30 min - más realista
-            'days': 45,               # Menos ruido
-            'limit': 10000
-        }
-    elif symbol in ['BNBUSDT']:
-        # BNB: intermedio
-        config = {
-            'symbol': symbol,
-            'timeframe': '5m', 
-            'lookback_window': 36,     # Contexto medio
-            'prediction_horizon': 9,   # 45 min
-            'days': 60,               # Datos intermedios
-            'limit': 8000
-        }
+    config = base_configs.get(symbol, base_configs['BTCUSDT']).copy()
+    config['symbol'] = symbol
+    
+    # Aplicar lookback window según nivel de optimización
+    if opt_level == 4:
+        # Personalizada: usar selector inteligente
+        config['lookback_window'] = get_intelligent_lookback_window(config['timeframe'], symbol)
+        if config['lookback_window'] is None:
+            return None
     else:
-        # Altcoins: más volátiles
-        config = {
-            'symbol': symbol,
-            'timeframe': '5m',
-            'lookback_window': 24,     # Menos contexto, más reactivo
-            'prediction_horizon': 12,  # 1 hora
-            'days': 30,               # Menos días por volatilidad
-            'limit': 6000
+        # Automática según nivel
+        lookback_by_level = {
+            1: {  # Ultra optimizada (máxima sensibilidad)
+                'BTCUSDT': 24, 'ETHUSDT': 24, 'BNBUSDT': 18, 
+                'XRPUSDT': 18, 'DOTUSDT': 18, 'ADAUSDT': 24, 'SOLUSDT': 18
+            },
+            2: {  # Balanced optimizada
+                'BTCUSDT': 48, 'ETHUSDT': 48, 'BNBUSDT': 36, 
+                'XRPUSDT': 30, 'DOTUSDT': 30, 'ADAUSDT': 36, 'SOLUSDT': 30
+            },
+            3: {  # Trend optimizada
+                'BTCUSDT': 96, 'ETHUSDT': 96, 'BNBUSDT': 72, 
+                'XRPUSDT': 60, 'DOTUSDT': 60, 'ADAUSDT': 72, 'SOLUSDT': 60
+            }
         }
-    
+        
+        config['lookback_window'] = lookback_by_level[opt_level].get(symbol, 48)
+        
+        # Mostrar información del nivel seleccionado
+        level_descriptions = {
+            1: "ULTRA OPTIMIZADA - Máxima reactividad para scalping/day trading",
+            2: "BALANCED OPTIMIZADA - Balance óptimo para trading general",
+            3: "TREND OPTIMIZADA - Enfoque en tendencias de medio plazo"
+        }
+        
+        time_coverage = calculate_time_coverage(config['lookback_window'], config['timeframe'])
+        print(f"   📊 Nivel seleccionado: {level_descriptions[opt_level]}")
+        print(f"   🔍 Lookback window: {config['lookback_window']} períodos ({time_coverage})")
+
     print(f"   📊 Par: {config['symbol']}")
     print(f"   ⏰ Timeframe: {config['timeframe']}")
     print(f"   🔍 Lookback: {config['lookback_window']} períodos")
     print(f"   🎯 Horizonte: {config['prediction_horizon']} períodos = {config['prediction_horizon'] * 5}min")
     print(f"   📅 Días: {config['days']} (optimizado por tipo de par)")
     print(f"   📊 Limit: {config['limit']:,}")
-    
+
+    # Mostrar análisis de rendimiento para configuración optimizada
+    if opt_level != 4:  # Solo para configuraciones automáticas
+        show_lookback_performance_implications(config['lookback_window'], config['timeframe'], config['symbol'])
+
     print(f"\n💡 RAZONES DE LA OPTIMIZACIÓN:")
     print(f"   🎯 Horizonte reducido: Movimientos más realistas y frecuentes")
     print(f"   📅 Menos días: Reduce ruido en timeframes cortos (5m)")
     print(f"   🔍 Lookback ajustado: Balance entre contexto y reactividad")
     print(f"   🏗️ Modelo simplificado: ~80% menos parámetros = menos overfitting")
     print(f"   📊 Etiquetado dinámico: Distribución 30-40-30 vs >90% HOLD")
-    
+
     print(f"\n📈 EXPECTATIVAS DE MEJORA:")
     print(f"   📊 Accuracy objetivo: >70% (vs ~55% anterior)")
     print(f"   🎯 Distribución: Balanceada 30-40-30")
     print(f"   💰 Win rate objetivo: >60%")
     print(f"   ⚡ Tiempo entrenamiento: ~50% reducido")
-    
+
     confirm = input("\n🚀 ¿Usar configuración optimizada automática? (s/n): ").lower().strip()
     if confirm not in ['s', 'si', 'yes', 'y']:
         print("❌ Usando configuración manual...")
         return get_user_configuration()  # Fallback a configuración manual
-    
+
     return config
+
+def show_lookback_performance_implications(lookback_window: int, timeframe: str, symbol: str):
+    """📊 Mostrar implicaciones de rendimiento del lookback window seleccionado"""
+    
+    time_coverage = calculate_time_coverage(lookback_window, timeframe)
+    
+    print(f"\n📊 ANÁLISIS DE RENDIMIENTO - LOOKBACK WINDOW {lookback_window}")
+    print("=" * 60)
+    
+    # Categorizar la ventana
+    if timeframe == '1m':
+        if lookback_window <= 24:
+            category = "ULTRA REACTIVO"
+            pros = ["Reacción inmediata", "Ideal para scalping", "Captura micro-movimientos"]
+            cons = ["Más ruido", "Señales falsas", "Requiere gestión activa"]
+        elif lookback_window <= 60:
+            category = "REACTIVO BALANCEADO"
+            pros = ["Buen balance", "Menos ruido", "Señales más confiables"]
+            cons = ["Algo menos reactivo", "Puede perder entradas rápidas"]
+        else:
+            category = "CONTEXTO AMPLIO"
+            pros = ["Muy estable", "Pocas señales falsas", "Tendencias claras"]
+            cons = ["Reacción lenta", "Puede perder oportunidades"]
+    
+    elif timeframe == '5m':
+        if lookback_window <= 30:
+            category = "ALTA SENSIBILIDAD"
+            pros = ["Rápida adaptación", "Captura cambios de tendencia", "Bueno para day trading"]
+            cons = ["Sensible a volatilidad", "Más señales de ruido"]
+        elif lookback_window <= 72:
+            category = "BALANCE ÓPTIMO"
+            pros = ["Excelente balance", "Señales de calidad", "Versátil"]
+            cons = ["Compromiso en sensibilidad", "No extremadamente reactivo"]
+        else:
+            category = "SEGUIMIENTO TENDENCIAS"
+            pros = ["Muy estable", "Tendencias sólidas", "Pocas reversiones"]
+            cons = ["Entrada tardía", "Pérdida de movimientos cortos"]
+    
+    else:  # 15m, 1h, 4h
+        if lookback_window <= 48:
+            category = "SWING TRADING"
+            pros = ["Patrones claros", "Menos ruido", "Buenas tendencias"]
+            cons = ["Entradas menos frecuentes", "Requiere paciencia"]
+        else:
+            category = "POSICIÓN/INVERSIÓN"
+            pros = ["Muy estable", "Tendencias sólidas", "Gestión sencilla"]
+            cons = ["Pocas señales", "Movimientos grandes"]
+    
+    print(f"🎯 CATEGORÍA: {category}")
+    print(f"⏰ COBERTURA TEMPORAL: {time_coverage}")
+    print()
+    
+    print("✅ VENTAJAS:")
+    for pro in pros:
+        print(f"   • {pro}")
+    print()
+    
+    print("⚠️ DESVENTAJAS:")
+    for con in cons:
+        print(f"   • {con}")
+    print()
+    
+    # Recomendaciones específicas por símbolo
+    volatility_map = {
+        'BTCUSDT': 'BAJA', 'ETHUSDT': 'MEDIA', 'BNBUSDT': 'MEDIA',
+        'XRPUSDT': 'ALTA', 'DOTUSDT': 'ALTA', 'ADAUSDT': 'MEDIA', 'SOLUSDT': 'ALTA'
+    }
+    
+    symbol_volatility = volatility_map.get(symbol, 'MEDIA')
+    
+    print(f"💡 RECOMENDACIONES PARA {symbol} (VOLATILIDAD {symbol_volatility}):")
+    
+    if symbol_volatility == 'ALTA' and lookback_window > 60:
+        print("   ⚠️ Ventana puede ser demasiado larga para este símbolo volátil")
+        print("   💡 Considera ventanas más cortas (24-48) para mejor sensibilidad")
+    elif symbol_volatility == 'BAJA' and lookback_window < 24:
+        print("   ⚠️ Ventana puede ser demasiado corta para este símbolo estable")
+        print("   💡 Considera ventanas más largas (48-96) para mayor estabilidad")
+    else:
+        print("   ✅ Ventana apropiada para la volatilidad del símbolo")
+    
+    # Estimación de señales por día
+    signals_per_day = estimate_daily_signals(lookback_window, timeframe, symbol_volatility)
+    print(f"   📊 Señales estimadas por día: {signals_per_day}")
+    
+    print("=" * 60)
+
+def estimate_daily_signals(lookback_window: int, timeframe: str, volatility: str) -> str:
+    """📊 Estimar número de señales por día basado en configuración"""
+    
+    # Factores base por timeframe
+    base_signals = {
+        '1m': 20,
+        '5m': 8,
+        '15m': 4,
+        '1h': 2,
+        '4h': 0.5
+    }
+    
+    base = base_signals.get(timeframe, 4)
+    
+    # Ajustar por lookback window (ventanas más largas = menos señales)
+    if lookback_window <= 24:
+        window_factor = 1.5
+    elif lookback_window <= 60:
+        window_factor = 1.0
+    elif lookback_window <= 120:
+        window_factor = 0.7
+    else:
+        window_factor = 0.4
+    
+    # Ajustar por volatilidad
+    volatility_factors = {
+        'BAJA': 0.7,
+        'MEDIA': 1.0,
+        'ALTA': 1.4
+    }
+    
+    vol_factor = volatility_factors.get(volatility, 1.0)
+    
+    estimated = base * window_factor * vol_factor
+    
+    if estimated >= 10:
+        return f"{estimated:.0f}-{estimated*1.5:.0f}"
+    elif estimated >= 1:
+        return f"{estimated:.1f}-{estimated*1.5:.1f}"
+    else:
+        return f"{estimated:.1f}-{estimated*2:.1f}"
 
 async def main():
     """🎯 Función principal con configuración optimizada"""
@@ -1059,18 +1373,18 @@ async def main():
     print("⚠️ PROBLEMA DETECTADO: Métricas pobres (~55% accuracy) con configuración anterior")
     print("✅ SOLUCIÓN: Configuración optimizada para corregir problemas identificados")
     print("=" * 80)
-    
+
     print("\n🔧 OPCIONES DE CONFIGURACIÓN:")
     print("1. 🚀 Configuración OPTIMIZADA (recomendada para mejorar métricas)")
     print("2. 🛠️ Configuración MANUAL (avanzada)")
     print("3. ❌ Salir")
-    
+
     while True:
         choice = input("\n🎯 Selecciona opción (1/2/3): ").strip()
         if choice in ["1", "2", "3"]:
             break
         print("❌ Selecciona 1, 2 o 3")
-    
+
     if choice == "3":
         print("👋 ¡Hasta luego!")
         return
@@ -1082,46 +1396,46 @@ async def main():
         print("\n🛠️ CONFIGURACIÓN MANUAL AVANZADA")
         print("⚠️ Nota: Las métricas pueden ser pobres si no se configuran bien los parámetros")
         config = get_user_configuration()
-    
+
     if not config:
         return
-    
+
     # Crear trainer con configuración seleccionada
     trainer = DefinitiveTCNTrainer(config)
-    
+
     symbol = config['symbol']
-    
+
     print(f"\n🚀 Iniciando entrenamiento OPTIMIZADO para {symbol}...")
     print(f"⏰ Timeframe: {config['timeframe']}")
     print(f"🔍 Lookback: {config['lookback_window']}")
     print(f"🎯 Horizonte: {config['prediction_horizon']} = {config['prediction_horizon'] * 5}min")
     print(f"📅 Días: {config['days']}")
-    
+
     success = await trainer.train_definitive_model(symbol)
-    
+
     if success:
         model_path = f"models/definitivo_{config['timeframe']}_{symbol.lower()}"
         print(f"\n🎉 ¡ENTRENAMIENTO OPTIMIZADO COMPLETADO para {symbol}!")
         print(f"📁 Modelo guardado en: {model_path}/")
-        
+
         print(f"\n📈 OPTIMIZACIONES APLICADAS:")
         print(f"   🎯 Etiquetado balanceado dinámico (percentiles)")
         print(f"   🏗️ Modelo simplificado (~80% menos parámetros)")
         print(f"   📅 Datos optimizados ({config['days']} días vs 250 anteriores)")
         print(f"   ⏱️ Horizonte realista ({config['prediction_horizon']*5}min)")
-        
+
         print(f"\n📊 EXPECTATIVAS VS ANTERIOR:")
         print(f"   📈 Accuracy esperado: >70% (vs ~55%)")
         print(f"   🎯 Distribución: ~30-40-30 (vs >90% HOLD)")
         print(f"   💰 Win rate objetivo: >60%")
         print(f"   ⚡ Entrenamiento: ~50% más rápido")
-        
+
         print(f"\n🚀 PRÓXIMOS PASOS:")
         print(f"   1. Verificar métricas de accuracy >70%")
         print(f"   2. Validar distribución balanceada en logs")
         print(f"   3. Probar en paper trading")
         print(f"   4. Si métricas siguen pobres, revisar calidad de datos")
-        
+
     else:
         print(f"\n❌ Error en el entrenamiento de {symbol}")
         print(f"\n🔧 POSIBLES SOLUCIONES:")
