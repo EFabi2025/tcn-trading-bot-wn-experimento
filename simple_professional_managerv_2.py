@@ -288,15 +288,17 @@ class SimpleProfessionalTradingManager:
         try:
             from tcn_ensemble_predictor import TCNEnsemblePredictor
             self.tcn_predictor = TCNEnsemblePredictor()
-            
-            # Cargar modelos definitivo_v3
+
+            # Cargar modelos definitivo_v3 dinámicamente
             if self.tcn_predictor.load_definitivo_v3_models():
                 model_info = self.tcn_predictor.get_model_info()
-                print("🎯 Predictor TCN ENSEMBLE V3 inicializado correctamente")
-                print(f"   📊 Modelos cargados: {model_info['loaded_models']}/{model_info['total_models']}")
+                print("🎯 Predictor TCN ENSEMBLE V3 DINÁMICO inicializado correctamente")
+                print(f"   📊 Modelos cargados: {model_info['loaded_models']}")
+                print(f"   ⏰ Timeframes disponibles: {', '.join(model_info['available_timeframes'])}")
                 print(f"   🎯 Símbolos soportados: {self.tcn_predictor.symbols}")
-                print("   🏗️ Usando modelos: definitivo_v3 (1m) + definitivo_v3_5m (5m)")
+                print(f"   🏗️ Tipo: {model_info['model_type']}")
                 print("   ✅ DOTUSDT incluido en predicciones y notificaciones")
+                print("   🔧 Sistema completamente dinámico - Compatible con cualquier configuración")
                 return True
             else:
                 raise Exception("No se pudieron cargar los modelos definitivo_v3")
@@ -906,11 +908,11 @@ class SimpleProfessionalTradingManager:
             try:
                 print("🔍 Generando predicciones ENSEMBLE para reporte Discord...")
                 all_predictions = await self.tcn_predictor.predict_all_symbols_v3()
-                
+
                 if not all_predictions:
                     models_section += "❌ **No se pudieron generar predicciones ensemble**\n"
                     return models_section
-                
+
             except Exception as e:
                 models_section += f"❌ **Error generando predicciones**: {str(e)[:50]}...\n"
                 return models_section
@@ -1250,13 +1252,13 @@ class SimpleProfessionalTradingManager:
         try:
             print(f"🔍 Generando predicciones ENSEMBLE para todos los símbolos...")
             all_predictions = await self.tcn_predictor.predict_all_symbols_v3()
-            
+
             if not all_predictions:
                 print("❌ No se pudieron generar predicciones ensemble")
                 return signals
-            
+
             print(f"✅ Predicciones ensemble generadas para {len(all_predictions)} símbolos")
-            
+
         except Exception as e:
             print(f"❌ Error generando predicciones ensemble: {e}")
             return signals
@@ -1646,7 +1648,7 @@ class SimpleProfessionalTradingManager:
                     }
                     sell_threshold = 78   # ✅ CORREGIDO: Más conservador (era 60%)
                     intensity_level = "MUY_FUERTE"
-                    
+
                 elif market_confidence > 0.8:  # BEARISH FUERTE
                     buy_thresholds = {
                         'BTCUSDT': 85,   # ✅ CORREGIDO: Más razonable (era 90%)
@@ -1656,7 +1658,7 @@ class SimpleProfessionalTradingManager:
                     }
                     sell_threshold = 80   # ✅ CORREGIDO: Más conservador (era 65%)
                     intensity_level = "FUERTE"
-                    
+
                 elif market_confidence > 0.7:  # BEARISH MODERADO
                     buy_thresholds = {
                         'BTCUSDT': 85,   # BTC: umbral relajado
@@ -3784,7 +3786,7 @@ class SimpleProfessionalTradingManager:
         ---
         Se ejecuta periódicamente (cada 5 minutos) para limpiar trackings que han
         excedido el timeout, independientemente de si hay nuevas señales o no.
-        
+
         Soluciona el problema de trackings "colgados" cuando no hay señales nuevas.
         """
         try:
@@ -3793,36 +3795,36 @@ class SimpleProfessionalTradingManager:
             if not hasattr(self, '_last_cleanup_time'):
                 self._last_cleanup_time = current_time
                 return
-                
+
             time_since_cleanup = (current_time - self._last_cleanup_time).total_seconds() / 60
             if time_since_cleanup < 5:  # 5 minutos
                 return
-                
+
             self._last_cleanup_time = current_time
-            
+
             if not self.reversal_tracking:
                 return
-                
+
             cleaned_count = 0
-            
+
             for symbol in list(self.reversal_tracking.keys()):
                 tracking = self.reversal_tracking[symbol]
-                
+
                 # Solo limpiar si hay tracking activo
                 if not tracking.get('consecutive_signals') or not tracking.get('last_signal_time'):
                     continue
-                    
+
                 # Verificar timeout
                 config = self.reversal_config.get(symbol, {'timeout_minutes': 30})
                 timeout_minutes = config.get('timeout_minutes', 30)
-                
+
                 time_since_last = (current_time - tracking['last_signal_time']).total_seconds() / 60
-                
+
                 if time_since_last > timeout_minutes:
                     print(f"🧹 LIMPIEZA AUTOMÁTICA PERIÓDICA: Tracking colgado limpiado para {symbol}")
                     print(f"   ⏰ Tiempo transcurrido: {time_since_last:.1f}min > {timeout_minutes}min")
                     print(f"   📊 Señales perdidas: {len(tracking['consecutive_signals'])}")
-                    
+
                     # Limpiar tracking
                     self.reversal_tracking[symbol] = {
                         'consecutive_signals': [],
@@ -3831,10 +3833,10 @@ class SimpleProfessionalTradingManager:
                         'started_tracking': None
                     }
                     cleaned_count += 1
-                    
+
             if cleaned_count > 0:
                 print(f"✅ Limpieza periódica completada: {cleaned_count} tracking(s) limpiado(s)")
-                
+
         except Exception as e:
             print(f"❌ Error en limpieza automática de tracking: {e}")
 
