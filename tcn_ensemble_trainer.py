@@ -36,16 +36,17 @@ class TCNEnsembleTrainer:
         self.limit = 1000
         self.start_time = None
         self.end_time = None
-        
-        # ✅ CONFIGURACIÓN ENSEMBLE CONFIGURABLE
+
+        # ✅ CONFIGURACIÓN ENSEMBLE CONFIGURABLE (ARMONIZADA CON PREDICTOR)
+        # Eliminadas claves duplicadas para consistencia
         self.timeframes = {
-            '1m': {'lookback_window': 60, 'prediction_horizon': 30},  # 1 hora lookback, 30 min horizon
-            '5m': {'lookback_window': 24, 'prediction_horizon': 12},  # 2 horas lookback, 1 hora horizon
-            '15m': {'lookback_window': 16, 'prediction_horizon': 8},  # 4 horas lookback, 2 horas horizon
-            '1h': {'lookback_window': 12, 'prediction_horizon': 6},   # 12 horas lookback, 6 horas horizon
+            '1m': {'lookback_window': 48, 'prediction_horizon': 12},  # Configuración estándar para 1m
+            '5m': {'lookback_window': 48, 'prediction_horizon': 12},  # Configuración estándar para 5m
+            '15m': {'lookback_window': 16, 'prediction_horizon': 8},
+            '1h': {'lookback_window': 12, 'prediction_horizon': 6},
             '4h': {'lookback_window': 8, 'prediction_horizon': 4}     # 32 horas lookback, 16 horas horizon
         }
-        
+
         # Aplicar configuración personalizada si se proporciona
         if config:
             self.pairs = [config.get('symbol', 'XRPUSDT')]
@@ -67,7 +68,7 @@ class TCNEnsembleTrainer:
         self.thresholds = {
             'BTCUSDT': {
                 'strong_sell': -0.012,   # -1.2% para SELL fuerte (1 hora)
-                'weak_sell': -0.006,     # -0.6% para SELL débil 
+                'weak_sell': -0.006,     # -0.6% para SELL débil
                 'weak_buy': 0.006,       # +0.6% para BUY débil
                 'strong_buy': 0.012      # +1.2% para BUY fuerte (1 hora)
             },
@@ -88,6 +89,12 @@ class TCNEnsembleTrainer:
                 'weak_sell': -0.009,     # -0.9%
                 'weak_buy': 0.009,       # +0.9%
                 'strong_buy': 0.018      # +1.8%
+            },
+            'DOTUSDT': {
+                'strong_sell': -0.020,   # -2.0% (DOT más volátil, armonizado con predictor)
+                'weak_sell': -0.010,     # -1.0%
+                'weak_buy': 0.010,       # +1.0%
+                'strong_buy': 0.020      # +2.0%
             }
         }
 
@@ -97,13 +104,13 @@ class TCNEnsembleTrainer:
         print(f"📊 Obteniendo datos {timeframe} para {symbol}...")
 
         base_url = "https://api.binance.com"
-        
+
         # Configurar fechas
         if self.end_time:
             end_time = int(self.end_time.timestamp() * 1000)
         else:
             end_time = int(datetime.now().timestamp() * 1000)
-            
+
         if self.start_time:
             start_time = int(self.start_time.timestamp() * 1000)
         else:
@@ -163,7 +170,7 @@ class TCNEnsembleTrainer:
         print(f"🎯 Creando etiquetas HÍBRIDAS con ATR para {symbol} - {timeframe}...")
 
         df_copy = df.copy()
-        
+
         # ✅ CORRECCIÓN: Obtener prediction_horizon con valores por defecto
         prediction_horizon = self.timeframes.get(timeframe, {}).get('prediction_horizon')
         if prediction_horizon is None:
@@ -177,34 +184,34 @@ class TCNEnsembleTrainer:
                 prediction_horizon = 6   # 6 horas
             else:
                 prediction_horizon = 12  # Default
-        
+
         print(f"🔧 Usando prediction_horizon: {prediction_horizon} períodos")
-        
+
         # ✅ ETIQUETADO HÍBRIDO INTELIGENTE - BASADO EN VOLATILIDAD (ATR)
         print(f"🔧 Método: ATR (volatilidad) + barreras dinámicas")
-        
+
         # 1. Calcular ATR para volatilidad dinámica
         atr_period = 24  # 2 horas en 5m
         atr_multiplier = 1.5  # Multiplicador conservador
-        
+
         df_copy['atr'] = talib.ATR(df_copy['high'], df_copy['low'], df_copy['close'], timeperiod=atr_period)
-        
+
         # 2. Definir barreras dinámicas basadas en volatilidad
         df_copy['upper_barrier'] = df_copy['close'] + (df_copy['atr'] * atr_multiplier)
         df_copy['lower_barrier'] = df_copy['close'] - (df_copy['atr'] * atr_multiplier)
-        
+
         # 3. Encontrar si alguna barrera es tocada en el futuro
         df_copy['future_max_price'] = df_copy['high'].shift(-prediction_horizon).rolling(window=prediction_horizon).max()
         df_copy['future_min_price'] = df_copy['low'].shift(-prediction_horizon).rolling(window=prediction_horizon).min()
-        
+
         # 4. Limpiar NaNs generados por ATR y rolling windows
         df_copy.dropna(inplace=True)
-        
+
         # 5. Aplicar lógica de etiquetado inteligente
         def get_label(row):
             touched_upper = row['future_max_price'] >= row['upper_barrier']
             touched_lower = row['future_min_price'] <= row['lower_barrier']
-            
+
             if touched_upper and not touched_lower:
                 return 2  # BUY - Solo barrera superior tocada
             elif touched_lower and not touched_upper:
@@ -212,16 +219,16 @@ class TCNEnsembleTrainer:
             else:
                 # Si ninguna es tocada, o ambas lo son (indecisión), es HOLD
                 return 1  # HOLD
-        
+
         df_copy['label'] = df_copy.apply(get_label, axis=1)
-        
+
         # 6. Filtros técnicos adicionales para mejorar calidad
         print(f"🔧 Aplicando filtros técnicos adicionales...")
-        
+
         labels_filtered = []
         for i, row in df_copy.iterrows():
             candidate_label = row['label']
-            
+
             # Obtener indicadores técnicos para confirmación
             try:
                 idx_pos = df_copy.index.get_loc(i)
@@ -234,7 +241,7 @@ class TCNEnsembleTrainer:
             except:
                 current_rsi = 50
                 current_macd = 0
-            
+
             # Filtros de confirmación técnica
             if candidate_label == 0:  # SELL candidato
                 # Confirmar SELL con indicadores bajistas
@@ -250,40 +257,40 @@ class TCNEnsembleTrainer:
                     label = 2  # BUY confirmado
             else:
                 label = 1  # HOLD mantenido
-            
+
             labels_filtered.append(label)
-        
+
         df_copy['label'] = labels_filtered
-        
+
         # 7. Verificar distribución final
         label_counts = df_copy['label'].value_counts().sort_index()
         total = len(df_copy)
-        
+
         print(f"💡 Parámetros ATR utilizados:")
         print(f"   - ATR período: {atr_period}")
         print(f"   - ATR multiplicador: {atr_multiplier}")
         print(f"   - Horizonte predicción: {prediction_horizon} períodos")
-        
+
         print("📊 Distribución de etiquetas híbridas:")
         class_names = ['SELL', 'HOLD', 'BUY']
         for i, name in enumerate(class_names):
             count = label_counts.get(i, 0)
             pct = count / total * 100
             print(f"   - {name}: {count} ({pct:.1f}%)")
-        
+
         # 8. Validar balanceo
         max_class_pct = max([count/total for count in label_counts.values]) * 100
         min_class_pct = min([count/total for count in label_counts.values]) * 100
         balance_ratio = max_class_pct / min_class_pct if min_class_pct > 0 else float('inf')
-        
+
         if balance_ratio > 3.0:
             print(f"⚠️ ADVERTENCIA: Distribución desbalanceada (ratio: {balance_ratio:.1f})")
         else:
             print(f"✅ Distribución balanceada: ratio max/min = {balance_ratio:.1f}")
-        
+
         # 9. Análisis de rentabilidad potencial
         self._analyze_atr_profitability(df_copy, symbol, atr_multiplier, prediction_horizon)
-        
+
         # Limpiar columnas auxiliares
         return df_copy.drop(columns=['atr', 'upper_barrier', 'lower_barrier', 'future_max_price', 'future_min_price'])
 
@@ -292,49 +299,49 @@ class TCNEnsembleTrainer:
         try:
             print(f"\n💰 ANÁLISIS DE RENTABILIDAD ATR - {symbol}")
             print("=" * 60)
-            
+
             close_prices = df['close'].values
             trading_costs = 0.003  # 0.3%
-            
+
             profitable_buys = 0
             profitable_sells = 0
             total_buys = 0
             total_sells = 0
             total_profit_buys = 0.0
             total_profit_sells = 0.0
-            
+
             for i, label in enumerate(df['label']):
                 if i + prediction_horizon >= len(close_prices):
                     break
-                    
+
                 current_price = close_prices[i]
                 future_price = close_prices[i + prediction_horizon]
                 gross_return = (future_price - current_price) / current_price
-                
+
                 if label == 2:  # BUY
                     total_buys += 1
                     net_profit = gross_return - trading_costs
                     total_profit_buys += net_profit
                     if net_profit > 0:
                         profitable_buys += 1
-                        
+
                 elif label == 0:  # SELL
                     total_sells += 1
                     net_profit = -gross_return - trading_costs
                     total_profit_sells += net_profit
                     if net_profit > 0:
                         profitable_sells += 1
-            
+
             # Calcular métricas
             buy_win_rate = (profitable_buys / total_buys * 100) if total_buys > 0 else 0
             sell_win_rate = (profitable_sells / total_sells * 100) if total_sells > 0 else 0
             avg_profit_buy = (total_profit_buys / total_buys * 100) if total_buys > 0 else 0
             avg_profit_sell = (total_profit_sells / total_sells * 100) if total_sells > 0 else 0
-            
+
             print(f"📊 MÉTODO ATR:")
             print(f"   - ATR multiplicador: {atr_multiplier}")
             print(f"   - Horizonte: {prediction_horizon} períodos")
-            
+
             print(f"📊 MÉTRICAS DE RENTABILIDAD:")
             print(f"   🟢 BUY Trades: {total_buys}")
             print(f"      Win Rate: {buy_win_rate:.1f}%")
@@ -342,15 +349,15 @@ class TCNEnsembleTrainer:
             print(f"   🔴 SELL Trades: {total_sells}")
             print(f"      Win Rate: {sell_win_rate:.1f}%")
             print(f"      Avg Profit: {avg_profit_sell:+.2f}%")
-            
+
             # Evaluación general
             overall_win_rate = ((profitable_buys + profitable_sells) / (total_buys + total_sells) * 100) if (total_buys + total_sells) > 0 else 0
             total_profit = total_profit_buys + total_profit_sells
-            
+
             print(f"   📈 RESUMEN GENERAL:")
             print(f"      Win Rate Total: {overall_win_rate:.1f}%")
             print(f"      Profit Total: {total_profit:+.4f}")
-            
+
             # Validación mejorada
             if overall_win_rate >= 70 and total_profit > 0.02:
                 print(f"   ✅ MODELO ATR ALTAMENTE RENTABLE")
@@ -360,9 +367,9 @@ class TCNEnsembleTrainer:
                 print(f"   ⚠️ MODELO ATR EN EL LÍMITE")
             else:
                 print(f"   ❌ MODELO ATR NECESITA AJUSTES")
-                
+
             print("=" * 60)
-            
+
         except Exception as e:
             print(f"❌ Error en análisis ATR: {e}")
 
@@ -375,7 +382,7 @@ class TCNEnsembleTrainer:
         # ✅ CORRECCIÓN: Asegurar que lookback_window no sea None
         lookback_window = self.timeframes.get(timeframe, {}).get('lookback_window')
         prediction_horizon = self.timeframes.get(timeframe, {}).get('prediction_horizon')
-        
+
         # Valores por defecto si no están definidos
         if lookback_window is None:
             if timeframe == '1m':
@@ -388,7 +395,7 @@ class TCNEnsembleTrainer:
                 lookback_window = 12  # 12 horas en 1h
             else:
                 lookback_window = 24  # Default
-                
+
         if prediction_horizon is None:
             if timeframe == '1m':
                 prediction_horizon = 30  # 30 minutos
@@ -407,14 +414,14 @@ class TCNEnsembleTrainer:
 
         # ✅ CORRECCIÓN: Alinear correctamente features con labels
         # El df ya viene filtrado del etiquetado ATR, así que necesitamos alinear features
-        
+
         # 1. Obtener índices comunes entre df y features
         common_indices = df.index.intersection(features.index)
-        
+
         # 2. Filtrar ambos DataFrames con índices comunes
         df_aligned = df.loc[common_indices].copy()
         features_aligned = features.loc[common_indices].copy()
-        
+
         print(f"✅ Datos alineados:")
         print(f"   - DF original: {len(df)} registros")
         print(f"   - Features original: {len(features)} registros")
@@ -435,20 +442,20 @@ class TCNEnsembleTrainer:
         print(f"🔄 Creando secuencias temporales...")
         X = []
         y = []
-        
+
         # ✅ CORRECCIÓN: Verificar que tenemos suficientes datos
         max_sequences = len(features_scaled) - lookback_window
-        
+
         if max_sequences <= 0:
             raise ValueError(f"No hay suficientes datos. Necesita al menos {lookback_window + 1} registros, tiene {len(features_scaled)}")
-        
+
         print(f"📊 Secuencias disponibles: {max_sequences}")
-        
+
         # Procesar en chunks para mejor rendimiento
         chunk_size = 1000
         for i in range(0, max_sequences, chunk_size):
             end_idx = min(i + chunk_size, max_sequences)
-            
+
             for j in range(i, end_idx):
                 # Verificar que el índice está dentro del rango
                 if j + lookback_window < len(df_aligned):
@@ -456,7 +463,7 @@ class TCNEnsembleTrainer:
                     X.append(sequence)
                     # Usar .iloc con índice verificado
                     y.append(df_aligned['label'].iloc[j+lookback_window])
-            
+
             # Mostrar progreso
             if i % 5000 == 0:
                 print(f"   📈 Secuencias creadas: {len(X)}/{max_sequences}")
@@ -479,7 +486,7 @@ class TCNEnsembleTrainer:
         print(f"⚖️ Calculando class weights...")
         unique_classes = np.unique(y)
         print(f"   - Clases encontradas: {unique_classes}")
-        
+
         class_weights = compute_class_weight('balanced', classes=unique_classes, y=y)
         class_weight_dict = {i: weight for i, weight in enumerate(class_weights)}
         print(f"✅ Class weights calculados: {class_weight_dict}")
@@ -493,42 +500,42 @@ class TCNEnsembleTrainer:
 
         # ✅ ARQUITECTURA HÍBRIDA SIMPLIFICADA - PROBADA Y EFECTIVA
         # Usar la misma arquitectura para todos los timeframes (más consistente)
-        
+
         model = tf.keras.Sequential([
             tf.keras.layers.Input(shape=input_shape),
             tf.keras.layers.LayerNormalization(),
-            
+
             # ✅ BLOQUES TCN SIMPLIFICADOS - PROBADOS
             # Progresión: 32 → 64 → 128 → 64
             tf.keras.layers.Conv1D(filters=32, kernel_size=3, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.SpatialDropout1D(0.1),
-            
+
             tf.keras.layers.Conv1D(filters=64, kernel_size=3, dilation_rate=2, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.SpatialDropout1D(0.15),
-            
+
             tf.keras.layers.Conv1D(filters=128, kernel_size=3, dilation_rate=4, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.SpatialDropout1D(0.2),
-            
+
             tf.keras.layers.Conv1D(filters=64, kernel_size=3, dilation_rate=8, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.SpatialDropout1D(0.2),
-            
+
             # ✅ POOLING GLOBAL
             tf.keras.layers.GlobalAveragePooling1D(),
-            
+
             # ✅ CAPAS DENSAS SIMPLIFICADAS CON REGULARIZACIÓN L2
             tf.keras.layers.Dense(128, activation='relu',
                                  kernel_regularizer=tf.keras.regularizers.l2(0.001)),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.Dropout(0.3),
-            
+
             tf.keras.layers.Dense(64, activation='relu',
                                  kernel_regularizer=tf.keras.regularizers.l2(0.001)),
             tf.keras.layers.Dropout(0.2),
-            
+
             # ✅ CAPA DE SALIDA PARA 3 CLASES
             tf.keras.layers.Dense(3, activation='softmax')
         ])
@@ -536,14 +543,14 @@ class TCNEnsembleTrainer:
         # ✅ CONFIGURACIÓN HÍBRIDA OPTIMIZADA
         # Learning rate conservador como en el híbrido original
         learning_rate = 0.0005  # Conservador y probado
-        
+
         optimizer = tf.keras.optimizers.legacy.Adam(
             learning_rate=learning_rate,
             beta_1=0.9,
             beta_2=0.999,
             epsilon=1e-7
         )
-        
+
         model.compile(
             optimizer=optimizer,
             loss='sparse_categorical_crossentropy',
@@ -603,14 +610,17 @@ class TCNEnsembleTrainer:
             print(f"🎯 PASO 6: Creando modelo TCN...")
             model = self.create_tcn_model((X.shape[1], X.shape[2]), timeframe)
 
-            # 7. Directorio de modelos con timeframe en el nombre
-            model_dir = f'models/definitivo_{timeframe}_{symbol.lower()}'
+            # 7. Directorio de modelos ARMONIZADO con predictor
+            if timeframe == '1m':
+                model_dir = f'models/definitivo_v3_{symbol.lower()}'
+            else:  # 5m y otros timeframes
+                model_dir = f'models/definitivo_v3_{timeframe}_{symbol.lower()}'
             os.makedirs(model_dir, exist_ok=True)
-            print(f"📁 Directorio creado: {model_dir}")
+            print(f"📁 Directorio creado: {model_dir} (ARMONIZADO)")
 
             # 8. Callbacks HÍBRIDOS SIMPLIFICADOS
             print(f"⚙️ PASO 7: Configurando callbacks HÍBRIDOS...")
-            
+
             # ✅ CALLBACKS SIMPLIFICADOS COMO EN EL HÍBRIDO ORIGINAL
             callbacks = [
                 tf.keras.callbacks.EarlyStopping(
@@ -619,21 +629,21 @@ class TCNEnsembleTrainer:
                     monitor='val_accuracy',
                     verbose=1
                 ),
-                
+
                 tf.keras.callbacks.ReduceLROnPlateau(
                     patience=8,   # Respuesta más rápida
                     factor=0.7,   # Reducción moderada
                     monitor='val_loss',
                     verbose=1
                 ),
-                
+
                 tf.keras.callbacks.ModelCheckpoint(
                     f'{model_dir}/best_model.h5',
                     save_best_only=True,
                     monitor='val_accuracy',
                     verbose=1
                 ),
-                
+
                 # Callback para detectar NaN
                 tf.keras.callbacks.TerminateOnNaN()
             ]
@@ -648,7 +658,7 @@ class TCNEnsembleTrainer:
             print(f"   - Learning rate: 0.0005 (conservador)")
             print(f"   - Etiquetado: ATR dinámico")
             print(f"   - Arquitectura: Híbrida simplificada")
-            
+
             history = model.fit(
                 X_train, y_train,
                 validation_data=(X_test, y_test),
@@ -727,10 +737,10 @@ class TCNEnsembleTrainer:
 
 def get_user_configuration():
     """🎯 Obtener configuración del usuario desde consola"""
-    
+
     print("\n🎯 CONFIGURACIÓN DEL ENSEMBLE TRAINER")
     print("=" * 50)
-    
+
     # 1. Símbolo
     available_symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'SOLUSDT', 'DOTUSDT']
     print(f"\n📊 Símbolos disponibles: {', '.join(available_symbols)}")
@@ -738,7 +748,7 @@ def get_user_configuration():
     if symbol not in available_symbols:
         print(f"⚠️ Símbolo no válido, usando XRPUSDT")
         symbol = 'XRPUSDT'
-    
+
     # 2. Timeframe
     available_timeframes = ['1m', '5m', '15m', '1h', '4h']
     print(f"\n⏰ Timeframes disponibles: {', '.join(available_timeframes)}")
@@ -746,17 +756,17 @@ def get_user_configuration():
     if timeframe not in available_timeframes:
         print(f"⚠️ Timeframe no válido, usando 5m")
         timeframe = '5m'
-    
+
     # 3. Días de entrenamiento
     print(f"\n📅 Configuración de datos:")
     days_option = input("📅 ¿Usar días específicos o fechas específicas? (días/fechas): ").lower().strip()
-    
+
     if days_option == 'fechas':
         # Fechas específicas
         print("📅 Ingresa fechas en formato YYYY-MM-DD")
         start_date = input("📅 Fecha inicio (ej: 2024-01-01): ").strip()
         end_date = input("📅 Fecha fin (ej: 2024-12-31): ").strip()
-        
+
         try:
             start_time = datetime.strptime(start_date, '%Y-%m-%d')
             end_time = datetime.strptime(end_date, '%Y-%m-%d')
@@ -778,14 +788,14 @@ def get_user_configuration():
             days = 30
         start_time = None
         end_time = None
-    
+
     # 4. Configuración avanzada
     print(f"\n🔧 Configuración avanzada:")
     advanced = input("🔧 ¿Configurar parámetros avanzados? (s/n): ").lower().strip()
-    
+
     lookback_window = None
     prediction_horizon = None
-    
+
     if advanced == 's':
         try:
             lookback_window = int(input("🔧 Lookback window (ej: 24): ").strip())
@@ -795,7 +805,7 @@ def get_user_configuration():
         except ValueError:
             print("⚠️ Lookback window no válido, usando default")
             lookback_window = None
-            
+
         try:
             prediction_horizon = int(input("🔧 Prediction horizon (ej: 12): ").strip())
             if prediction_horizon <= 0:
@@ -804,7 +814,7 @@ def get_user_configuration():
         except ValueError:
             print("⚠️ Prediction horizon no válido, usando default")
             prediction_horizon = None
-    
+
     # Crear configuración
     config = {
         'symbol': symbol,
@@ -815,7 +825,7 @@ def get_user_configuration():
         'lookback_window': lookback_window,
         'prediction_horizon': prediction_horizon
     }
-    
+
     print(f"\n✅ CONFIGURACIÓN FINAL:")
     print(f"   📊 Símbolo: {symbol}")
     print(f"   ⏰ Timeframe: {timeframe}")
@@ -827,13 +837,13 @@ def get_user_configuration():
         print(f"   🔧 Lookback window: {lookback_window}")
     if prediction_horizon:
         print(f"   🔧 Prediction horizon: {prediction_horizon}")
-    
+
     return config
 
 
 def get_optimized_configuration():
     """🎯 Configuraciones optimizadas predefinidas"""
-    
+
     print("\n🎯 CONFIGURACIONES OPTIMIZADAS")
     print("=" * 50)
     print("1. 🚀 Configuración Rápida (5m, 30 días)")
@@ -841,9 +851,9 @@ def get_optimized_configuration():
     print("3. 📈 Configuración Extensa (5m, 90 días)")
     print("4. ⚡ Configuración Alta Frecuencia (1m, 30 días)")
     print("5. 🎯 Configuración Personalizada")
-    
+
     choice = input("\n🎯 Selecciona configuración (1-5): ").strip()
-    
+
     if choice == '1':
         return {
             'symbol': 'XRPUSDT',
@@ -898,9 +908,9 @@ async def main():
     print("\n🎯 TIPO DE CONFIGURACIÓN:")
     print("1. 🚀 Configuración Optimizada (Recomendado)")
     print("2. ⚙️ Configuración Personalizada")
-    
+
     config_type = input("\n🎯 Selecciona tipo (1-2): ").strip()
-    
+
     if config_type == '1':
         config = get_optimized_configuration()
     else:
@@ -908,11 +918,11 @@ async def main():
 
     # Crear trainer con configuración
     trainer = TCNEnsembleTrainer(config)
-    
+
     # Entrenar modelo
     symbol = config['symbol']
     timeframe = config['timeframe']
-    
+
     print(f"\n🚀 Entrenando modelo {timeframe} para {symbol}...")
     print(f"📊 Configuración:")
     print(f"   - Símbolo: {symbol}")
@@ -942,22 +952,22 @@ async def main():
 
     # Preguntar si entrenar más modelos
     train_more = input("\n🤔 ¿Entrenar otro modelo? (s/n): ").lower().strip()
-    
+
     while train_more == 's':
         config = get_user_configuration()
         trainer = TCNEnsembleTrainer(config)
         symbol = config['symbol']
         timeframe = config['timeframe']
-        
+
         print(f"\n🚀 Entrenando modelo {timeframe} para {symbol}...")
         success = await trainer.train_ensemble_models(symbol)
-        
+
         if success:
             print(f"\n✅ {symbol}: MODELO {timeframe} COMPLETADO")
             print(f"🎯 Guardado en: models/definitivo_{timeframe}_{symbol.lower()}/")
         else:
             print(f"\n❌ {symbol}: ERROR EN ENTRENAMIENTO")
-        
+
         train_more = input("\n🤔 ¿Entrenar otro modelo? (s/n): ").lower().strip()
 
     print(f"\n🎉 ¡ENTRENAMIENTO COMPLETADO!")
