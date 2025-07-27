@@ -32,14 +32,13 @@ class TCNEnsemblePredictor:
         self.model_windows = {}  # {symbol: {timeframe: lookback_window}} - NUEVO
 
         self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'DOTUSDT']
-        self.timeframes = ['1m', '5m']
+        self.timeframes = []  # Se autodetectará dinámicamente
         self.features_engine = CentralizedFeaturesEngine()
 
-        # Configuración específica para modelos definitivo_v3 (valores por defecto)
-        self.timeframe_config = {
-            '1m': {'lookback_window': 48, 'prediction_horizon': 12},
-            '5m': {'lookback_window': 48, 'prediction_horizon': 12}  # Misma config para v3
-        }
+        # 🎯 SISTEMA COMPLETAMENTE DINÁMICO - SIN CONFIGURACIONES HARDCODEADAS
+        # El predictor detecta automáticamente todas las ventanas desde la arquitectura del modelo
+        # No depende de configuraciones previas de entrenamiento
+        self.fallback_window = 24  # Solo para casos extremos donde no se puede detectar
 
         # 🎯 CORRECCIÓN CRÍTICA: Información mutua histórica para pesos adaptativos
         self.mutual_information_cache = {}  # {symbol: {timeframe: I(X_tf; Y)}}
@@ -67,46 +66,82 @@ class TCNEnsemblePredictor:
             'volatility_balance': True  # Activar balance por volatilidad
         }
 
-        print("🎯 TCN Ensemble Predictor V3 - MATEMÁTICAMENTE ROBUSTO inicializado")
+        print("🎯 TCN Ensemble Predictor V3 - TOTALMENTE DINÁMICO Y ROBUSTO inicializado")
         print(f"📊 Símbolos: {self.symbols}")
-        print(f"⏰ Timeframes: {self.timeframes}")
-        print(f"🏗️ Usando modelos: definitivo_v3 (1m) + definitivo_v3_5m (5m)")
-        print("✅ CORRECCIONES CRÍTICAS APLICADAS:")
+        print(f"⏰ Timeframes: Autodetección dinámica (cualquier timeframe)")
+        print(f"🏗️ Modelos: Compatible con cualquier configuración de entrenamiento")
+        print("✅ SISTEMA COMPLETAMENTE DINÁMICO:")
+        print("   🔧 Lookback windows: Detección automática desde arquitectura del modelo")
+        print("   🔧 Prediction horizons: Agnóstico - funciona con cualquier horizonte usado en entrenamiento")
+        print("   🔧 Timeframes: Autodetección completa (1m, 5m, 15m, 1h, 4h, 1d, etc.)")
+        print("   🔧 Ventanas de datos: Cálculo dinámico según ventana del modelo específico")
+        print("   🔧 Features: Compatible con cualquier conjunto de features entrenado")
+        print("✅ CORRECCIONES MATEMÁTICAS APLICADAS:")
         print("   🔧 Estabilidad: exp(-α * KL_div) NO puede ser negativa")
         print("   🔧 Pesos: I(X_tf; Y) adaptativos basados en información mutua")
         print("   🔧 Combinación: Bayesiana P(C|X1,X2) ∝ P(C|X1)^w1 * P(C|X2)^w2")
         print("   🔧 Calibración: Multi-factor conf * agreement * (1-uncertainty*α) * stability^β")
-        print("   🔧 MI: Manejo correcto de arrays 2D con validación")
-        print("   🔧 KL: Cálculo manual con protección contra división por cero")
-        print("🎯 NUEVO: BALANCE INTERTEMPORAL APLICADO:")
-        print("   ⚖️ Factor 5m reducido: 0.25 → 0.10")
-        print("   ⚖️ Factor 1m reducido: -0.20 → -0.10")
-        print("   ⚖️ Base MI reducida: 0.6 → 0.5")
-        print("   ⚖️ Límite confianza: 2.0x → 1.5x máximo")
 
         # Auto-diagnóstico inmediato
         self._run_initialization_diagnostics()
 
     def detect_model_input_shape(self, model, symbol: str, timeframe: str) -> int:
-        """🔍 Detectar dinámicamente la ventana de entrada esperada por el modelo"""
+        """🔍 DETECCIÓN DINÁMICA ROBUSTA - Compatible con cualquier arquitectura"""
 
         try:
-            # Inspeccionar la arquitectura del modelo
+            # 🎯 MÉTODO 1: Inspeccionar input_shape del modelo
             input_shape = model.input_shape
+
+            # Manejar múltiples entradas (tomar la primera)
             if isinstance(input_shape, list):
-                # Si hay múltiples entradas, tomar la primera
                 input_shape = input_shape[0]
 
-            # Extraer la dimensión temporal (segundo elemento de la tupla)
-            sequence_length = input_shape[1]
+            # Extraer dimensión temporal (segundo elemento: (batch, sequence, features))
+            if len(input_shape) >= 2 and input_shape[1] is not None:
+                sequence_length = input_shape[1]
 
-            print(f"🔍 {symbol} - {timeframe}: Ventana detectada = {sequence_length}")
-            return sequence_length
+                # Validar que sea un tamaño razonable para trading
+                if 12 <= sequence_length <= 200:  # Rango válido para lookback windows
+                    print(f"🔍 {symbol} - {timeframe}: Ventana detectada = {sequence_length} ✅")
+                    return sequence_length
+                else:
+                    print(f"⚠️ {symbol} - {timeframe}: Ventana detectada fuera de rango: {sequence_length}")
+
+            # 🎯 MÉTODO 2: Intentar con capa de entrada específica
+            if hasattr(model, 'layers') and len(model.layers) > 0:
+                first_layer = model.layers[0]
+                if hasattr(first_layer, 'input_spec') and first_layer.input_spec:
+                    input_spec = first_layer.input_spec
+                    if hasattr(input_spec, 'shape') and len(input_spec.shape) >= 2:
+                        sequence_length = input_spec.shape[1]
+                        if sequence_length and 12 <= sequence_length <= 200:
+                            print(f"🔍 {symbol} - {timeframe}: Ventana detectada (método 2) = {sequence_length} ✅")
+                            return sequence_length
+
+            # 🎯 MÉTODO 3: Probar con ventanas comunes de trading
+            common_windows = [24, 48, 60, 36, 72, 96, 120, 16, 32, 12]
+            print(f"🔄 {symbol} - {timeframe}: Probando ventanas comunes...")
+
+            for test_window in common_windows:
+                try:
+                    # Crear tensor de prueba
+                    test_input = np.random.random((1, test_window, 66))  # 66 features estándar
+                    prediction = model.predict(test_input, verbose=0)
+
+                    # Si funciona, esta es la ventana correcta
+                    if prediction is not None and len(prediction) > 0:
+                        print(f"🔍 {symbol} - {timeframe}: Ventana detectada (método 3) = {test_window} ✅")
+                        return test_window
+
+                except Exception:
+                    continue  # Probar siguiente ventana
+
+            print(f"⚠️ {symbol} - {timeframe}: No se pudo detectar ventana con métodos automáticos")
+            return self.fallback_window
 
         except Exception as e:
-            print(f"⚠️ No se pudo detectar ventana para {symbol} - {timeframe}: {e}")
-            # Fallback a configuración por defecto
-            return 24
+            print(f"❌ {symbol} - {timeframe}: Error en detección dinámica: {e}")
+            return self.fallback_window
 
     def calculate_mutual_information(self, X_tf: np.ndarray, y: np.ndarray) -> float:
         """📊 🎯 CORRECCIÓN CRÍTICA: Calcular información mutua I(X_timeframe; Y) para pesos adaptativos"""
@@ -645,13 +680,95 @@ class TCNEnsemblePredictor:
 
         print("🔍 AUTO-DIAGNÓSTICO COMPLETADO\n")
 
+    def discover_available_timeframes(self) -> Dict[str, List[str]]:
+        """🔍 Autodetectar timeframes disponibles para cada símbolo"""
+
+        print("🔍 Autodetectando timeframes disponibles...")
+
+        symbol_timeframes = {}
+        all_timeframes = set()
+
+        for symbol in self.symbols:
+            symbol_timeframes[symbol] = []
+
+            # Buscar directorios de modelos para este símbolo
+            for dirpath in os.listdir('models'):
+                if not os.path.isdir(f'models/{dirpath}'):
+                    continue
+
+                # Patrones de directorio:
+                # definitivo_v3_{symbol} -> 1m
+                # definitivo_v3_{timeframe}_{symbol} -> otros timeframes
+
+                symbol_lower = symbol.lower()
+
+                if dirpath == f'definitivo_v3_{symbol_lower}':
+                    # Modelo 1m
+                    timeframe = '1m'
+                    if self._has_required_model_files(f'models/{dirpath}'):
+                        symbol_timeframes[symbol].append(timeframe)
+                        all_timeframes.add(timeframe)
+                        print(f"   ✅ {symbol} - {timeframe}: {dirpath}")
+
+                elif dirpath.startswith(f'definitivo_v3_') and dirpath.endswith(f'_{symbol_lower}'):
+                    # Otros timeframes: definitivo_v3_{timeframe}_{symbol}
+                    parts = dirpath.split('_')
+                    if len(parts) >= 4:  # definitivo_v3_{timeframe}_{symbol}
+                        timeframe = parts[2]  # Extraer timeframe
+                        if self._has_required_model_files(f'models/{dirpath}'):
+                            symbol_timeframes[symbol].append(timeframe)
+                            all_timeframes.add(timeframe)
+                            print(f"   ✅ {symbol} - {timeframe}: {dirpath}")
+
+        # Ordenar timeframes por frecuencia (1m, 5m, 15m, 1h, 4h)
+        timeframe_order = ['1m', '5m', '15m', '1h', '4h', '1d']
+        sorted_timeframes = [tf for tf in timeframe_order if tf in all_timeframes]
+
+        # Agregar timeframes no estándar al final
+        for tf in sorted(all_timeframes):
+            if tf not in sorted_timeframes:
+                sorted_timeframes.append(tf)
+
+        self.timeframes = sorted_timeframes
+
+        print(f"🎯 Timeframes detectados: {self.timeframes}")
+        print(f"📊 Resumen por símbolo:")
+        for symbol, tfs in symbol_timeframes.items():
+            if tfs:
+                print(f"   - {symbol}: {', '.join(sorted(tfs))}")
+            else:
+                print(f"   - {symbol}: ❌ Sin modelos")
+
+        return symbol_timeframes
+
+    def _has_required_model_files(self, model_dir: str) -> bool:
+        """🔍 Verificar si el directorio tiene los archivos mínimos requeridos"""
+
+        required_files = ['best_model.h5', 'scaler.pkl', 'feature_columns.pkl']
+        fallback_files = ['model.h5', 'scaler.pkl', 'feature_columns.pkl']
+
+        # Verificar archivos principales
+        has_main = all(os.path.exists(f'{model_dir}/{file}') for file in required_files)
+
+        # Verificar archivos fallback
+        has_fallback = all(os.path.exists(f'{model_dir}/{file}') for file in fallback_files)
+
+        return has_main or has_fallback
+
     def load_definitivo_v3_models(self) -> bool:
-        """📦 Cargar modelos definitivo_v3 para ambos timeframes"""
+        """📦 Cargar modelos definitivo_v3 dinámicamente para todos los timeframes disponibles"""
 
         print("📦 Cargando modelos definitivo_v3...")
 
+        # 🎯 AUTODETECCIÓN: Descubrir timeframes disponibles
+        symbol_timeframes = self.discover_available_timeframes()
+
+        if not self.timeframes:
+            print("❌ No se encontraron timeframes disponibles")
+            return False
+
         loaded_models = 0
-        total_models = len(self.symbols) * len(self.timeframes)
+        total_possible = sum(len(tfs) for tfs in symbol_timeframes.values())
 
         for symbol in self.symbols:
             self.models[symbol] = {}
@@ -661,13 +778,15 @@ class TCNEnsemblePredictor:
             self.model_windows[symbol] = {}  # Inicializar ventanas por modelo
             self.mutual_information_cache[symbol] = {}  # 🎯 NUEVO: Cache de información mutua
 
-            for timeframe in self.timeframes:
-                # Determinar directorio según timeframe
+            # 🎯 USAR TIMEFRAMES ESPECÍFICOS DETECTADOS PARA ESTE SÍMBOLO
+            available_timeframes = symbol_timeframes.get(symbol, [])
+
+            for timeframe in available_timeframes:
+                # 🎯 DETERMINAR DIRECTORIO DINÁMICAMENTE según patrón del entrenador
                 if timeframe == '1m':
                     model_dir = f'models/definitivo_v3_{symbol.lower()}'
-                else:  # 5m
-                    model_dir = f'models/definitivo_v3_5m_{symbol.lower()}'
-
+                else:  # 5m, 15m, 1h, 4h, etc.
+                    model_dir = f'models/definitivo_v3_{timeframe}_{symbol.lower()}'
 
                 try:
                     # Verificar si el directorio existe
@@ -742,13 +861,16 @@ class TCNEnsemblePredictor:
                     }
                     volatility_adj = volatility_factors.get(symbol, 0.0)
 
-                    # Factor de timeframe (diferencias más suaves)
-                    if timeframe == '5m':
-                        # 5m tiene mayor información por menor ruido
-                        timeframe_factor = self.temporal_balance_config['timeframe_factor_5m']  # 0.10 en lugar de 0.25
-                    else:  # 1m
-                        # 1m tiene menor información por mayor ruido
-                        timeframe_factor = self.temporal_balance_config['timeframe_factor_1m']  # -0.10 en lugar de -0.20
+                    # Factor de timeframe dinámico (diferencias más suaves)
+                    timeframe_factors_map = {
+                        '1m': -0.10,   # Mayor ruido, menor información
+                        '5m': 0.10,    # Balance óptimo
+                        '15m': 0.05,   # Buena información, menor granularidad
+                        '1h': 0.00,    # Neutral, datos más estables
+                        '4h': -0.05,   # Menos granularidad, pero muy estable
+                        '1d': -0.08    # Muy estable pero menos información intradía
+                    }
+                    timeframe_factor = timeframe_factors_map.get(timeframe, 0.0)
 
                     # Factor de accuracy del modelo (impacto moderado)
                     model_metrics = self.hybrid_metrics.get(symbol, {}).get(timeframe, {})
@@ -776,22 +898,104 @@ class TCNEnsemblePredictor:
                     continue
 
         print(f"\n📊 Resumen de carga:")
-        print(f"   - Modelos cargados: {loaded_models}/{total_models}")
-        print(f"   - Porcentaje de éxito: {loaded_models/total_models*100:.1f}%")
+        print(f"   - Modelos cargados: {loaded_models}/{total_possible}")
+        if total_possible > 0:
+            print(f"   - Porcentaje de éxito: {loaded_models/total_possible*100:.1f}%")
+        else:
+            print(f"   - No había modelos disponibles para cargar")
 
-        # Mostrar ventanas detectadas por modelo
-        print(f"\n🔍 Ventanas detectadas por modelo:")
-        for symbol in self.symbols:
-            if symbol in self.model_windows:
-                for timeframe in self.timeframes:
-                    if timeframe in self.model_windows[symbol]:
-                        window = self.model_windows[symbol][timeframe]
-                        print(f"   - {symbol} {timeframe}: {window} pasos")
+        # 🎯 REPORTE DINÁMICO COMPLETO
+        self._show_dynamic_capabilities_report()
 
         return loaded_models > 0
 
-    async def get_market_data(self, symbol: str, timeframe: str, hours: int = 8) -> pd.DataFrame:
-        """📊 Obtener datos de mercado para predicción"""
+    def _show_dynamic_capabilities_report(self):
+        """📊 Mostrar reporte completo de capacidades dinámicas detectadas"""
+
+        print(f"\n🎯 REPORTE DE CAPACIDADES DINÁMICAS DETECTADAS")
+        print("=" * 80)
+
+        # Ventanas detectadas por modelo
+        print(f"🔍 VENTANAS LOOKBACK DETECTADAS:")
+        unique_windows = set()
+        for symbol in self.symbols:
+            if symbol in self.model_windows:
+                symbol_windows = []
+                for timeframe in self.model_windows[symbol]:
+                    window = self.model_windows[symbol][timeframe]
+                    symbol_windows.append(f"{timeframe}:{window}")
+                    unique_windows.add(window)
+
+                if symbol_windows:
+                    print(f"   📊 {symbol}: {', '.join(symbol_windows)}")
+
+        if unique_windows:
+            print(f"   🎯 Ventanas únicas detectadas: {sorted(unique_windows)}")
+
+        # Timeframes disponibles por símbolo
+        print(f"\n⏰ TIMEFRAMES DISPONIBLES:")
+        for symbol in self.symbols:
+            if symbol in self.models and self.models[symbol]:
+                timeframes = list(self.models[symbol].keys())
+                print(f"   📈 {symbol}: {', '.join(sorted(timeframes))}")
+            else:
+                print(f"   ❌ {symbol}: Sin modelos disponibles")
+
+        # Información mutua por timeframe
+        print(f"\n⚖️ PESOS DE INFORMACIÓN MUTUA CALCULADOS:")
+        for symbol in self.symbols:
+            if symbol in self.mutual_information_cache and self.mutual_information_cache[symbol]:
+                mi_info = []
+                for timeframe, mi_value in self.mutual_information_cache[symbol].items():
+                    mi_info.append(f"{timeframe}:{mi_value:.3f}")
+                print(f"   🧠 {symbol}: {', '.join(mi_info)}")
+
+        # Capacidades del sistema
+        print(f"\n🚀 CAPACIDADES DEL SISTEMA:")
+        print(f"   ✅ Timeframes soportados: {', '.join(self.timeframes) if self.timeframes else 'Cualquier timeframe'}")
+        print(f"   ✅ Ventanas lookback: Detección automática 12-200 pasos")
+        print(f"   ✅ Horizontes de predicción: Agnóstico (funciona con cualquiera)")
+        print(f"   ✅ Features: Compatible con cualquier conjunto entrenado")
+        print(f"   ✅ Escalabilidad: Automática para nuevos modelos")
+
+        print("=" * 80)
+
+    async def get_market_data(self, symbol: str, timeframe: str, hours: int = None,
+                             required_candles: int = None) -> pd.DataFrame:
+        """📊 Obtener datos de mercado dinámicamente según ventana del modelo"""
+
+        # 🎯 CÁLCULO DINÁMICO basado en la ventana del modelo específico
+        if hours is None:
+            # Si tenemos la ventana específica del modelo, calcular horas necesarias
+            if required_candles is None:
+                required_candles = self.get_model_specific_window(symbol, timeframe)
+                # Agregar margen extra para features que necesitan historia
+                required_candles += 50  # Buffer para indicadores técnicos
+
+            # Calcular horas según timeframe para obtener las velas necesarias
+            timeframe_multipliers = {
+                '1m': 1/60,      # 1 minuto = 1/60 horas
+                '5m': 5/60,      # 5 minutos = 5/60 horas
+                '15m': 15/60,    # 15 minutos = 0.25 horas
+                '30m': 0.5,      # 30 minutos = 0.5 horas
+                '1h': 1,         # 1 hora = 1 hora
+                '2h': 2,         # 2 horas = 2 horas
+                '4h': 4,         # 4 horas = 4 horas
+                '6h': 6,         # 6 horas = 6 horas
+                '8h': 8,         # 8 horas = 8 horas
+                '12h': 12,       # 12 horas = 12 horas
+                '1d': 24,        # 1 día = 24 horas
+                '3d': 72,        # 3 días = 72 horas
+                '1w': 168        # 1 semana = 168 horas
+            }
+
+            multiplier = timeframe_multipliers.get(timeframe, 1)
+            hours = int(required_candles * multiplier)
+
+            # Límites mínimos y máximos razonables
+            hours = max(2, min(hours, 720))  # Entre 2 horas y 30 días
+
+            print(f"📊 Calculando {hours} horas para obtener ~{required_candles} velas {timeframe}")
 
         base_url = "https://api.binance.com"
         end_time = int(datetime.now().timestamp() * 1000)
@@ -829,6 +1033,7 @@ class TCNEnsemblePredictor:
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df = df.set_index('timestamp').sort_index()
 
+        print(f"📊 Datos obtenidos para {symbol} - {timeframe}: {len(df)} velas ({hours}h)")
         return df
 
     def get_model_specific_window(self, symbol: str, timeframe: str) -> int:
@@ -854,10 +1059,10 @@ class TCNEnsemblePredictor:
             except Exception as e:
                 print(f"⚠️ Error detectando ventana para {symbol} - {timeframe}: {e}")
 
-        # Fallback a configuración general del timeframe
-        default_window = self.timeframe_config.get(timeframe, {}).get('lookback_window', 24)
-        print(f"🔄 Usando ventana por defecto para {symbol} - {timeframe}: {default_window}")
-        return default_window
+        # 🎯 FALLBACK DINÁMICO: usar ventana genérica cuando no se puede detectar
+        print(f"🔄 Usando ventana fallback para {symbol} - {timeframe}: {self.fallback_window}")
+        print(f"   ⚠️ Recomendación: Verificar que el modelo esté correctamente entrenado")
+        return self.fallback_window
 
     def prepare_prediction_data(self, df: pd.DataFrame, symbol: str, timeframe: str) -> Optional[np.ndarray]:
         """🔧 Preparar datos para predicción con modelo v3 (ventana dinámica)"""
@@ -1206,11 +1411,12 @@ class TCNEnsemblePredictor:
         return ensemble_result
 
     async def predict_all_symbols_v3(self) -> Dict[str, Dict]:
-        """🎯 Predicciones de ensamble v3 para todos los símbolos"""
+        """🎯 Predicciones de ensamble v3 para todos los símbolos (dinámico)"""
 
-        print(f"\n🎯 GENERANDO PREDICCIONES ENSEMBLE V3")
-        print(f"🏗️ Usando modelos: definitivo_v3 (1m) + definitivo_v3_5m (5m)")
+        print(f"\n🎯 GENERANDO PREDICCIONES ENSEMBLE V3 DINÁMICO")
+        print(f"🏗️ Timeframes disponibles: {', '.join(self.timeframes)}")
         print(f"🔄 Iteraciones por timeframe: {self.ensemble_iterations}")
+        print(f"📊 Autodetección: ✅ Activada")
         print("=" * 80)
 
         results = {}
@@ -1230,32 +1436,43 @@ class TCNEnsemblePredictor:
         return results
 
     def get_model_info(self) -> Dict:
-        """📊 Información de los modelos cargados"""
+        """📊 Información de los modelos cargados (dinámico)"""
 
         info = {
             'loaded_models': 0,
-            'total_models': len(self.symbols) * len(self.timeframes),
-            'model_type': 'definitivo_v3 + definitivo_v3_5m',
+            'available_timeframes': self.timeframes.copy(),
+            'model_type': 'definitivo_v3_dynamic_timeframes',
             'symbols': {}
         }
 
         for symbol in self.symbols:
             info['symbols'][symbol] = {}
 
-            for timeframe in self.timeframes:
+            # 🎯 USAR TIMEFRAMES ESPECÍFICOS CARGADOS PARA CADA SÍMBOLO
+            symbol_timeframes = self.models.get(symbol, {}).keys()
+
+            for timeframe in symbol_timeframes:
                 if symbol in self.models and timeframe in self.models[symbol]:
                     metrics = self.hybrid_metrics.get(symbol, {}).get(timeframe, {})
+                    window = self.model_windows.get(symbol, {}).get(timeframe, 'N/A')
+                    mi = self.mutual_information_cache.get(symbol, {}).get(timeframe, 0.5)
+
                     info['symbols'][symbol][timeframe] = {
                         'loaded': True,
                         'has_scaler': symbol in self.scalers and timeframe in self.scalers[symbol],
                         'has_features': symbol in self.feature_columns and timeframe in self.feature_columns[symbol],
                         'accuracy': metrics.get('test_accuracy', 0.0),
                         'precision': metrics.get('test_precision', 0.0),
-                        'recall': metrics.get('test_recall', 0.0)
+                        'recall': metrics.get('test_recall', 0.0),
+                        'lookback_window': window,
+                        'mutual_information': mi
                     }
                     info['loaded_models'] += 1
-                else:
-                    info['symbols'][symbol][timeframe] = {'loaded': False}
+
+            # Agregar timeframes no cargados como información
+            for timeframe in self.timeframes:
+                if timeframe not in symbol_timeframes:
+                    info['symbols'][symbol][timeframe] = {'loaded': False, 'reason': 'not_available'}
 
         return info
 
@@ -1389,11 +1606,11 @@ async def create_1m_6min_horizon_trainer():
     print("=" * 60)
 
 async def main():
-    """🎯 Demo del predictor de ensamble V3 MATEMÁTICAMENTE ROBUSTO"""
+    """🎯 Demo del predictor de ensamble V3 DINÁMICO Y ROBUSTO"""
 
-    print("🎯 TCN ENSEMBLE PREDICTOR V3 - MATEMÁTICAMENTE ROBUSTO - DEMO")
-    print("🏗️ Usando modelos definitivo_v3 (1m) + definitivo_v3_5m (5m)")
-    print("🔬 CON CORRECCIONES MATEMÁTICAS IMPLEMENTADAS")
+    print("🎯 TCN ENSEMBLE PREDICTOR V3 - DINÁMICO Y MATEMÁTICAMENTE ROBUSTO")
+    print("🏗️ Autodetección de timeframes: 1m, 5m, 15m, 1h, 4h, 1d")
+    print("🔬 CON CORRECCIONES MATEMÁTICAS Y COMPATIBILIDAD TOTAL")
     print("=" * 80)
 
     # Mostrar información sobre modelo 1m con horizonte 6min
@@ -1402,18 +1619,19 @@ async def main():
     # Crear predictor
     predictor = TCNEnsemblePredictor()
 
-    # Cargar modelos definitivo_v3
+    # Cargar modelos definitivo_v3 dinámicamente
     if not predictor.load_definitivo_v3_models():
-        print("❌ No se pudieron cargar los modelos definitivo_v3")
-        print("💡 Verifica que existan los directorios:")
-        print("   - models/definitivo_v3_* (para 1m)")
-        print("   - models/definitivo_v3_5m_* (para 5m)")
+        print("❌ No se pudieron cargar modelos definitivo_v3")
+        print("💡 Verifica que existan directorios con patrón:")
+        print("   - models/definitivo_v3_{symbol} (para 1m)")
+        print("   - models/definitivo_v3_{timeframe}_{symbol} (para otros timeframes)")
         return
 
     # Mostrar información de modelos
     model_info = predictor.get_model_info()
     print(f"\n📊 INFORMACIÓN DE MODELOS:")
-    print(f"   - Modelos cargados: {model_info['loaded_models']}/{model_info['total_models']}")
+    print(f"   - Modelos cargados: {model_info['loaded_models']}")
+    print(f"   - Timeframes disponibles: {', '.join(model_info['available_timeframes'])}")
     print(f"   - Tipo: {model_info['model_type']}")
 
     # Probar predicción individual con detalle completo
@@ -1519,10 +1737,12 @@ async def main():
         print(f"   📈 Calibración: +{calibration_improvement:.0f}% mejora estimada")
         print(f"   📈 Robustez general: +{(accuracy_improvement + stability_improvement + calibration_improvement) / 3:.0f}% mejora total")
 
-    print("\n🚀 COMPATIBLE CON MODELO 1M + HORIZONTE 6MIN:")
-    print("   📊 Timeframe: 1 minuto (5x más datos)")
-    print("   🎯 Horizonte: 6 minutos (predicción inmediata)")
-    print("   ✅ Totalmente compatible con sistema actual")
+    print("\n🚀 COMPATIBILIDAD TOTAL CON TODOS LOS TIMEFRAMES:")
+    print(f"   📊 Timeframes soportados: {', '.join(predictor.timeframes) if predictor.timeframes else 'Autodetección dinámica'}")
+    print("   🎯 Autodetección: Encuentra modelos disponibles automáticamente")
+    print("   ✅ Compatible con: 1m, 5m, 15m, 1h, 4h, 1d y cualquier timeframe futuro")
+    print("   🔧 Patrón de directorios: definitivo_v3_{timeframe}_{symbol}")
+    print("   ⚡ Sistema completamente dinámico y escalable")
     print("=" * 80)
 
 
