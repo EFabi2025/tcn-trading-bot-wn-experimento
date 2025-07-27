@@ -64,9 +64,9 @@ class TradingConfig:
             'ETHUSDT': 'MAJOR_CRYPTO',
             'BNBUSDT': 'EXCHANGE_TOKEN',
             'XRPUSDT': 'ALT_CRYPTO',         # ✅ INTEGRADO desde repositorio externo
+            'DOTUSDT': 'ALT_CRYPTO',         # ✅ ACTIVADO: DOTUSDT disponible
             # ⏸️ TEMPORALMENTE EXCLUIDOS (sin modelos TCN):
             # 'ADAUSDT': 'ALT_CRYPTO',
-            # 'DOTUSDT': 'ALT_CRYPTO',
             # 'SOLUSDT': 'ALT_CRYPTO'
         },
         'MAX_CATEGORY_CONCENTRATION_PERCENT': 90.0,  # Máximo 60% en una categoría

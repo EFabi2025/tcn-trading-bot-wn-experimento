@@ -11,6 +11,7 @@ Toda la documentación ha sido organizada en la carpeta [`docs/`](./docs/):
 - **[📋 Índice Completo de Documentación](./docs/_INDEX.md)** - Ver toda la documentación disponible
 - **[🚀 Guía de Inicio Rápido](./docs/GETTING_STARTED.md)** - Empezar aquí
 - **[⚙️ Setup Completo](./docs/SETUP_COMPLETO.md)** - Configuración detallada
+- **[🛡️ Sistema de Protección Post-Pérdidas](./docs/LOSS_PROTECTION_SYSTEM.md)** - Anti-revenge trading
 - **[🔒 Guía de Seguridad](./docs/SECURITY_GUIDE.md)** - Configuración segura
 
 ### 📁 **Estructura del Proyecto**
@@ -48,6 +49,7 @@ BinanceBotClean/
 
 - 🧠 **Modelos TCN avanzados** para predicción de mercado
 - 🛡️ **Gestión inteligente de riesgo** con trailing stops
+- 🚫 **Protección post-pérdidas** anti-revenge trading
 - 📊 **Análisis de contexto de mercado** en tiempo real
 - 🎯 **Diversificación automática** de portafolio
 - 📱 **Notificaciones Discord** inteligentes

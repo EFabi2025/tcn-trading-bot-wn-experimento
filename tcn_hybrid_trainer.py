@@ -29,9 +29,9 @@ class TCNHybridTrainer:
     def __init__(self, atr_multiplier: float = 1.5, atr_period: int = 24, prediction_horizon: int = 10):
         self.pairs = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
         self.lookback_window = 24
-        self.prediction_horizon = prediction_horizon 
+        self.prediction_horizon = prediction_horizon
         self.features_engine = CentralizedFeaturesEngine()
-        
+
         # 🎯 PARÁMETROS DINÁMICOS
         self.atr_multiplier = atr_multiplier
         self.atr_period = atr_period
@@ -97,14 +97,14 @@ class TCNHybridTrainer:
         print(f"🎯 Creando etiquetas de 3 clases con ATR (x{self.atr_multiplier}, {self.prediction_horizon} mins)...")
 
         df_copy = df.copy()
-        
+
         # 1. Calcular ATR
         df_copy['atr'] = talib.ATR(df_copy['high'], df_copy['low'], df_copy['close'], timeperiod=self.atr_period)
 
         # 2. Definir barreras dinámicas y resultado futuro
         df_copy['upper_barrier'] = df_copy['close'] + (df_copy['atr'] * self.atr_multiplier)
         df_copy['lower_barrier'] = df_copy['close'] - (df_copy['atr'] * self.atr_multiplier)
-        
+
         # 3. Encontrar si alguna barrera es tocada en el futuro
         # Usamos rolling window sobre el futuro para encontrar el max/min en el horizonte
         df_copy['future_max_price'] = df_copy['high'].shift(-self.prediction_horizon).rolling(window=self.prediction_horizon).max()
@@ -117,7 +117,7 @@ class TCNHybridTrainer:
         def get_label(row):
             touched_upper = row['future_max_price'] >= row['upper_barrier']
             touched_lower = row['future_min_price'] <= row['lower_barrier']
-            
+
             if touched_upper and not touched_lower:
                 return 2  # BUY
             elif touched_lower and not touched_upper:
@@ -148,7 +148,7 @@ class TCNHybridTrainer:
 
         # Alinear labels y features usando el índice
         common_index = df_labeled.index.intersection(features.index)
-        
+
         df_labeled_aligned = df_labeled.loc[common_index]
         features_aligned = features.loc[common_index]
 
@@ -192,43 +192,43 @@ class TCNHybridTrainer:
 
     def create_simplified_tcn_model(self, input_shape: tuple):
         """🎯 Modelo TCN simplificado para mayor robustez"""
-        
+
         print("🎯 Creando modelo TCN SIMPLIFICADO (estilo CNN)...")
 
         model = tf.keras.Sequential([
             tf.keras.layers.Input(shape=input_shape),
-            
+
             tf.keras.layers.LayerNormalization(),
-            
+
             # Bloques TCN más simples
             tf.keras.layers.Conv1D(filters=32, kernel_size=3, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.SpatialDropout1D(0.1),
-            
+
             tf.keras.layers.Conv1D(filters=64, kernel_size=3, dilation_rate=2, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.SpatialDropout1D(0.15),
-            
+
             tf.keras.layers.Conv1D(filters=128, kernel_size=3, dilation_rate=4, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.SpatialDropout1D(0.2),
-            
+
             tf.keras.layers.Conv1D(filters=64, kernel_size=3, dilation_rate=8, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.SpatialDropout1D(0.2),
-            
+
             tf.keras.layers.GlobalAveragePooling1D(),
-            
+
             # Capas densas más simples con regularización L2
             tf.keras.layers.Dense(128, activation='relu',
                                  kernel_regularizer=tf.keras.regularizers.l2(0.001)),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.Dropout(0.3),
-            
+
             tf.keras.layers.Dense(64, activation='relu',
                                  kernel_regularizer=tf.keras.regularizers.l2(0.001)),
             tf.keras.layers.Dropout(0.2),
-            
+
             # 🎯 Capa de salida para 3 CLASES
             tf.keras.layers.Dense(3, activation='softmax')
         ])
@@ -245,30 +245,30 @@ class TCNHybridTrainer:
 
     def analyze_training_stability(self, history):
         """📊 Analiza la estabilidad del entrenamiento (del V3)"""
-        
+
         val_acc = history.history['val_accuracy']
         val_loss = history.history['val_loss']
-        
+
         # Calcular volatilidad de últimas 10 epochs
         if len(val_acc) >= 10:
             recent_acc_std = np.std(val_acc[-10:])
             recent_loss_std = np.std(val_loss[-10:])
-            
+
             print(f"📊 Estabilidad últimas 10 epochs:")
             print(f"   Val_accuracy std: {recent_acc_std:.4f}")
             print(f"   Val_loss std: {recent_loss_std:.4f}")
-            
+
             # Criterios de estabilidad
             stable_acc = recent_acc_std < 0.02  # 2% variación
             stable_loss = recent_loss_std < 0.1
-            
+
             if stable_acc and stable_loss:
                 print("✅ Entrenamiento estable")
             else:
                 print("⚠️ Entrenamiento inestable - considerar ajustes")
-                
+
             return stable_acc and stable_loss
-        
+
         return True
 
     async def train_hybrid_model(self, symbol: str) -> bool:
@@ -407,14 +407,14 @@ class TCNHybridTrainer:
                 'etiquetado': 'volatility_based_atr_3_classes',
                 'arquitectura': 'tcn_v3_simplified'
             }
-            
+
             with open(f'{model_dir}/hybrid_metrics.pkl', 'wb') as f:
                 pickle.dump(hybrid_metrics, f)
             print("✅ Métricas de entrenamiento guardadas")
 
             print(f"\n🎯 MODELO TCN SIMPLIFICADO V3 COMPLETADO PARA {symbol}")
             print(f"📁 Guardado en: {model_dir}/")
-            
+
             return True
 
         except Exception as e:
@@ -438,9 +438,9 @@ async def main():
     # Entrenar solo un par para prueba
     symbol = "XRPUSDT"
     print(f"\n🚀 Entrenando {symbol} con modelo robusto...")
-    
+
     success = await trainer.train_hybrid_model(symbol)
-    
+
     if success:
         print(f"\n✅ {symbol}: ENTRENAMIENTO ROBUSTO V3 EXITOSO")
         print(f"🎯 Modelo guardado en models/definitivo_v3_{symbol.lower()}/")
@@ -449,11 +449,11 @@ async def main():
 
     # Opcionalmente entrenar todos los símbolos
     train_all = input("\n🤔 ¿Entrenar todos los símbolos? (y/n): ").lower().strip()
-    
+
     if train_all == 'y':
         print("\n🚀 Entrenando todos los símbolos...")
         results = {}
-        
+
         # Asumiendo que el primero ya se entrenó si no se saltó
         initial_symbol_trained = "XRPUSDT"
         results[initial_symbol_trained] = success
@@ -474,4 +474,4 @@ async def main():
         print(f"\n🎯 Modelos robustos entrenados: {successful}/{len(results)}")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())

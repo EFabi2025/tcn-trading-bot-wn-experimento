@@ -35,7 +35,7 @@ class AdaptiveTCNTrainer:
 
         # ✅ NUEVO: Thresholds adaptativos habilitados por configuración
         self.use_adaptive_thresholds = True  # Cambiar a False para volver al modo original
-        
+
         # 🎯 THRESHOLDS FIJOS (Mantener para compatibilidad)
         self.fixed_thresholds = {
             'BTCUSDT': {
@@ -62,7 +62,7 @@ class AdaptiveTCNTrainer:
                 'strong_sell': -0.0018, 'weak_sell': -0.0009,
                 'weak_buy': 0.0009, 'strong_buy': 0.0018,
             },
-            'ADAUSDT': {    
+            'ADAUSDT': {
                 'strong_sell': -0.0018, 'weak_sell': -0.0009,
                 'weak_buy': 0.0009, 'strong_buy': 0.0018,
             },
@@ -75,43 +75,43 @@ class AdaptiveTCNTrainer:
     def calculate_adaptive_thresholds(self, df: pd.DataFrame, symbol: str) -> dict:
         """
         🎯 Calcular thresholds adaptativos basados en volatilidad ATR
-        
+
         CAMBIO MÍNIMO: Solo esta función es nueva
         """
         if not self.use_adaptive_thresholds:
             return self.fixed_thresholds[symbol]
-        
+
         try:
             # Calcular ATR para volatilidad adaptativa
             high_prices = df['high'].values.astype(float)
             low_prices = df['low'].values.astype(float)
             close_prices = df['close'].values.astype(float)
-            
+
             # ATR de 14 períodos
             atr_14 = talib.ATR(high_prices, low_prices, close_prices, timeperiod=14)
-            
+
             # Promedio de ATR reciente (últimas 50 velas)
             avg_atr = np.nanmean(atr_14[-50:]) if len(atr_14) > 50 else np.nanmean(atr_14)
             avg_price = np.mean(close_prices[-50:]) if len(close_prices) > 50 else np.mean(close_prices)
-            
+
             # ATR como porcentaje del precio
             atr_percent = (avg_atr / avg_price) if avg_price > 0 else 0.02
-            
+
             # Thresholds adaptativos basados en ATR
             base_threshold = atr_percent * 0.5  # Factor conservador
-            
+
             adaptive_thresholds = {
                 'strong_sell': -base_threshold * 1.5,
                 'weak_sell': -base_threshold * 0.75,
                 'weak_buy': base_threshold * 0.75,
                 'strong_buy': base_threshold * 1.5
             }
-            
+
             print(f"🎯 {symbol}: ATR adaptativo {atr_percent:.4f} ({atr_percent*100:.2f}%)")
             print(f"   📊 Thresholds: Buy {adaptive_thresholds['strong_buy']:.4f}, Sell {adaptive_thresholds['strong_sell']:.4f}")
-            
+
             return adaptive_thresholds
-            
+
         except Exception as e:
             print(f"⚠️ Error calculando thresholds adaptativos para {symbol}: {e}")
             print(f"   🔄 Usando thresholds fijos como fallback")
@@ -123,10 +123,10 @@ class AdaptiveTCNTrainer:
         print(f"🎯 Creando etiquetas {'adaptativas' if self.use_adaptive_thresholds else 'fijas'} para {symbol}...")
 
         close_prices = df['close'].values
-        
+
         # ✅ CAMBIO PRINCIPAL: Usar thresholds adaptativos
         thresholds = self.calculate_adaptive_thresholds(df, symbol)
-        
+
         labels = []
 
         # 🔄 RESTO DE LA LÓGICA: Sin cambios (mantener compatibilidad)
@@ -284,7 +284,7 @@ class AdaptiveTCNTrainer:
 
         return X, y, scaler, feature_columns, class_weight_dict
 
-    
+
     def create_definitive_tcn_model(self, input_shape: tuple):
         """
         🎯 Modelo TCN Mejorado
@@ -419,10 +419,10 @@ class AdaptiveTCNTrainer:
 
             # 8. Guardar componentes
             model.save(f'models/adaptive_{symbol.lower()}/model.h5')
-            
+
             with open(f'models/adaptive_{symbol.lower()}/scaler.pkl', 'wb') as f:
                 pickle.dump(scaler, f)
-                
+
             with open(f'models/adaptive_{symbol.lower()}/feature_columns.pkl', 'wb') as f:
                 pickle.dump(feature_columns, f)
 
@@ -436,71 +436,71 @@ class AdaptiveTCNTrainer:
 # ✅ FUNCIÓN PARA COMPARAR MODELOS
 async def compare_models():
     """🧪 Comparar modelos fijos vs adaptativos"""
-    
+
     print("🧪 COMPARANDO MODELOS: FIJOS vs ADAPTATIVOS")
     print("=" * 60)
-    
+
     trainer = AdaptiveTCNTrainer()
-    
+
     for symbol in ['BTCUSDT']:  # Test con un símbolo primero
         print(f"\n📊 Analizando {symbol}...")
-        
+
         # Obtener datos
         df = await trainer.get_real_market_data(symbol, days=7)
         features = trainer.features_engine.calculate_features(df, feature_set='tcn_definitivo')
-        
+
         # Thresholds fijos
         trainer.use_adaptive_thresholds = False
         df_fixed = trainer.create_balanced_labels(df, features, symbol)
         fixed_dist = df_fixed['label'].value_counts().sort_index()
-        
+
         # Thresholds adaptativos
         trainer.use_adaptive_thresholds = True
         df_adaptive = trainer.create_balanced_labels(df, features, symbol)
         adaptive_dist = df_adaptive['label'].value_counts().sort_index()
-        
+
         # Comparar distribuciones
         print(f"\n📊 COMPARACIÓN DE DISTRIBUCIONES:")
         class_names = ['SELL', 'HOLD', 'BUY']
         print(f"{'Clase':<8} {'Fijos':<12} {'Adaptativos':<12} {'Diferencia'}")
         print("-" * 50)
-        
+
         for i, name in enumerate(class_names):
             fixed_count = fixed_dist.get(i, 0)
             adaptive_count = adaptive_dist.get(i, 0)
             diff = adaptive_count - fixed_count
-            
+
             print(f"{name:<8} {fixed_count:<12} {adaptive_count:<12} {diff:+}")
 
 async def main():
     """🎯 Entrenar modelos adaptativos"""
-    
+
     print("🎯 ENTRENADOR TCN ADAPTATIVO - CAMBIOS MÍNIMOS")
     print("=" * 70)
     print("🎯 Objetivo: Mejorar modelos sin tocar el sistema de trading")
     print("=" * 70)
-    
+
     trainer = AdaptiveTCNTrainer()
-    
+
     # Opción 1: Comparar primero
     print("\n🧪 PASO 1: Comparando estrategias...")
     await compare_models()
-    
+
     # Opción 2: Entrenar modelos mejorados
     print(f"\n🚀 PASO 2: Entrenando modelos adaptativos...")
-    
+
     results = {}
     for symbol in trainer.pairs:
         success = await trainer.train_adaptive_model(symbol)
         results[symbol] = success
-    
+
     print(f"\n🎯 RESUMEN:")
     for symbol, success in results.items():
         status = "✅ ÉXITO" if success else "❌ FALLO"
         print(f"   {symbol}: {status}")
-    
+
     successful = sum(results.values())
     print(f"\n🎯 Modelos adaptativos entrenados: {successful}/{len(results)}")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())

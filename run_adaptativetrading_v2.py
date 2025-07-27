@@ -8,7 +8,7 @@ import os
 import signal
 import sys
 from dotenv import load_dotenv
-from simple_professional_manager2 import SimpleProfessionalTradingManager  # CAMBIADO: Usar archivo con ENSEMBLE V3
+from simple_professional_managerv_2 import SimpleProfessionalTradingManager  # CAMBIADO: Usar archivo con ENSEMBLE V3
 
 # Cargar variables de entorno desde .env
 load_dotenv()

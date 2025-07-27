@@ -49,10 +49,10 @@ class TCNAdaptivePredictorV2:
         self.feature_columns = {}
         self.class_weights = {}
         self.model_types = {}  # Nuevo: Tipo de modelo (legacy/directional)
-        
+
         # ✅ NUEVOS SÍMBOLOS SOPORTADOS (igual que entrenador v2)
         self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'SOLUSDT', 'DOGEUSDT', 'ADAUSDT', 'DOTUSDT']
-        
+
         # ✅ AMBOS MOTORES DE FEATURES
         self.features_engine_legacy = CentralizedFeaturesEngine()
         self.features_engine_optimized = OptimizedFeaturesEngine()
@@ -100,36 +100,36 @@ class TCNAdaptivePredictorV2:
         """
         if not self.use_adaptive_thresholds:
             return self.fixed_thresholds[symbol]
-        
+
         try:
             # Calcular ATR para volatilidad adaptativa
             high_prices = df['high'].values.astype(float)
             low_prices = df['low'].values.astype(float)
             close_prices = df['close'].values.astype(float)
-            
+
             # ATR de 14 períodos
             atr_14 = talib.ATR(high_prices, low_prices, close_prices, timeperiod=14)
-            
+
             # Promedio de ATR reciente (últimas 50 velas)
             avg_atr = np.nanmean(atr_14[-50:]) if len(atr_14) > 50 else np.nanmean(atr_14)
             avg_price = np.mean(close_prices[-50:]) if len(close_prices) > 50 else np.mean(close_prices)
-            
+
             # ATR como porcentaje del precio
             atr_percent = (avg_atr / avg_price) if avg_price > 0 else 0.02
-            
+
             # Thresholds adaptativos basados en ATR (MÁS CONSERVADORES)
             base_threshold = atr_percent * 0.3  # Factor más conservador (reducido de 0.5 a 0.3)
-            
+
             adaptive_thresholds = {
                 'sell': -base_threshold * 1.2,  # Reducido de 1.5 a 1.2
                 'buy': base_threshold * 1.2     # Reducido de 1.5 a 1.2
             }
-            
+
             logger.info(f"🎯 {symbol}: ATR adaptativo {atr_percent:.4f} ({atr_percent*100:.2f}%)")
             logger.info(f"   📊 Thresholds: Buy {adaptive_thresholds['buy']:.4f}, Sell {adaptive_thresholds['sell']:.4f}")
-            
+
             return adaptive_thresholds
-            
+
         except Exception as e:
             logger.warning(f"⚠️ Error calculando thresholds adaptativos para {symbol}: {e}")
             logger.warning(f"   🔄 Usando thresholds fijos como fallback")
@@ -166,20 +166,20 @@ class TCNAdaptivePredictorV2:
             model_directories = [
                 # PRIORIDAD 1: Modelos direccionales optimizados (NUEVOS)
                 f"models/directional_v1_{symbol.lower()}",
-                
+
                 # PRIORIDAD 2: Modelos definitivos recientes
                 f"models/definitivo_v3_{symbol.lower()}",
-                
+
                 # PRIORIDAD 3: Modelos adaptativos mejorados
                 f"models/adaptive_v3_improved_{symbol.lower()}",
                 f"models/adaptive_v2_optimized_{symbol.lower()}",
                 f"models/adaptive_v2_{symbol.lower()}",
-                
+
                 # PRIORIDAD 4: Modelos legacy (fallback)
                 f"models/adaptive_{symbol.lower()}",
                 f"models/definitivo_{symbol.lower()}",
             ]
-            
+
             model_loaded = False
             used_directory = None
 
@@ -191,7 +191,7 @@ class TCNAdaptivePredictorV2:
                 if os.path.exists(model_path) and os.path.exists(scaler_path):
                     logger.info(f"  📂 Intentando cargar desde: {model_dir}")
                     used_directory = model_dir
-                    
+
                     try:
                         # Cargar modelo
                         logger.info(f"  📂 Cargando modelo {symbol}...")
@@ -282,7 +282,7 @@ class TCNAdaptivePredictorV2:
         try:
             # Determinar qué motor usar basado en el tipo de modelo
             model_type = self.model_types.get(symbol, "legacy")
-            
+
             if model_type == "directional":
                 # Usar motor optimizado para modelos direccionales
                 features = self.features_engine_optimized.calculate_features(df, feature_set='directional_only')
@@ -293,11 +293,11 @@ class TCNAdaptivePredictorV2:
                 features = self.features_engine_legacy.calculate_features(df, feature_set='tcn_definitivo')
                 feature_count = 66
                 motor_type = "LEGACY"
-            
+
             if features.empty:
                 logger.error(f"❌ Error: Motor {motor_type} devolvió DataFrame vacío")
                 return pd.DataFrame()
-            
+
             logger.info(f"✅ {len(features.columns)} features {motor_type} creados para {symbol}")
             return features
 
@@ -383,24 +383,24 @@ class TCNAdaptivePredictorV2:
                 action = 'BUY'
                 confidence = buy_prob
                 predicted_return = thresholds['buy']
-                
+
                 # ✅ FILTROS DE CALIDAD OPCIONALES (relajados un 5%)
                 if buy_prob < 0.43:  # Confianza mínima relajada a 43% (era 45%)
                     logger.info(f"⚠️ {symbol}: Señal BUY con baja confianza {buy_prob:.1%}")
                 if prob_margin < 0.047:  # Margen mínimo relajado a 4.7% (era 5%)
                     logger.info(f"⚠️ {symbol}: Señal BUY con margen pequeño {prob_margin:.1%}")
-                    
+
             elif sell_prob == max_prob:
                 action = 'SELL'
                 confidence = sell_prob
                 predicted_return = thresholds['sell']
-                
+
                 # ✅ FILTROS DE CALIDAD OPCIONALES (relajados un 5%)
                 if sell_prob < 0.43:  # Confianza mínima relajada a 43% (era 45%)
                     logger.info(f"⚠️ {symbol}: Señal SELL con baja confianza {sell_prob:.1%}")
                 if prob_margin < 0.047:  # Margen mínimo relajado a 4.7% (era 5%)
                     logger.info(f"⚠️ {symbol}: Señal SELL con margen pequeño {prob_margin:.1%}")
-                    
+
             else:  # hold_prob == max_prob
                 action = 'HOLD'
                 confidence = hold_prob
@@ -523,14 +523,14 @@ class TCNAdaptivePredictorV2:
             f"models/adaptive_{symbol.lower()}",
             f"models/definitivo_{symbol.lower()}",
         ]
-        
+
         for model_dir in model_directories:
             model_path = os.path.join(model_dir, "best_model.h5")
             if os.path.exists(model_path):
                 model_found = True
                 logger.info(f"🔍 {symbol}: Modelo encontrado en {model_dir}")
                 break
-        
+
         if not model_found:
             logger.error(f"❌ {symbol}: No se encontró ningún modelo en las ubicaciones esperadas")
             return False
@@ -562,7 +562,7 @@ class TCNAdaptivePredictorV2:
         """🔍 Obtener información detallada del modelo cargado"""
         if symbol not in self.models_loaded:
             return {'error': f'Modelo {symbol} no está cargado'}
-        
+
         model_type = self.model_types.get(symbol, "unknown")
         return {
             'symbol': symbol,
@@ -584,12 +584,12 @@ class TCNAdaptivePredictorV2:
 
     def get_directional_models(self) -> List[str]:
         """🎯 Obtener lista de modelos direccionales cargados"""
-        return [symbol for symbol, model_type in self.model_types.items() 
+        return [symbol for symbol, model_type in self.model_types.items()
                 if model_type == "directional" and symbol in self.models_loaded]
 
     def get_legacy_models(self) -> List[str]:
         """🔧 Obtener lista de modelos legacy cargados"""
-        return [symbol for symbol, model_type in self.model_types.items() 
+        return [symbol for symbol, model_type in self.model_types.items()
                 if model_type == "legacy" and symbol in self.models_loaded]
 
     def compare_model_types(self) -> Dict:
@@ -597,7 +597,7 @@ class TCNAdaptivePredictorV2:
         directional_count = len(self.get_directional_models())
         legacy_count = len(self.get_legacy_models())
         total_count = len(self.models_loaded)
-        
+
         return {
             'total_models': total_count,
             'directional_models': {
@@ -626,22 +626,22 @@ if __name__ == "__main__":
     # Test del predictor v2 híbrido
     print("🧪 TESTING TCN ADAPTIVE PREDICTOR V2 HÍBRIDO...")
     predictor = TCNAdaptivePredictorV2()
-    
+
     # Test carga de modelos
     predictor.load_all_models()
-    
+
     # Mostrar estadísticas de modelos cargados
     comparison = predictor.compare_model_types()
     print(f"\n📊 ESTADÍSTICAS DE MODELOS:")
     print(f"   Total cargados: {comparison['total_models']}")
     print(f"   Direccionales: {comparison['directional_models']['count']} ({comparison['directional_models']['percentage']:.1f}%)")
     print(f"   Legacy: {comparison['legacy_models']['count']} ({comparison['legacy_models']['percentage']:.1f}%)")
-    
+
     if comparison['directional_models']['symbols']:
         print(f"   🎯 Direccionales: {', '.join(comparison['directional_models']['symbols'])}")
     if comparison['legacy_models']['symbols']:
         print(f"   🔧 Legacy: {', '.join(comparison['legacy_models']['symbols'])}")
-    
+
     # Test con BTC
     print(f"\n🧪 Test predicción BTCUSDT...")
     result = predictor.predict_symbol('BTCUSDT')
@@ -653,10 +653,10 @@ if __name__ == "__main__":
         print(f"🎯 Adaptativos: {result.get('adaptive', False)}")
     else:
         print("❌ Error en predicción")
-    
+
     # Test info detallada
     if 'BTCUSDT' in predictor.models_loaded:
         info = predictor.get_model_info('BTCUSDT')
         print(f"\n🔍 Info detallada BTCUSDT:")
         for key, value in info.items():
-            print(f"   {key}: {value}") 
+            print(f"   {key}: {value}")

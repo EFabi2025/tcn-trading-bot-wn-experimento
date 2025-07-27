@@ -42,23 +42,26 @@ class TCNDefinitivoPredictor:
         self.feature_columns = {}
         self.class_weights = {}
         # ✅ Solo pares con modelos entrenados disponibles
-        self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT']
+        self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'DOTUSDT']  # ✅ AGREGADO: DOTUSDT
 
-        # ⚠️ PARES PENDIENTES (sin modelos): ['ADAUSDT', 'DOTUSDT', 'SOLUSDT']
-        self.excluded_symbols = ['ADAUSDT', 'DOTUSDT', 'SOLUSDT']
+        # ⚠️ PARES PENDIENTES (sin modelos): ['ADAUSDT', 'SOLUSDT']
+        self.excluded_symbols = ['ADAUSDT', 'SOLUSDT']  # ✅ REMOVIDO: DOTUSDT
         self.model_stats = {
             'BTCUSDT': {'accuracy': 0.597, 'loss': 0.835},
             'ETHUSDT': {'accuracy': 0.628, 'loss': 0.852},  # ✅ REENTRENADO: 62.8% accuracy, thresholds actualizados
             'BNBUSDT': {'accuracy': 0.601, 'loss': 0.858},
-            'XRPUSDT': {'accuracy': 0.404, 'loss': 1.050}   # ✅ MODELO REENTRENADO con metodología definitiva
+            'XRPUSDT': {'accuracy': 0.404, 'loss': 1.050},   # ✅ MODELO REENTRENADO con metodología definitiva
+            'DOTUSDT': {'accuracy': 0.729, 'loss': 0.760}    # ✅ AGREGADO: Metrics del modelo híbrido DOTUSDT
         }
 
-        # 🚀 THRESHOLDS AGRESIVOS - MÁS BAJOS para mayor sensibilidad
+        # 🚀 THRESHOLDS COMPATIBLES CON ENTRENAMIENTO BALANCEADO
+        # Nota: Los modelos ahora usan percentiles dinámicos, estos son thresholds de seguridad
         self.thresholds = {
-            'BTCUSDT': {'sell': -0.0014, 'buy': 0.0014},   # 🚀 AGRESIVO: 0.3% para BUY (era 0.14%)
-            'ETHUSDT': {'sell': -0.0012, 'buy': 0.0013},   # 🚀 AGRESIVO: 0.2% para BUY (era 0.09%)
-            'BNBUSDT': {'sell': -0.0009, 'buy': 0.0015},   # 🚀 AGRESIVO: 0.3% para BUY (era 0.15%)
-            'XRPUSDT': {'sell': -0.0018, 'buy': 0.0018}    # 🚀 AGRESIVO: 0.3% para BUY (era 0.11%)
+            'BTCUSDT': {'sell': -0.004, 'buy': 0.004},   # 🎯 BALANCEADO: Compatible con percentiles
+            'ETHUSDT': {'sell': -0.004, 'buy': 0.004},   # 🎯 BALANCEADO: 0.4% mínimo rentable
+            'BNBUSDT': {'sell': -0.004, 'buy': 0.004},   # 🎯 BALANCEADO: Consistente con entrenador
+            'XRPUSDT': {'sell': -0.004, 'buy': 0.004},   # 🎯 BALANCEADO: Thresholds de seguridad
+            'DOTUSDT': {'sell': -0.004, 'buy': 0.004}    # 🎯 BALANCEADO: Híbrido ATR compatible
         }
 
         # 🔧 SEQUENCE LENGTH DINÁMICO POR MODELO
@@ -66,7 +69,8 @@ class TCNDefinitivoPredictor:
             'BTCUSDT': 24,  # Modelo antiguo
             'ETHUSDT': 24,  # Modelo reentrenado
             'BNBUSDT': 48,  # Modelo antiguo
-            'XRPUSDT': 24   # ✅ MODELO REENTRENADO con configuración estándar
+            'XRPUSDT': 24,  # ✅ MODELO REENTRENADO con configuración estándar
+            'DOTUSDT': 24   # ✅ AGREGADO: Modelo híbrido ATR
         }
 
         self.n_features = 66
@@ -127,7 +131,18 @@ class TCNDefinitivoPredictor:
         self.models_loading.add(symbol)
 
         try:
-            model_dir = f"models/definitivo_{symbol.lower()}"
+            # 🎯 ACTUALIZADO: Buscar modelos con formato balanceado primero
+            model_dir_new = f"models/definitivo_5m_{symbol.lower()}"  # Formato nuevo balanceado
+            model_dir_old = f"models/definitivo_{symbol.lower()}"    # Formato antiguo fallback
+            
+            # Priorizar modelo nuevo balanceado
+            if os.path.exists(model_dir_new):
+                model_dir = model_dir_new
+                logger.info(f"  📊 Usando modelo BALANCEADO: {model_dir}")
+            else:
+                model_dir = model_dir_old
+                logger.info(f"  ⚠️ Usando modelo ANTIGUO: {model_dir}")
+                
             model_path = os.path.join(model_dir, "best_model.h5")
             scaler_path = os.path.join(model_dir, "scaler.pkl")
 
@@ -447,14 +462,28 @@ class TCNDefinitivoPredictor:
             confidence = hold_prob
             predicted_return = 0.0
 
-            # Aplicar thresholds agresivos
+            # 🎯 LÓGICA BALANCEADA - Compatible con entrenamiento percentil
+            # Reducir thresholds para ser más activo (menos holdero)
+            min_confidence = 0.35  # Reducido de 0.4 para más señales
+            
             if buy_prob > max(sell_prob, hold_prob):
-                if buy_prob >= 0.4:  # Threshold mínimo de confianza
+                if buy_prob >= min_confidence:
                     action = 'BUY'
                     confidence = buy_prob
                     predicted_return = self.thresholds[symbol]['buy']
             elif sell_prob > max(buy_prob, hold_prob):
-                if sell_prob >= 0.4:  # Threshold mínimo de confianza
+                if sell_prob >= min_confidence:
+                    action = 'SELL'
+                    confidence = sell_prob
+                    predicted_return = self.thresholds[symbol]['sell']
+            # 🎯 NUEVO: Si las probabilidades están muy cerca, usar diferencia mínima
+            elif abs(buy_prob - sell_prob) < 0.1 and max(buy_prob, sell_prob) >= 0.3:
+                # Empate técnico - usar el de mayor probabilidad aunque sea marginal
+                if buy_prob > sell_prob:
+                    action = 'BUY'
+                    confidence = buy_prob
+                    predicted_return = self.thresholds[symbol]['buy']
+                else:
                     action = 'SELL'
                     confidence = sell_prob
                     predicted_return = self.thresholds[symbol]['sell']

@@ -170,4 +170,4 @@ El sistema de penalidad bearish ha sido completamente modernizado con:
 - **Adaptación temporal** para mercados bearish prolongados
 - **Favorecimiento de ventas** en mercados hostiles
 
-Estas mejoras deberían resultar en un sistema más robusto, adaptable y efectivo para la gestión de riesgo en mercados bajistas. 
+Estas mejoras deberían resultar en un sistema más robusto, adaptable y efectivo para la gestión de riesgo en mercados bajistas.

@@ -33,7 +33,7 @@ class ImprovedTCNTrainer:
 
         # ✅ Configuración CONSERVADORA (para evitar pérdidas)
         self.use_adaptive_thresholds = True
-        
+
         # 🛡️ THRESHOLDS MÁS CONSERVADORES (para evitar trades arriesgados)
         self.fixed_thresholds = {
             'BTCUSDT': {
@@ -58,37 +58,37 @@ class ImprovedTCNTrainer:
         """⚖️ Thresholds adaptativos BALANCEADOS"""
         if not self.use_adaptive_thresholds:
             return self.fixed_thresholds[symbol]
-        
+
         try:
             high_prices = df['high'].values.astype(float)
             low_prices = df['low'].values.astype(float)
             close_prices = df['close'].values.astype(float)
-            
+
             # ATR de 14 períodos
             atr_14 = talib.ATR(high_prices, low_prices, close_prices, timeperiod=14)
-            
+
             # Promedio de ATR reciente
             avg_atr = np.nanmean(atr_14[-50:]) if len(atr_14) > 50 else np.nanmean(atr_14)
             avg_price = np.mean(close_prices[-50:]) if len(close_prices) > 50 else np.mean(close_prices)
-            
+
             # ATR como porcentaje del precio
             atr_percent = (avg_atr / avg_price) if avg_price > 0 else 0.02
-            
+
             # ⚖️ FACTOR BALANCEADO (ni muy agresivo ni muy conservador)
             base_threshold = atr_percent * 0.5  # Punto medio entre 0.3 y 0.8
-            
+
             adaptive_thresholds = {
                 'strong_sell': -base_threshold * 1.5,  # Balanceado
                 'weak_sell': -base_threshold * 0.8,
                 'weak_buy': base_threshold * 0.8,
                 'strong_buy': base_threshold * 1.5
             }
-            
+
             print(f"⚖️ {symbol}: ATR adaptativo {atr_percent:.4f} ({atr_percent*100:.2f}%) - BALANCEADO")
             print(f"   📊 Thresholds BALANCEADOS: Buy {adaptive_thresholds['strong_buy']:.4f}, Sell {adaptive_thresholds['strong_sell']:.4f}")
-            
+
             return adaptive_thresholds
-            
+
         except Exception as e:
             print(f"⚠️ Error calculando thresholds: {e}")
             return self.fixed_thresholds[symbol]
@@ -100,7 +100,7 @@ class ImprovedTCNTrainer:
 
         close_prices = df['close'].values
         thresholds = self.calculate_adaptive_thresholds(df, symbol)
-        
+
         labels = []
 
         for i in range(len(close_prices) - self.prediction_horizon):
@@ -108,7 +108,7 @@ class ImprovedTCNTrainer:
             future_price = close_prices[i + self.prediction_horizon]
             future_return = (future_price - current_price) / current_price
 
-            # ⚖️ LÓGICA BALANCEADA 
+            # ⚖️ LÓGICA BALANCEADA
             if future_return <= thresholds['strong_sell']:
                 label = 0  # SELL
             elif future_return <= thresholds['weak_sell']:
@@ -161,11 +161,11 @@ class ImprovedTCNTrainer:
             count = label_counts.get(i, 0) or 0
             pct = (count / total * 100) if total > 0 else 0
             print(f"   - {name}: {count} ({pct:.1f}%)")
-            
+
         # Verificar balance óptimo
         hold_count = label_counts.get(1, 0) or 0
         hold_pct = (hold_count / total * 100) if total > 0 else 0
-        
+
         if hold_pct > 60:
             print("⚠️ Puede ser muy conservador (HOLD > 60%)")
         elif hold_pct < 35:
@@ -263,54 +263,54 @@ class ImprovedTCNTrainer:
 
     def create_improved_tcn_model(self, input_shape: tuple):
         """🎯 Modelo TCN V3 MEJORADO con mejor regularización"""
-        
+
         print("🎯 Creando modelo TCN V3 MEJORADO...")
 
         model = tf.keras.Sequential([
             tf.keras.layers.Input(shape=input_shape),
-            
+
             # Normalización inicial
             tf.keras.layers.LayerNormalization(),
-            
+
             # Bloques TCN optimizados - ARQUITECTURA PIRAMIDAL BALANCEADA
             tf.keras.layers.Conv1D(filters=64, kernel_size=3, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.SpatialDropout1D(0.1),  # Mejor para secuencias
-            
+
             tf.keras.layers.Conv1D(filters=128, kernel_size=3, dilation_rate=2, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.SpatialDropout1D(0.15),
-            
+
             tf.keras.layers.Conv1D(filters=256, kernel_size=3, dilation_rate=4, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.SpatialDropout1D(0.2),
-            
+
             tf.keras.layers.Conv1D(filters=128, kernel_size=3, dilation_rate=8, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.SpatialDropout1D(0.25),
-            
+
             tf.keras.layers.Conv1D(filters=64, kernel_size=3, dilation_rate=16, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.SpatialDropout1D(0.3),
-            
+
             # Global pooling
             tf.keras.layers.GlobalAveragePooling1D(),
-            
+
             # Capas densas más conservadoras con regularización L2
-            tf.keras.layers.Dense(256, activation='relu', 
+            tf.keras.layers.Dense(256, activation='relu',
                                  kernel_regularizer=tf.keras.regularizers.l2(0.001)),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.Dropout(0.4),
-            
+
             tf.keras.layers.Dense(128, activation='relu',
                                  kernel_regularizer=tf.keras.regularizers.l2(0.001)),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.Dropout(0.3),
-            
+
             tf.keras.layers.Dense(64, activation='relu',
                                  kernel_regularizer=tf.keras.regularizers.l2(0.001)),
             tf.keras.layers.Dropout(0.2),
-            
+
             tf.keras.layers.Dense(3, activation='softmax')
         ])
 
@@ -331,30 +331,30 @@ class ImprovedTCNTrainer:
 
     def analyze_training_stability(self, history):
         """📊 Analiza la estabilidad del entrenamiento"""
-        
+
         val_acc = history.history['val_accuracy']
         val_loss = history.history['val_loss']
-        
+
         # Calcular volatilidad de últimas 10 epochs
         if len(val_acc) >= 10:
             recent_acc_std = np.std(val_acc[-10:])
             recent_loss_std = np.std(val_loss[-10:])
-            
+
             print(f"📊 Estabilidad últimas 10 epochs:")
             print(f"   Val_accuracy std: {recent_acc_std:.4f}")
             print(f"   Val_loss std: {recent_loss_std:.4f}")
-            
+
             # Criterios de estabilidad
             stable_acc = recent_acc_std < 0.02  # 2% variación
             stable_loss = recent_loss_std < 0.1
-            
+
             if stable_acc and stable_loss:
                 print("✅ Entrenamiento estable")
             else:
                 print("⚠️ Entrenamiento inestable - considerar ajustes")
-                
+
             return stable_acc and stable_loss
-        
+
         return True
 
     async def train_improved_model(self, symbol: str) -> bool:
@@ -402,7 +402,7 @@ class ImprovedTCNTrainer:
                     restore_best_weights=True,
                     verbose=1
                 ),
-                
+
                 # ReduceLROnPlateau más sensible
                 tf.keras.callbacks.ReduceLROnPlateau(
                     monitor='val_loss',
@@ -411,7 +411,7 @@ class ImprovedTCNTrainer:
                     min_lr=1e-6,
                     verbose=1
                 ),
-                
+
                 # Model checkpoint
                 tf.keras.callbacks.ModelCheckpoint(
                     filepath=f'{model_dir}/best_model.h5',
@@ -419,7 +419,7 @@ class ImprovedTCNTrainer:
                     save_best_only=True,
                     verbose=1
                 ),
-                
+
                 # Opcional: TerminateOnNaN
                 tf.keras.callbacks.TerminateOnNaN()
             ]
@@ -454,10 +454,10 @@ class ImprovedTCNTrainer:
 
             # 9. Guardar todo
             model.save(f'{model_dir}/model.h5')
-            
+
             with open(f'{model_dir}/scaler.pkl', 'wb') as f:
                 pickle.dump(scaler, f)
-                
+
             with open(f'{model_dir}/feature_columns.pkl', 'wb') as f:
                 pickle.dump(feature_columns, f)
 
@@ -475,7 +475,7 @@ class ImprovedTCNTrainer:
                 'training_epochs': len(history.history['val_accuracy']),
                 'best_epoch': np.argmax(history.history['val_accuracy']) + 1
             }
-            
+
             with open(f'{model_dir}/stability_metrics.pkl', 'wb') as f:
                 pickle.dump(stability_metrics, f)
 
@@ -492,22 +492,22 @@ class ImprovedTCNTrainer:
 
 async def main():
     """🎯 Entrenar modelo V3 mejorado"""
-    
+
     print("🎯 ENTRENADOR TCN V3 MEJORADO")
     print("=" * 70)
-    
+
     trainer = ImprovedTCNTrainer()
-    
+
     # Solo BTC primero para probar
     symbol = "BTCUSDT"
     print(f"\n🚀 Entrenando {symbol} con arquitectura V3 mejorada...")
-    
+
     success = await trainer.train_improved_model(symbol)
-    
+
     if success:
         print(f"\n✅ {symbol}: ENTRENAMIENTO V3 EXITOSO")
     else:
         print(f"\n❌ {symbol}: ERROR EN ENTRENAMIENTO V3")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())

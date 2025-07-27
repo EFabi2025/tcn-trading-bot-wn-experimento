@@ -60,7 +60,7 @@ models/
 ### **Símbolos Soportados**
 
 - ✅ BTCUSDT
-- ✅ ETHUSDT  
+- ✅ ETHUSDT
 - ✅ BNBUSDT
 - ✅ XRPUSDT
 
@@ -132,18 +132,18 @@ from tcn_ensemble_predictor import TCNEnsemblePredictor
 async def trading_analysis():
     # Crear predictor
     predictor = TCNEnsemblePredictor()
-    
+
     # Cargar modelos
     if not predictor.load_ensemble_models():
         print("Error: No se pudieron cargar los modelos")
         return
-    
+
     # Analizar mercado completo
     results = await predictor.predict_all_symbols('weighted_average')
-    
+
     # Filtrar señales de alta confianza
     high_confidence_signals = []
-    
+
     for symbol, result in results.items():
         if result['ensemble_confidence'] > 0.75:
             high_confidence_signals.append({
@@ -151,7 +151,7 @@ async def trading_analysis():
                 'signal': result['ensemble_signal'],
                 'confidence': result['ensemble_confidence']
             })
-    
+
     # Mostrar señales de alta confianza
     print("🎯 SEÑALES DE ALTA CONFIANZA:")
     for signal in high_confidence_signals:
@@ -262,7 +262,7 @@ asyncio.run(trading_analysis())
    ```python
    # En lugar de usar un solo predictor
    from tcn_ensemble_predictor import TCNEnsemblePredictor
-   
+
    self.predictor = TCNEnsemblePredictor()
    self.predictor.load_ensemble_models()
    ```
@@ -278,7 +278,7 @@ asyncio.run(trading_analysis())
    ```python
    async def generate_signals(self):
        results = await self.predictor.predict_all_symbols('confidence_based')
-       
+
        for symbol, result in results.items():
            if result['ensemble_confidence'] > MIN_ENSEMBLE_CONFIDENCE:
                # Ejecutar lógica de trading
@@ -343,4 +343,4 @@ La implementación modular permite fácil integración en sistemas existentes y 
 
 ---
 
-**🎯 ¡Sistema listo para producción!** 🚀 
+**🎯 ¡Sistema listo para producción!** 🚀

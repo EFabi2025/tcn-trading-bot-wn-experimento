@@ -18,6 +18,9 @@ Esta carpeta contiene toda la documentación del proyecto Trading Bot organizada
 ### 🔒 **Seguridad**
 - [`SECURITY_GUIDE.md`](./SECURITY_GUIDE.md) - Guía de seguridad
 
+### 🛡️ **Gestión de Riesgo**
+- [`LOSS_PROTECTION_SYSTEM.md`](./LOSS_PROTECTION_SYSTEM.md) - ⭐ **Sistema de Protección Post-Pérdidas**
+
 ### 🪟 **Windows**
 - [`README_WINDOWS.md`](./README_WINDOWS.md) - Instrucciones para Windows
 - [`WINDOWS_DEPLOYMENT_GUIDE.md`](./WINDOWS_DEPLOYMENT_GUIDE.md) - Guía de despliegue en Windows
@@ -87,8 +90,9 @@ Esta carpeta contiene toda la documentación del proyecto Trading Bot organizada
 
 ### Para Desarrolladores:
 1. [`TCN_PROFESSIONAL_IMPLEMENTATION.md`](./TCN_PROFESSIONAL_IMPLEMENTATION.md) - Implementación TCN
-2. [`TRADING_MANAGER_ROADMAP.md`](./TRADING_MANAGER_ROADMAP.md) - Roadmap técnico
-3. [`README_SIGNAL_ANALYSIS.md`](./README_SIGNAL_ANALYSIS.md) - Análisis de señales
+2. [`LOSS_PROTECTION_SYSTEM.md`](./LOSS_PROTECTION_SYSTEM.md) - Sistema de protección post-pérdidas
+3. [`TRADING_MANAGER_ROADMAP.md`](./TRADING_MANAGER_ROADMAP.md) - Roadmap técnico
+4. [`README_SIGNAL_ANALYSIS.md`](./README_SIGNAL_ANALYSIS.md) - Análisis de señales
 
 ### Para Troubleshooting:
 1. [`MARKET_REGIME_DETECTION_FIX.md`](./MARKET_REGIME_DETECTION_FIX.md) - Problemas de detección

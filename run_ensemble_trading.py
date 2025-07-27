@@ -23,7 +23,7 @@ class EnsembleTradingDemo:
 
     async def step1_train_ensemble_models(self):
         """🚀 Paso 1: Entrenar modelos de ensamble"""
-        
+
         print("\n" + "=" * 80)
         print("🚀 PASO 1: ENTRENAMIENTO DE MODELOS DE ENSAMBLE")
         print("=" * 80)
@@ -37,7 +37,7 @@ class EnsembleTradingDemo:
             print(f"\n📦 Modelos existentes encontrados:")
             for symbol, timeframes in existing_models.items():
                 print(f"   - {symbol}: {timeframes}")
-            
+
             retrain = input("\n🤔 ¿Reentrenar modelos existentes? (y/n): ").lower().strip()
             if retrain != 'y':
                 print("⏭️ Saltando al entrenamiento...")
@@ -46,17 +46,17 @@ class EnsembleTradingDemo:
         # Seleccionar símbolos para entrenar
         print(f"\n📊 Símbolos disponibles: {self.trainer.pairs}")
         train_symbol = input("🎯 Entrenar todos los símbolos? (y) o seleccionar uno (símbolo): ").upper().strip()
-        
+
         if train_symbol == 'Y':
             # Entrenar todos los símbolos
             print("\n🚀 Entrenando modelos de ensamble para todos los símbolos...")
             results = {}
-            
+
             for symbol in self.trainer.pairs:
                 print(f"\n{'='*20} ENTRENANDO {symbol} {'='*20}")
                 success = await self.trainer.train_ensemble_models(symbol)
                 results[symbol] = success
-                
+
                 if success:
                     print(f"✅ {symbol}: Ensamble completado exitosamente")
                 else:
@@ -79,7 +79,7 @@ class EnsembleTradingDemo:
             # Entrenar solo un símbolo
             print(f"\n🚀 Entrenando ensamble para {train_symbol}...")
             success = await self.trainer.train_ensemble_models(train_symbol)
-            
+
             if success:
                 print(f"✅ {train_symbol}: Ensamble completado exitosamente")
                 return True
@@ -93,22 +93,22 @@ class EnsembleTradingDemo:
     def check_existing_models(self):
         """📦 Verificar modelos existentes"""
         existing = {}
-        
+
         for symbol in self.trainer.pairs:
             symbol_models = []
             for timeframe in ['1m', '5m']:
                 model_dir = f'models/ensemble_{timeframe}_{symbol.lower()}'
                 if os.path.exists(model_dir) and os.path.exists(f'{model_dir}/best_model.h5'):
                     symbol_models.append(timeframe)
-            
+
             if symbol_models:
                 existing[symbol] = symbol_models
-        
+
         return existing
 
     async def step2_test_ensemble_predictions(self):
         """🔮 Paso 2: Probar predicciones de ensamble"""
-        
+
         print("\n" + "=" * 80)
         print("🔮 PASO 2: PRUEBA DE PREDICCIONES DE ENSAMBLE")
         print("=" * 80)
@@ -126,27 +126,27 @@ class EnsembleTradingDemo:
 
         # Probar con un símbolo
         test_symbol = input("\n🎯 Símbolo para prueba (BTCUSDT): ").upper().strip() or "BTCUSDT"
-        
+
         if test_symbol not in self.predictor.symbols:
             print(f"❌ Símbolo no válido: {test_symbol}")
             return False
 
         print(f"\n🔮 Probando predicciones ensemble para {test_symbol}...")
-        
+
         # Probar los tres métodos
         methods = ['weighted_average', 'confidence_based', 'consensus']
-        
+
         for i, method in enumerate(methods, 1):
             print(f"\n{'-'*20} MÉTODO {i}: {method.upper()} {'-'*20}")
-            
+
             try:
                 result = await self.predictor.predict_ensemble(test_symbol, method)
-                
+
                 if result:
                     print(f"✅ Señal: {result['ensemble_signal']}")
                     print(f"✅ Confianza: {result['ensemble_confidence']:.3f}")
                     print(f"✅ Método usado: {result['combination_method']}")
-                    
+
                     # Mostrar predicciones individuales
                     if 'individual_predictions' in result:
                         print("📊 Predicciones individuales:")
@@ -158,7 +158,7 @@ class EnsembleTradingDemo:
                             print(f"   - {timeframe}: {signal} ({confidence:.3f})")
                 else:
                     print(f"❌ Error en predicción con método {method}")
-                    
+
             except Exception as e:
                 print(f"❌ Error: {e}")
 
@@ -166,7 +166,7 @@ class EnsembleTradingDemo:
 
     async def step3_full_market_analysis(self):
         """📈 Paso 3: Análisis completo del mercado"""
-        
+
         print("\n" + "=" * 80)
         print("📈 PASO 3: ANÁLISIS COMPLETO DEL MERCADO")
         print("=" * 80)
@@ -182,14 +182,14 @@ class EnsembleTradingDemo:
         print("   1. weighted_average (recomendado)")
         print("   2. confidence_based")
         print("   3. consensus")
-        
+
         method_choice = input("Método (1-3): ").strip() or "1"
         method_map = {
             "1": "weighted_average",
-            "2": "confidence_based", 
+            "2": "confidence_based",
             "3": "consensus"
         }
-        
+
         selected_method = method_map.get(method_choice, "weighted_average")
         print(f"🔄 Usando método: {selected_method}")
 
@@ -212,7 +212,7 @@ class EnsembleTradingDemo:
             for symbol, result in results.items():
                 signal = result['ensemble_signal']
                 confidence = result['ensemble_confidence']
-                
+
                 if signal == 'BUY':
                     buy_signals.append((symbol, confidence))
                 elif signal == 'SELL':
@@ -265,25 +265,25 @@ class EnsembleTradingDemo:
 
     async def run_full_demo(self):
         """🎯 Ejecutar demo completo"""
-        
+
         print("🎯 SISTEMA DE ENSAMBLE TCN - DEMO COMPLETO")
         print("=" * 80)
         print("🔄 Este demo te guiará a través del sistema completo:")
         print("   1. Entrenamiento de modelos de ensamble (1m + 5m)")
-        print("   2. Prueba de predicciones individuales") 
+        print("   2. Prueba de predicciones individuales")
         print("   3. Análisis completo del mercado")
         print("=" * 80)
 
         # Verificar si saltar pasos
         skip_training = input("\n🤔 ¿Saltar entrenamiento si ya hay modelos? (y/n): ").lower().strip() == 'y'
-        
+
         # Paso 1: Entrenamiento
         if skip_training and self.check_existing_models():
             print("⏭️ Saltando entrenamiento - usando modelos existentes")
             step1_success = True
         else:
             step1_success = await self.step1_train_ensemble_models()
-        
+
         if not step1_success:
             print("❌ Error en el entrenamiento. Terminando demo.")
             return
@@ -291,10 +291,10 @@ class EnsembleTradingDemo:
         # Paso 2: Pruebas
         print("\n" + "⏯️ Continuando con pruebas...")
         step2_success = await self.step2_test_ensemble_predictions()
-        
+
         if not step2_success:
             print("❌ Error en las pruebas. Saltando análisis completo.")
-        
+
         # Paso 3: Análisis completo
         print("\n" + "⏯️ Continuando con análisis completo...")
         step3_success = await self.step3_full_market_analysis()
@@ -306,12 +306,12 @@ class EnsembleTradingDemo:
         print(f"   ✅ Paso 1 - Entrenamiento: {'OK' if step1_success else 'FALLO'}")
         print(f"   ✅ Paso 2 - Pruebas: {'OK' if step2_success else 'FALLO'}")
         print(f"   ✅ Paso 3 - Análisis: {'OK' if step3_success else 'FALLO'}")
-        
+
         if step1_success and step2_success and step3_success:
             print("\n🎉 ¡DEMO EXITOSO! El sistema de ensamble está listo para usar.")
             print("\n💡 Próximos pasos:")
             print("   - Integrar el predictor de ensamble en tu trading manager")
-            print("   - Configurar alertas basadas en señales del ensamble") 
+            print("   - Configurar alertas basadas en señales del ensamble")
             print("   - Monitorear el rendimiento en tiempo real")
         else:
             print("\n⚠️ Demo parcialmente exitoso. Revisa los errores arriba.")
@@ -319,11 +319,11 @@ class EnsembleTradingDemo:
 
 async def main():
     """🚀 Función principal"""
-    
+
     try:
         demo = EnsembleTradingDemo()
         await demo.run_full_demo()
-        
+
     except KeyboardInterrupt:
         print("\n\n⏹️ Demo interrumpido por el usuario")
     except Exception as e:
@@ -345,6 +345,6 @@ if __name__ == "__main__":
         print(f"❌ Falta dependencia: {e}")
         print("💡 Instala las dependencias con: pip install -r requirements.txt")
         sys.exit(1)
-    
+
     # Ejecutar demo
-    asyncio.run(main()) 
+    asyncio.run(main())

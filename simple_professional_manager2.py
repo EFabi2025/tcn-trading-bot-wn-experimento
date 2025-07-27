@@ -861,25 +861,25 @@ class SimpleProfessionalTradingManager:
                                     # ✅ CORRECCIÓN: Usar confianza final después de filtros
                                     # Obtener la confianza final del procesamiento de señales
                                     final_confidence = ensemble_result.get('ensemble_confidence', 0) * 100
-                                    
+
                                     # Obtener el precio actual para este símbolo
                                     symbol_price = current_prices.get(symbol, 0)
-                                    
+
                                     # Aplicar los mismos filtros que se aplican en el procesamiento
                                     filtered_signal, filter_reason = self._apply_signal_stability_filter(
                                         symbol, signal, final_confidence, symbol_price, market_context
                                     )
-                                    
+
                                     if filtered_signal != signal:
                                         final_confidence = min(final_confidence, 65.0)  # Ajustar confianza si se cambia a HOLD
-                                    
+
                                     filtered_signal, context_reason = self._apply_market_context_filter(
                                         filtered_signal, final_confidence, market_context, symbol
                                     )
-                                    
+
                                     # Usar la confianza final después de todos los filtros
                                     final_confidence_display = final_confidence / 100  # Convertir a decimal para formato
-                                    
+
                                     # Formato de confianza con color (basado en la confianza final)
                                     conf_status = "🔥" if final_confidence_display >= 0.80 else "✅" if final_confidence_display >= 0.70 else "⚠️"
 
@@ -944,19 +944,19 @@ class SimpleProfessionalTradingManager:
                                 # ✅ CORRECCIÓN: Aplicar filtros para mostrar confianza final
                                 # Obtener el precio actual para este símbolo
                                 symbol_price = current_prices.get(symbol, 0)
-                                
+
                                 # Aplicar los mismos filtros que se aplican en el procesamiento legacy
                                 filtered_signal, filter_reason = self._apply_signal_stability_filter(
                                     symbol, signal, confidence, symbol_price, market_context
                                 )
-                                
+
                                 if filtered_signal != signal:
                                     confidence = min(confidence, 65.0)  # Ajustar confianza si se cambia a HOLD
-                                
+
                                 filtered_signal, context_reason = self._apply_market_context_filter(
                                     filtered_signal, confidence, market_context, symbol
                                 )
-                                
+
                                 # Formato de confianza con color (basado en la confianza final)
                                 conf_status = "🔥" if confidence >= 0.80 else "✅" if confidence >= 0.70 else "⚠️"
 
@@ -1807,7 +1807,7 @@ class SimpleProfessionalTradingManager:
                     # 🎯 TOLERANCIA PARA CASOS EDGE: Si está muy cerca del umbral, permitir
                     tolerance = 1.0  # 1% de tolerancia
                     effective_threshold = required_confidence - tolerance
-                    
+
                     if confidence >= effective_threshold:
                         if confidence >= required_confidence:
                             filter_reason = f"{symbol.replace('USDT', '')} permitido en BEARISH por alta confianza ({confidence:.1f}% > {required_confidence}%)"
@@ -1842,7 +1842,7 @@ class SimpleProfessionalTradingManager:
                     # 🎯 TOLERANCIA PARA CASOS EDGE
                     tolerance = 1.0  # 1% de tolerancia
                     effective_threshold = min_buy_confidence - tolerance
-                    
+
                     if confidence < effective_threshold:
                         signal = 'HOLD'
                         filter_reason = f"BUY en BULLISH requiere >{effective_threshold}% confianza"
@@ -1892,7 +1892,7 @@ class SimpleProfessionalTradingManager:
                     # 🎯 TOLERANCIA PARA CASOS EDGE
                     tolerance = 1.0  # 1% de tolerancia
                     effective_vol_threshold = required_vol_confidence - tolerance
-                    
+
                     if confidence < effective_vol_threshold:
                         signal = 'HOLD'
                         filter_reason = f"Alta volatilidad ({vol_adjustment}) - {symbol} BUY requiere >{effective_vol_threshold}% confianza"

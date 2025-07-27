@@ -16,7 +16,7 @@ El sistema analiza múltiples indicadores por cada par (BTC, ETH, BNB, XRP):
 #### Umbrales BEARISH (Corregidos - Más Sensibles):
 ```python
 # Momentum 4h: < -1% (era -2%)
-# Momentum 12h: < -2.5% (era -5%) 
+# Momentum 12h: < -2.5% (era -5%)
 # Momentum 24h: < -3% (NUEVO - CRÍTICO)
 # Tendencia 2d: < -4% (PESO EXTRA: +5 puntos)
 ```
@@ -33,11 +33,11 @@ if regime == 'BEARISH' and market_confidence > 0.7:
     if signal == 'BUY':
         required_confidence = {
             'BTCUSDT': 90,   # BTC líder - umbral moderado
-            'ETHUSDT': 90,   # ETH principal altcoin  
+            'ETHUSDT': 90,   # ETH principal altcoin
             'BNBUSDT': 90,   # BNB exchange token
             'XRPUSDT': 90    # XRP altcoin establecida
         }.get(symbol, 85)  # Otros: 85%
-        
+
         if confidence >= required_confidence:
             # PERMITIR compra
         else:
@@ -62,7 +62,7 @@ if volatility == 'HIGH' and fear_factor > 0.8:
     if regime != 'BULLISH':  # NO es bullish extremo
         volatility_thresholds = {
             'BTCUSDT': 73,   # BTC: requiere 73% confianza
-            'ETHUSDT': 73,   # ETH: requiere 73% confianza  
+            'ETHUSDT': 73,   # ETH: requiere 73% confianza
             'BNBUSDT': 73,   # BNB: requiere 73% confianza
             'XRPUSDT': 73    # XRP: requiere 73% confianza
         }
@@ -101,11 +101,11 @@ if regime == 'BEARISH':
     if market_confidence > 0.9:  # BEARISH MUY FUERTE
         buy_thresholds = {'BTCUSDT': 95, 'ETHUSDT': 98, 'BNBUSDT': 98, 'XRPUSDT': 98}
         sell_threshold = 60  # FAVORECER ventas
-    elif market_confidence > 0.7:  # BEARISH MODERADO  
+    elif market_confidence > 0.7:  # BEARISH MODERADO
         buy_thresholds = {'BTCUSDT': 85, 'ETHUSDT': 90, 'BNBUSDT': 90, 'XRPUSDT': 90}
         sell_threshold = 65
     else:  # BEARISH LEVE
-        buy_thresholds = {'BTCUSDT': 80, 'ETHUSDT': 85, 'BNBUSDT': 85, 'XRPUSDT': 85}  
+        buy_thresholds = {'BTCUSDT': 80, 'ETHUSDT': 85, 'BNBUSDT': 85, 'XRPUSDT': 85}
         sell_threshold = 70
 ```
 
@@ -127,7 +127,7 @@ if bearish_duration_hours > 48:
 
 ### Indicadores a Monitorear:
 - **Trades Bloqueados**: % de señales convertidas a HOLD en BEARISH
-- **Win Rate BEARISH**: Efectividad de trades ejecutados en mercado bajista  
+- **Win Rate BEARISH**: Efectividad de trades ejecutados en mercado bajista
 - **Drawdown Protection**: Reducción de pérdidas vs sin filtros
 - **Oportunidades Perdidas**: Señales rentables bloqueadas
 
@@ -144,7 +144,7 @@ BEARISH_MODERATE_ALT_THRESHOLD=90
 # Favorecer ventas en BEARISH
 BEARISH_SELL_THRESHOLD=60
 
-# Duración para relaxar filtros  
+# Duración para relaxar filtros
 BEARISH_RELAX_AFTER_HOURS=48
 ```
 

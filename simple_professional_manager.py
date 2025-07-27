@@ -101,10 +101,10 @@ class SimpleProfessionalTradingManager:
         }
 
         # Configuración de símbolos y gestores
-        self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT']
+        self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'DOTUSDT']  # ✅ AGREGADO: DOTUSDT
 
-        # ⚠️ PARES PENDIENTES (sin modelos): ["ADAUSDT", "DOTUSDT", "SOLUSDT"]
-        self.excluded_symbols = ["ADAUSDT", "DOTUSDT", "SOLUSDT"]
+        # ⚠️ PARES PENDIENTES (sin modelos): ["ADAUSDT", "SOLUSDT"]
+        self.excluded_symbols = ["ADAUSDT", "SOLUSDT"]  # ✅ REMOVIDO: DOTUSDT
 
         print(f"📊 Pares activos: {self.symbols}")
         print(f"⏸️ Pares excluidos (sin modelos): {self.excluded_symbols}")

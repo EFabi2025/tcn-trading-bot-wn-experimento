@@ -33,7 +33,7 @@ class OptimizedTCNTrainer:
 
         # ✅ Configuración optimizada
         self.use_adaptive_thresholds = True
-        
+
         # 🎯 THRESHOLDS MÁS AGRESIVOS (menos conservadores)
         self.fixed_thresholds = {
             'BTCUSDT': {
@@ -58,37 +58,37 @@ class OptimizedTCNTrainer:
         """🎯 Thresholds adaptativos MENOS CONSERVADORES"""
         if not self.use_adaptive_thresholds:
             return self.fixed_thresholds[symbol]
-        
+
         try:
             high_prices = df['high'].values.astype(float)
             low_prices = df['low'].values.astype(float)
             close_prices = df['close'].values.astype(float)
-            
+
             # ATR de 14 períodos
             atr_14 = talib.ATR(high_prices, low_prices, close_prices, timeperiod=14)
-            
+
             # Promedio de ATR reciente
             avg_atr = np.nanmean(atr_14[-50:]) if len(atr_14) > 50 else np.nanmean(atr_14)
             avg_price = np.mean(close_prices[-50:]) if len(close_prices) > 50 else np.mean(close_prices)
-            
+
             # ATR como porcentaje del precio
             atr_percent = (avg_atr / avg_price) if avg_price > 0 else 0.02
-            
+
             # 🚀 FACTOR MENOS CONSERVADOR (era 0.5, ahora 0.8)
             base_threshold = atr_percent * 0.8
-            
+
             adaptive_thresholds = {
                 'strong_sell': -base_threshold * 1.2,  # Menos restrictivo
                 'weak_sell': -base_threshold * 0.6,
                 'weak_buy': base_threshold * 0.6,
                 'strong_buy': base_threshold * 1.2
             }
-            
+
             print(f"🎯 {symbol}: ATR adaptativo {atr_percent:.4f} ({atr_percent*100:.2f}%)")
             print(f"   📊 Thresholds OPTIMIZADOS: Buy {adaptive_thresholds['strong_buy']:.4f}, Sell {adaptive_thresholds['strong_sell']:.4f}")
-            
+
             return adaptive_thresholds
-            
+
         except Exception as e:
             print(f"⚠️ Error calculando thresholds: {e}")
             return self.fixed_thresholds[symbol]
@@ -100,7 +100,7 @@ class OptimizedTCNTrainer:
 
         close_prices = df['close'].values
         thresholds = self.calculate_adaptive_thresholds(df, symbol)
-        
+
         labels = []
 
         for i in range(len(close_prices) - self.prediction_horizon):
@@ -252,51 +252,51 @@ class OptimizedTCNTrainer:
 
     def create_optimized_tcn_model(self, input_shape: tuple):
         """🎯 Modelo TCN OPTIMIZADO para mayor accuracy"""
-        
+
         print("🎯 Creando modelo TCN OPTIMIZADO...")
 
         model = tf.keras.Sequential([
             tf.keras.layers.Input(shape=input_shape),
-            
+
             # Normalización inicial
             tf.keras.layers.LayerNormalization(),
-            
+
             # Bloques TCN optimizados
             tf.keras.layers.Conv1D(filters=128, kernel_size=3, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.Dropout(0.1),  # Menos dropout
-            
+
             tf.keras.layers.Conv1D(filters=256, kernel_size=3, dilation_rate=2, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.Dropout(0.2),
-            
+
             tf.keras.layers.Conv1D(filters=512, kernel_size=3, dilation_rate=4, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.Dropout(0.2),
-            
+
             tf.keras.layers.Conv1D(filters=256, kernel_size=3, dilation_rate=8, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.Dropout(0.3),
-            
+
             tf.keras.layers.Conv1D(filters=128, kernel_size=3, dilation_rate=16, padding='causal', activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.Dropout(0.3),
-            
+
             # Global pooling y capas densas optimizadas
             tf.keras.layers.GlobalAveragePooling1D(),
             tf.keras.layers.Dropout(0.2),
-            
+
             tf.keras.layers.Dense(512, activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.Dropout(0.4),
-            
+
             tf.keras.layers.Dense(256, activation='relu'),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.Dropout(0.3),
-            
+
             tf.keras.layers.Dense(128, activation='relu'),
             tf.keras.layers.Dropout(0.2),
-            
+
             tf.keras.layers.Dense(3, activation='softmax')
         ])
 
@@ -375,10 +375,10 @@ class OptimizedTCNTrainer:
 
             # 8. Guardar
             model.save(f'{model_dir}/model.h5')
-            
+
             with open(f'{model_dir}/scaler.pkl', 'wb') as f:
                 pickle.dump(scaler, f)
-                
+
             with open(f'{model_dir}/feature_columns.pkl', 'wb') as f:
                 pickle.dump(feature_columns, f)
 
@@ -396,22 +396,22 @@ class OptimizedTCNTrainer:
 
 async def main():
     """🎯 Entrenar solo BTC optimizado"""
-    
+
     print("🎯 ENTRENADOR TCN V2 OPTIMIZADO")
     print("=" * 70)
-    
+
     trainer = OptimizedTCNTrainer()
-    
+
     # Solo BTC primero para probar
     symbol = "BTCUSDT"
     print(f"\n🚀 Entrenando {symbol} con parámetros optimizados...")
-    
+
     success = await trainer.train_optimized_model(symbol)
-    
+
     if success:
         print(f"\n✅ {symbol}: ENTRENAMIENTO OPTIMIZADO EXITOSO")
     else:
         print(f"\n❌ {symbol}: ERROR EN ENTRENAMIENTO")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())

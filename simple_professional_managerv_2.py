@@ -69,11 +69,6 @@ from binance.enums import *
 
 from config.trading_config import get_trading_config
 from loss_protection import LossProtectionManager
-from indicators.technical_indicators import TechnicalIndicators
-from ml.prediction_validator import PredictionValidator
-from ml.market_analysis import MarketAnalysis
-from strategies.position_sizing import PositionSizing
-
 import asyncio
 import hashlib
 import json
@@ -87,11 +82,11 @@ import numpy as np
 import pandas as pd
 from binance.exceptions import BinanceAPIException
 
-from config.api_config import get_api_config
+# from config.api_config import get_api_config  # No usado
 from config.trading_config import get_trading_config
 from loss_protection import LossProtectionManager
-from utils.binance_client import create_binance_client
-from utils.discord_webhook import send_discord_notification
+#from utils.binance_client import create_binance_client
+#from utils.discord_webhook import send_discord_notification
 
 load_dotenv()
 
@@ -141,6 +136,7 @@ class SimpleProfessionalTradingManager:
             'BTCUSDT': 5,  # BTC: 10 minutos
             'BNBUSDT': 5,  # BNB: 12 minutos
             'XRPUSDT': 5,  # XRP: 12 minutos
+            'DOTUSDT': 5,  # DOT: 12 minutos
         }
         self.eth_position_protection = {  # Protección específica para ETH
             'last_close_time': None,
@@ -155,39 +151,46 @@ class SimpleProfessionalTradingManager:
             'ETHUSDT': {
                 'required_consecutive_signals': 3,  # ETH requiere 3 señales consecutivas
                 'timeout_minutes': 30,  # 30 minutos entre señales para mantener tracking
-                'min_confidence_per_signal': 90.0,  # Mínima confianza por señal individual
-                'cumulative_confidence_threshold': 95.0,  # Confianza acumulada requerida
+                'min_confidence_per_signal': 78.0,  # ✅ CORREGIDO: Realista (era 90%)
+                'cumulative_confidence_threshold': 82.0,  # ✅ CORREGIDO: Alcanzable (era 95%)
                 'min_interval_between_signals_minutes': 8  # ✅ NUEVO: Mínimo 8min entre señales válidas
             },
             'BTCUSDT': {
                 'required_consecutive_signals': 2,  # BTC requiere 2 señales consecutivas
                 'timeout_minutes': 30,
-                'min_confidence_per_signal': 88.0,  # Mínima confianza por señal individual
-                'cumulative_confidence_threshold': 95.0,  # Confianza acumulada requerida
+                'min_confidence_per_signal': 75.0,  # ✅ CORREGIDO: Realista (era 88%)
+                'cumulative_confidence_threshold': 80.0,  # ✅ CORREGIDO: Alcanzable (era 95%)
                 'min_interval_between_signals_minutes': 10  # ✅ NUEVO: Mínimo 10min entre señales válidas
             },
             'BNBUSDT': {
                 'required_consecutive_signals': 2,  # BNB requiere 2 señales consecutivas
                 'timeout_minutes': 30,
-                'min_confidence_per_signal': 88.0,  # Mínima confianza por señal individual
-                'cumulative_confidence_threshold': 95.0,  # Confianza acumulada requerida
+                'min_confidence_per_signal': 75.0,  # ✅ CORREGIDO: Realista (era 88%)
+                'cumulative_confidence_threshold': 80.0,  # ✅ CORREGIDO: Alcanzable (era 95%)
                 'min_interval_between_signals_minutes': 10  # ✅ NUEVO: Mínimo 10min entre señales válidas
             },
             'XRPUSDT': {
                 'required_consecutive_signals': 2,  # XRP requiere 2 señales consecutivas
                 'timeout_minutes': 30,
-                'min_confidence_per_signal': 88.0,  # Mínima confianza por señal individual
-                'cumulative_confidence_threshold': 95.0,  # Confianza acumulada requerida
+                'min_confidence_per_signal': 75.0,  # ✅ CORREGIDO: Realista (era 88%)
+                'cumulative_confidence_threshold': 80.0,  # ✅ CORREGIDO: Alcanzable (era 95%)
+                'min_interval_between_signals_minutes': 10  # ✅ NUEVO: Mínimo 10min entre señales válidas
+            },
+            'DOTUSDT': {
+                'required_consecutive_signals': 2,  # DOT requiere 2 señales consecutivas
+                'timeout_minutes': 30,
+                'min_confidence_per_signal': 75.0,  # ✅ CORREGIDO: Realista (era 88%)
+                'cumulative_confidence_threshold': 80.0,  # ✅ CORREGIDO: Alcanzable (era 95%)
                 'min_interval_between_signals_minutes': 10  # ✅ NUEVO: Mínimo 10min entre señales válidas
             }
         }
 
         # Configuración de símbolos y gestores
-        # ✅ ACTUALIZADO: Solo pares con modelos TCN V2 entrenados
-        self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT']  # Solo símbolos con modelos disponibles
+        # ✅ ACTUALIZADO: Símbolos con modelos TCN entrenados disponibles
+        self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'DOTUSDT']  # ✅ AGREGADO: DOTUSDT
 
-        # ⚠️ PARES PENDIENTES (sin modelos): ["ADAUSDT", "DOTUSDT", "SOLUSDT"]
-        self.excluded_symbols = ["ADAUSDT", "DOTUSDT", "SOLUSDT"]
+        # ⚠️ PARES PENDIENTES (sin modelos): ["ADAUSDT", "SOLUSDT"]
+        self.excluded_symbols = ["ADAUSDT", "SOLUSDT"]  # ✅ REMOVIDO: DOTUSDT
 
         print(f"📊 Pares activos: {self.symbols}")
         print(f"⏸️ Pares excluidos (sin modelos): {self.excluded_symbols}")
@@ -281,23 +284,28 @@ class SimpleProfessionalTradingManager:
         self.loss_protection = LossProtectionManager()
 
     def _initialize_tcn_predictor(self):
-        """🧠 Inicializar predictor TCN REAL obligatorio"""
+        """🧠 Inicializar predictor TCN ENSEMBLE obligatorio"""
         try:
-            from tcn_adaptive_predictor_v2 import TCNAdaptivePredictorV2 as TCNAdaptativoPredictor
-            self.tcn_predictor = TCNAdaptativoPredictor()
-            print("🎯 Predictor TCN V2 ADAPTATIVO inicializado en constructor")
-            print("   📊 Símbolos soportados: 4 pares con modelos entrenados")
-            print("   🎯 Thresholds adaptativos: ACTIVADOS")
-            print("   🚀 Fallback automático: V2_OPTIMIZED → V2 → V1")
-            print(f"   📊 Modelos cargados: {len(self.tcn_predictor.models)}")
-            print(f"   🎯 Símbolos: {list(self.tcn_predictor.models.keys())}")
-            return True
+            from tcn_ensemble_predictor import TCNEnsemblePredictor
+            self.tcn_predictor = TCNEnsemblePredictor()
+            
+            # Cargar modelos definitivo_v3
+            if self.tcn_predictor.load_definitivo_v3_models():
+                model_info = self.tcn_predictor.get_model_info()
+                print("🎯 Predictor TCN ENSEMBLE V3 inicializado correctamente")
+                print(f"   📊 Modelos cargados: {model_info['loaded_models']}/{model_info['total_models']}")
+                print(f"   🎯 Símbolos soportados: {self.tcn_predictor.symbols}")
+                print("   🏗️ Usando modelos: definitivo_v3 (1m) + definitivo_v3_5m (5m)")
+                print("   ✅ DOTUSDT incluido en predicciones y notificaciones")
+                return True
+            else:
+                raise Exception("No se pudieron cargar los modelos definitivo_v3")
         except Exception as e:
-            print(f"❌ ERROR CRÍTICO: No se pudo inicializar TCN V2 adaptativo en constructor: {e}")
-            print("🚨 SISTEMA REQUIERE TCN V2 ADAPTATIVO - NO PUEDE CONTINUAR SIN ÉL")
+            print(f"❌ ERROR CRÍTICO: No se pudo inicializar TCN ENSEMBLE en constructor: {e}")
+            print("🚨 SISTEMA REQUIERE TCN ENSEMBLE - NO PUEDE CONTINUAR SIN ÉL")
             import traceback
             print(f"🔍 Traceback completo: {traceback.format_exc()}")
-            raise Exception(f"TCN V2 ADAPTATIVO requerido pero falló en constructor: {e}")
+            raise Exception(f"TCN ENSEMBLE requerido pero falló en constructor: {e}")
 
     def _load_config(self) -> BinanceConfig:
         """⚙️ Cargar configuración desde variables de entorno"""
@@ -668,6 +676,9 @@ class SimpleProfessionalTradingManager:
                 # ✅ NUEVO: Generar reporte TCN cada 3 minutos
                 await self._generate_tcn_report_if_needed()
 
+                # ✅ NUEVO: Limpiar tracking de reversión colgado (cada 5 minutos)
+                await self._cleanup_stale_reversal_tracking()
+
                 # ✅ MEJORADO: Mostrar información profesional en tiempo real
                 await self._display_professional_info()
 
@@ -835,15 +846,10 @@ class SimpleProfessionalTradingManager:
 🤖 **ESTADO DE MODELOS TCN**
 """
 
-            # ✅ CORREGIDO: Inicializar predictor TCN si no existe (igual que en _generate_tcn_signals)
-            if not hasattr(self, 'tcn_predictor'):
-                try:
-                    from tcn_definitivo_predictor import TCNDefinitivoPredictor
-                    self.tcn_predictor = TCNDefinitivoPredictor()
-                    print("🎯 Predictor TCN DEFINITIVO inicializado para reporte Discord")
-                except Exception as e:
-                    models_section += f"❌ **Error inicializando predictor**: {str(e)[:50]}...\n"
-                    return models_section
+            # ✅ USAR EL ENSEMBLE PREDICTOR YA CONFIGURADO
+            if not hasattr(self, 'tcn_predictor') or self.tcn_predictor is None:
+                models_section += f"❌ **Predictor TCN ENSEMBLE no inicializado**\n"
+                return models_section
 
             # Obtener precios actuales para las predicciones (reutilizar si ya los tenemos)
             current_prices = {}
@@ -896,22 +902,32 @@ class SimpleProfessionalTradingManager:
             except Exception as e:
                 models_section += f"⚠️ **Contexto de mercado**: Error al analizar ({str(e)[:30]}...)\n\n"
 
-            # Generar predicciones para cada símbolo
+            # ✅ GENERAR PREDICCIONES ENSEMBLE PARA REPORTE
+            try:
+                print("🔍 Generando predicciones ENSEMBLE para reporte Discord...")
+                all_predictions = await self.tcn_predictor.predict_all_symbols_v3()
+                
+                if not all_predictions:
+                    models_section += "❌ **No se pudieron generar predicciones ensemble**\n"
+                    return models_section
+                
+            except Exception as e:
+                models_section += f"❌ **Error generando predicciones**: {str(e)[:50]}...\n"
+                return models_section
+
+            # Procesar predicciones para cada símbolo
             for symbol in self.symbols:
                 try:
                     if symbol not in current_prices:
                         models_section += f"❌ **{symbol}**: Sin precio disponible\n"
                         continue
 
-                    # Obtener predicción del modelo
-                    prediction = None
-                    if hasattr(self.tcn_predictor, 'predict_symbol'):
-                        prediction = self.tcn_predictor.predict_symbol(symbol)
-
+                    # Obtener predicción ensemble
+                    prediction = all_predictions.get(symbol)
                     if prediction:
-                        signal = prediction['signal']
-                        confidence = prediction['confidence']
-                        probabilities = prediction.get('probabilities', {})
+                        signal = prediction['ensemble_signal']
+                        confidence = prediction['ensemble_confidence']
+                        probabilities = prediction['ensemble_probabilities']
 
                         # Emoji según la señal
                         signal_emoji = {
@@ -1230,30 +1246,38 @@ class SimpleProfessionalTradingManager:
             threshold = base_threshold
             print(f"🎯 UMBRAL ESTÁNDAR: {threshold:.1f}% - Mercado {market_context['regime']}")
 
-        # ✅ VERSIÓN HÍBRIDA: Combinar lógica actual con simplicidad de Gemini
+        # ✅ ENSEMBLE PREDICTOR: Usar predict_ensemble_v3 para todos los símbolos
+        try:
+            print(f"🔍 Generando predicciones ENSEMBLE para todos los símbolos...")
+            all_predictions = await self.tcn_predictor.predict_all_symbols_v3()
+            
+            if not all_predictions:
+                print("❌ No se pudieron generar predicciones ensemble")
+                return signals
+            
+            print(f"✅ Predicciones ensemble generadas para {len(all_predictions)} símbolos")
+            
+        except Exception as e:
+            print(f"❌ Error generando predicciones ensemble: {e}")
+            return signals
+
+        # ✅ PROCESAR PREDICCIONES ENSEMBLE: Una por una
         for symbol in self.symbols:
             current_price = prices.get(symbol)
             if not current_price:
                 continue
 
             try:
-                print(f"🔍 Analizando {symbol} con modelo TCN...")
+                print(f"🔍 Procesando {symbol} con predicción ENSEMBLE...")
 
-                # Generar predicción TCN
-                prediction = None
-                if self.tcn_predictor and hasattr(self.tcn_predictor, 'predict_symbol'):
-                    prediction = self.tcn_predictor.predict_symbol(symbol)
-                else:
-                    # Fallback - sin predicción
-                    print(f"  ❌ TCN predictor no disponible para {symbol}")
-                    continue
-
+                # Obtener predicción ensemble
+                prediction = all_predictions.get(symbol)
                 if not prediction:
-                    print(f"  ❌ No se pudo generar predicción para {symbol}")
+                    print(f"  ❌ No se pudo obtener predicción ensemble para {symbol}")
                     continue
 
-                signal = prediction['signal']
-                confidence_level = prediction['confidence'] * 100  # Convertir a porcentaje
+                signal = prediction['ensemble_signal']
+                confidence_level = prediction['ensemble_confidence'] * 100  # Convertir a porcentaje
 
                 # ✅ NUEVO: Aplicar filtros de estabilidad y cooldown
                 filtered_signal, filter_reason = self._apply_signal_stability_filter(
@@ -1476,7 +1500,7 @@ class SimpleProfessionalTradingManager:
 
             # Obtener datos históricos para análisis robusto
             market_data = {}
-            for symbol in ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT']:
+            for symbol in ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'DOTUSDT']:
                 try:
                     # Obtener datos de 5 minutos para análisis detallado
                     url = f"https://api.binance.com/api/v3/klines"
@@ -1601,36 +1625,36 @@ class SimpleProfessionalTradingManager:
             market_score = market_context.get('score', 0.0)
             fear_factor = market_context.get('market_fear_factor', 0.5)
             volatility = market_context.get('volatility_level', 'MEDIUM')
-            
+
             # ✅ NUEVO: Información de duración del régimen
             regime_duration_hours = market_context.get('regime_duration_hours', 0)
             btc_leading_down = market_context.get('btc_leading_down', False)
-            
+
             # Por defecto, no filtrar
             filter_reason = f"Sin filtro aplicado - {regime} con confianza {market_confidence:.1%}"
 
             # 🔴 FILTROS BEARISH MEJORADOS - Sistema gradual por intensidad
             if regime == 'BEARISH' and market_confidence > 0.7:
-                
-                # ✅ NUEVO: Umbrales graduales por intensidad del mercado bearish
+
+                                # ✅ CORREGIDO: Umbrales graduales por intensidad del mercado bearish - BALANCEADOS
                 if market_confidence > 0.9:  # BEARISH MUY FUERTE
                     buy_thresholds = {
-                        'BTCUSDT': 95,   # BTC: refugio relativo
-                        'ETHUSDT': 98,   # ETH: penalidad alta
-                        'BNBUSDT': 98,   # BNB: penalidad alta
-                        'XRPUSDT': 98    # XRP: penalidad alta
+                        'BTCUSDT': 88,   # ✅ CORREGIDO: Estricto pero alcanzable (era 95%)
+                        'ETHUSDT': 92,   # ✅ CORREGIDO: Estricto pero alcanzable (era 98%)
+                        'BNBUSDT': 92,   # ✅ CORREGIDO: Estricto pero alcanzable (era 98%)
+                        'XRPUSDT': 92    # ✅ CORREGIDO: Estricto pero alcanzable (era 98%)
                     }
-                    sell_threshold = 60   # ✅ FAVORECER ventas en bearish fuerte
+                    sell_threshold = 78   # ✅ CORREGIDO: Más conservador (era 60%)
                     intensity_level = "MUY_FUERTE"
                     
                 elif market_confidence > 0.8:  # BEARISH FUERTE
                     buy_thresholds = {
-                        'BTCUSDT': 90,   # BTC: umbral moderado
-                        'ETHUSDT': 95,   # ETH: penalidad media-alta
-                        'BNBUSDT': 95,   # BNB: penalidad media-alta
-                        'XRPUSDT': 95    # XRP: penalidad media-alta
+                        'BTCUSDT': 85,   # ✅ CORREGIDO: Más razonable (era 90%)
+                        'ETHUSDT': 88,   # ✅ CORREGIDO: Más razonable (era 95%)
+                        'BNBUSDT': 88,   # ✅ CORREGIDO: Más razonable (era 95%)
+                        'XRPUSDT': 88    # ✅ CORREGIDO: Más razonable (era 95%)
                     }
-                    sell_threshold = 65   # ✅ FAVORECER ventas
+                    sell_threshold = 80   # ✅ CORREGIDO: Más conservador (era 65%)
                     intensity_level = "FUERTE"
                     
                 elif market_confidence > 0.7:  # BEARISH MODERADO
@@ -1640,9 +1664,9 @@ class SimpleProfessionalTradingManager:
                         'BNBUSDT': 90,   # BNB: penalidad media
                         'XRPUSDT': 90    # XRP: penalidad media
                     }
-                    sell_threshold = 70   # ✅ FAVORECER ventas
+                    sell_threshold = 82   # ✅ CORREGIDO: Más conservador (era 70%)
                     intensity_level = "MODERADO"
-                    
+
                 else:  # BEARISH LEVE
                     buy_thresholds = {
                         'BTCUSDT': 80,   # BTC: umbral muy relajado
@@ -1650,7 +1674,7 @@ class SimpleProfessionalTradingManager:
                         'BNBUSDT': 85,   # BNB: penalidad leve
                         'XRPUSDT': 85    # XRP: penalidad leve
                     }
-                    sell_threshold = 75   # ✅ FAVORECER ventas
+                    sell_threshold = 85   # ✅ CORREGIDO: Más conservador (era 75%)
                     intensity_level = "LEVE"
 
                 # ✅ NUEVO: Factor de correlación con BTC
@@ -1671,7 +1695,7 @@ class SimpleProfessionalTradingManager:
 
                 if signal == 'BUY':
                     required_confidence = buy_thresholds.get(symbol, 85)
-                    
+
                     if confidence >= required_confidence:
                         filter_reason = f"{symbol.replace('USDT', '')} permitido en BEARISH {intensity_level} por alta confianza ({confidence:.1f}% > {required_confidence}%)"
                     else:
@@ -2232,27 +2256,27 @@ class SimpleProfessionalTradingManager:
 
         # ✅ NUEVO: Sistema de reversión mejorado con señales consecutivas
         print(f"🔄 Evaluando reversión con sistema de señales consecutivas para {symbol}...")
-        
+
         # Verificar si es señal de reversión (opuesta a posiciones existentes)
         is_reversal_signal = False
         for position in existing_positions:
             if (position.side == 'BUY' and signal == 'SELL') or (position.side == 'SELL' and signal == 'BUY'):
                 is_reversal_signal = True
                 break
-        
+
         if is_reversal_signal:
             # Evaluar con el nuevo sistema de señales consecutivas
             should_execute, reason = self._evaluate_reversal_with_consecutive_signals(symbol, signal, confidence)
-            
+
             if should_execute:
                 print(f"  ✅ REVERSIÓN APROBADA por sistema consecutivo: {reason}")
-                
+
                 # Ejecutar reversión para todas las posiciones del símbolo
                 for position in existing_positions:
                     if (position.side == 'BUY' and signal == 'SELL') or (position.side == 'SELL' and signal == 'BUY'):
                         print(f"  🔄 Ejecutando reversión para {position.order_id}: PnL {position.pnl_percent:.1f}%")
                         await self._close_position(position.order_id, f"REVERSIÓN_CONSECUTIVA_{reason}")
-                
+
                 # ✅ LIMPIAR TRACKING después de ejecutar reversión exitosa
                 if symbol in self.reversal_tracking:
                     self.reversal_tracking[symbol] = {
@@ -2262,7 +2286,7 @@ class SimpleProfessionalTradingManager:
                         'started_tracking': None
                     }
                     print(f"  🧹 Tracking de reversión limpiado para {symbol} después de ejecución")
-                    
+
             else:
                 print(f"  ⏸️ Reversión en progreso para {symbol}: {reason}")
                 print(f"      📊 Sistema requiere múltiples señales consecutivas para mayor seguridad")
@@ -2433,11 +2457,12 @@ class SimpleProfessionalTradingManager:
                 'BTCUSDT': 25.0,  # BTC máximo 25% del portafolio
                 'ETHUSDT': 25.0,  # ETH máximo 25% del portafolio
                 'BNBUSDT': 20.0,  # BNB máximo 20% del portafolio
-                'XRPUSDT': 30.0   # XRP máximo 30% del portafolio
+                'XRPUSDT': 30.0,  # XRP máximo 30% del portafolio
+                'DOTUSDT': 30.0   # DOT máximo 30% del portafolio
             }
 
             # ✅ PRIORIZACIÓN: Orden de preferencia para señales simultáneas
-            PRIORITY_ORDER = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT']
+            PRIORITY_ORDER = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'DOTUSDT']
 
             # ✅ DEBUG: Información del balance
             print(f"🔍 DEBUG DIVERSIFICACIÓN INTELIGENTE:")
@@ -3535,19 +3560,19 @@ class SimpleProfessionalTradingManager:
         🔄 SISTEMA DE REVERSIÓN MEJORADO CON SEÑALES CONSECUTIVAS
         ---
         Evalúa si hay suficientes señales consecutivas para ejecutar reversión
-        
+
         Configuración por símbolo:
         - ETHUSDT: Requiere 3 señales consecutivas de reversión
         - BTCUSDT/BNBUSDT/XRPUSDT: Requieren 2 señales consecutivas
         - Timeout: 30 minutos entre señales para mantener el tracking activo
-        
+
         Returns:
             tuple: (should_execute_reversal: bool, reason: str)
         """
-        
+
         try:
             current_time = datetime.now()
-            
+
             # Obtener configuración para este símbolo
             config = self.reversal_config.get(symbol, {
                 'required_consecutive_signals': 3,
@@ -3555,7 +3580,7 @@ class SimpleProfessionalTradingManager:
                 'min_confidence_per_signal': 80.0,
                 'cumulative_confidence_threshold': 85.0
             })
-            
+
             # Inicializar tracking si no existe
             if symbol not in self.reversal_tracking:
                 self.reversal_tracking[symbol] = {
@@ -3564,9 +3589,9 @@ class SimpleProfessionalTradingManager:
                     'current_signal_direction': None,
                     'started_tracking': None
                 }
-            
+
             tracking = self.reversal_tracking[symbol]
-            
+
             # ✅ LIMPIEZA AUTOMÁTICA: Verificar timeout
             if tracking['last_signal_time']:
                 time_since_last = (current_time - tracking['last_signal_time']).total_seconds() / 60
@@ -3575,7 +3600,7 @@ class SimpleProfessionalTradingManager:
                     tracking['consecutive_signals'] = []
                     tracking['current_signal_direction'] = None
                     tracking['started_tracking'] = None
-            
+
             # ✅ LIMPIEZA AUTOMÁTICA: Verificar cambio de dirección
             if tracking['current_signal_direction'] and tracking['current_signal_direction'] != signal:
                 print(f"    🔄 LIMPIEZA AUTOMÁTICA: Cambio de dirección {tracking['current_signal_direction']} → {signal} para {symbol}")
@@ -3585,85 +3610,85 @@ class SimpleProfessionalTradingManager:
             elif not tracking['current_signal_direction']:
                 tracking['current_signal_direction'] = signal
                 tracking['started_tracking'] = current_time
-            
+
             # Verificar confianza mínima por señal
             if confidence < config['min_confidence_per_signal']:
                 return False, f"Confianza insuficiente {confidence:.1f}% < {config['min_confidence_per_signal']:.1f}%"
-            
+
             # ✅ NUEVO: Verificar intervalo mínimo entre señales válidas
             min_interval = config.get('min_interval_between_signals_minutes', 10)
             if tracking['consecutive_signals']:
                 last_valid_signal = tracking['consecutive_signals'][-1]
                 time_since_last_valid = (current_time - last_valid_signal['timestamp']).total_seconds() / 60
-                
+
                 if time_since_last_valid < min_interval:
                     print(f"    ⏸️ SEÑAL RECHAZADA: Intervalo {time_since_last_valid:.1f}min < {min_interval}min requerido")
                     return False, f"Intervalo insuficiente: {time_since_last_valid:.1f}min < {min_interval}min"
-            
+
             # Agregar nueva señal (solo si pasa todas las validaciones)
             signal_data = {
                 'signal': signal,
                 'confidence': confidence,
                 'timestamp': current_time
             }
-            
+
             tracking['consecutive_signals'].append(signal_data)
             tracking['last_signal_time'] = current_time
-            
+
             print(f"    ✅ SEÑAL VÁLIDA ACEPTADA: {signal} {confidence:.1f}% (intervalo OK)")
-            
+
             # Mantener solo las señales necesarias (+ algunas extra para análisis)
             max_signals_to_keep = config['required_consecutive_signals'] + 2
             if len(tracking['consecutive_signals']) > max_signals_to_keep:
                 tracking['consecutive_signals'] = tracking['consecutive_signals'][-max_signals_to_keep:]
-            
+
             current_count = len(tracking['consecutive_signals'])
             required_count = config['required_consecutive_signals']
-            
+
             print(f"    📊 TRACKING REVERSIÓN {symbol}: {current_count}/{required_count} señales {signal}")
             print(f"        💫 Confianza actual: {confidence:.1f}% (mín: {config['min_confidence_per_signal']:.1f}%)")
-            
+
             # Verificar si tenemos suficientes señales
             if current_count >= required_count:
                 # Verificar consistencia de señales (todas del mismo tipo)
                 recent_signals = tracking['consecutive_signals'][-required_count:]
                 all_same_signal = all(s['signal'] == signal for s in recent_signals)
-                
+
                 if not all_same_signal:
                     return False, f"Señales inconsistentes en las últimas {required_count}"
-                
+
                 # Calcular confianza acumulada (promedio ponderado, más peso a señales recientes)
                 total_weight = 0
                 weighted_confidence = 0
-                
+
                 for i, signal_entry in enumerate(recent_signals):
                     weight = i + 1  # Peso creciente para señales más recientes
                     weighted_confidence += signal_entry['confidence'] * weight
                     total_weight += weight
-                
+
                 cumulative_confidence = weighted_confidence / total_weight if total_weight > 0 else 0
-                
+
                 # Verificar umbral de confianza acumulada
                 if cumulative_confidence >= config['cumulative_confidence_threshold']:
                     # Calcular tiempo transcurrido desde que se inició el tracking
                     tracking_duration = (current_time - tracking['started_tracking']).total_seconds() / 60
-                    
+
                     print(f"    ✅ REVERSIÓN APROBADA para {symbol}:")
                     print(f"        🎯 Señales consecutivas: {current_count}/{required_count}")
                     print(f"        💫 Confianza acumulada: {cumulative_confidence:.1f}% (req: {config['cumulative_confidence_threshold']:.1f}%)")
                     print(f"        ⏱️ Tiempo de tracking: {tracking_duration:.1f} minutos")
-                    
+
                     # Limpiar tracking después de ejecutar
                     tracking['consecutive_signals'] = []
                     tracking['current_signal_direction'] = None
                     tracking['started_tracking'] = None
-                    
+
                     return True, f"REVERSIÓN_CONSECUTIVA_{required_count}_SEÑALES"
                 else:
                     return False, f"Confianza acumulada insuficiente {cumulative_confidence:.1f}% < {config['cumulative_confidence_threshold']:.1f}%"
             else:
                 return False, f"Necesita {required_count - current_count} señales más"
-                
+
         except Exception as e:
             print(f"❌ Error en evaluación de reversión consecutiva para {symbol}: {e}")
             return False, f"Error en evaluación: {e}"
@@ -3674,40 +3699,40 @@ class SimpleProfessionalTradingManager:
         ---
         Genera reporte del estado de tracking para todos los símbolos
         Incluido en reportes TCN para monitoreo
-        
+
         Returns:
             str: Reporte formateado del estado de tracking
         """
-        
+
         try:
             if not self.reversal_tracking:
                 return "\n🔄 **TRACKING DE REVERSIÓN:** Sin tracking activo\n"
-            
+
             status_report = "\n🔄 **TRACKING DE REVERSIÓN:**\n"
-            
+
             active_tracking_count = 0
-            
+
             for symbol, tracking in self.reversal_tracking.items():
                 if not tracking['consecutive_signals']:
                     continue
-                    
+
                 active_tracking_count += 1
                 config = self.reversal_config.get(symbol, {})
                 required_count = config.get('required_consecutive_signals', 2)
                 current_count = len(tracking['consecutive_signals'])
-                
+
                 # Calcular tiempo desde primera señal
                 if tracking['started_tracking']:
                     tracking_duration = (datetime.now() - tracking['started_tracking']).total_seconds() / 60
                 else:
                     tracking_duration = 0
-                
+
                 # Calcular tiempo desde última señal
                 if tracking['last_signal_time']:
                     time_since_last = (datetime.now() - tracking['last_signal_time']).total_seconds() / 60
                 else:
                     time_since_last = 0
-                
+
                 # Emoji según progreso
                 progress_percent = (current_count / required_count) * 100
                 if progress_percent >= 100:
@@ -3716,29 +3741,29 @@ class SimpleProfessionalTradingManager:
                     progress_emoji = "🟡"
                 else:
                     progress_emoji = "🔵"
-                
+
                 # Información de la última señal
                 last_signal = tracking['consecutive_signals'][-1] if tracking['consecutive_signals'] else None
                 last_confidence = last_signal['confidence'] if last_signal else 0
-                
+
                 status_report += f"{progress_emoji} **{symbol}**: {tracking['current_signal_direction']} "
                 status_report += f"{current_count}/{required_count} señales "
                 status_report += f"(Última: {last_confidence:.1f}%)\n"
                 status_report += f"   ⏱️ Tracking: {tracking_duration:.1f}min | "
                 status_report += f"Última señal: {time_since_last:.1f}min atrás\n"
-                
+
                 # Mostrar progreso detallado
                 if tracking['consecutive_signals']:
                     confidences = [s['confidence'] for s in tracking['consecutive_signals']]
                     avg_confidence = sum(confidences) / len(confidences)
                     status_report += f"   📊 Conf. promedio: {avg_confidence:.1f}% | "
                     status_report += f"Conf. mín/máx: {min(confidences):.1f}%/{max(confidences):.1f}%\n"
-            
+
             if active_tracking_count == 0:
                 status_report += "📊 Sin tracking activo en este momento\n"
             else:
                 status_report += f"\n📈 **Total activo:** {active_tracking_count} símbolo(s) en tracking\n"
-            
+
             # Agregar configuración de límites
             status_report += "\n⚙️ **CONFIGURACIÓN DE REVERSIÓN:**\n"
             for symbol, config in self.reversal_config.items():
@@ -3746,12 +3771,72 @@ class SimpleProfessionalTradingManager:
                 status_report += f"intervalo {config.get('min_interval_between_signals_minutes', 10)}min, "
                 status_report += f"timeout {config['timeout_minutes']}min, "
                 status_report += f"conf. mín {config['min_confidence_per_signal']:.0f}%\n"
-            
+
             return status_report
-            
+
         except Exception as e:
             print(f"❌ Error generando reporte de tracking de reversión: {e}")
             return f"\n🔄 **TRACKING DE REVERSIÓN:** Error generando reporte: {e}\n"
+
+    async def _cleanup_stale_reversal_tracking(self):
+        """
+        🧹 LIMPIEZA AUTOMÁTICA DE TRACKING COLGADO
+        ---
+        Se ejecuta periódicamente (cada 5 minutos) para limpiar trackings que han
+        excedido el timeout, independientemente de si hay nuevas señales o no.
+        
+        Soluciona el problema de trackings "colgados" cuando no hay señales nuevas.
+        """
+        try:
+            # Solo ejecutar cada 5 minutos
+            current_time = datetime.now()
+            if not hasattr(self, '_last_cleanup_time'):
+                self._last_cleanup_time = current_time
+                return
+                
+            time_since_cleanup = (current_time - self._last_cleanup_time).total_seconds() / 60
+            if time_since_cleanup < 5:  # 5 minutos
+                return
+                
+            self._last_cleanup_time = current_time
+            
+            if not self.reversal_tracking:
+                return
+                
+            cleaned_count = 0
+            
+            for symbol in list(self.reversal_tracking.keys()):
+                tracking = self.reversal_tracking[symbol]
+                
+                # Solo limpiar si hay tracking activo
+                if not tracking.get('consecutive_signals') or not tracking.get('last_signal_time'):
+                    continue
+                    
+                # Verificar timeout
+                config = self.reversal_config.get(symbol, {'timeout_minutes': 30})
+                timeout_minutes = config.get('timeout_minutes', 30)
+                
+                time_since_last = (current_time - tracking['last_signal_time']).total_seconds() / 60
+                
+                if time_since_last > timeout_minutes:
+                    print(f"🧹 LIMPIEZA AUTOMÁTICA PERIÓDICA: Tracking colgado limpiado para {symbol}")
+                    print(f"   ⏰ Tiempo transcurrido: {time_since_last:.1f}min > {timeout_minutes}min")
+                    print(f"   📊 Señales perdidas: {len(tracking['consecutive_signals'])}")
+                    
+                    # Limpiar tracking
+                    self.reversal_tracking[symbol] = {
+                        'consecutive_signals': [],
+                        'last_signal_time': None,
+                        'current_signal_direction': None,
+                        'started_tracking': None
+                    }
+                    cleaned_count += 1
+                    
+            if cleaned_count > 0:
+                print(f"✅ Limpieza periódica completada: {cleaned_count} tracking(s) limpiado(s)")
+                
+        except Exception as e:
+            print(f"❌ Error en limpieza automática de tracking: {e}")
 
 async def main():
     """🎯 Función principal para testing directo"""

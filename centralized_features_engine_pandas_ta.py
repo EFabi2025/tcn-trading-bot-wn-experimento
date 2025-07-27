@@ -121,11 +121,11 @@ class CentralizedFeaturesEnginePandasTA:
     def calculate_features(self, df: pd.DataFrame, feature_set: str = 'tcn_definitivo') -> pd.DataFrame:
         """
         Calcular features técnicas usando pandas-ta
-        
+
         Args:
             df: DataFrame con columnas OHLCV
             feature_set: Conjunto de features a calcular ('tcn_definitivo', 'tcn_final', 'full_set')
-            
+
         Returns:
             DataFrame con features calculadas
         """
@@ -304,50 +304,50 @@ class CentralizedFeaturesEnginePandasTA:
             loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
             rs = gain / (loss + 1e-8)  # Evitar división por cero
             df['rsi_14'] = 100 - (100 / (1 + rs))
-            
+
             # RSI para otros períodos
             gain_21 = delta.where(delta > 0, 0).rolling(window=21).mean()
             loss_21 = -delta.where(delta < 0, 0).rolling(window=21).mean()
             rs_21 = gain_21 / (loss_21 + 1e-8)
             df['rsi_21'] = 100 - (100 / (1 + rs_21))
-            
+
             gain_7 = delta.where(delta > 0, 0).rolling(window=7).mean()
             loss_7 = -delta.where(delta < 0, 0).rolling(window=7).mean()
             rs_7 = gain_7 / (loss_7 + 1e-8)
             df['rsi_7'] = 100 - (100 / (1 + rs_7))
-            
+
             # SMA/EMA básicos
             df['sma_10'] = df['close'].rolling(10).mean()
             df['sma_20'] = df['close'].rolling(20).mean()
             df['sma_50'] = df['close'].rolling(50).mean()
             df['sma_5'] = df['close'].rolling(5).mean()
-            
+
             df['ema_10'] = df['close'].ewm(span=10).mean()
             df['ema_12'] = df['close'].ewm(span=12).mean()
             df['ema_20'] = df['close'].ewm(span=20).mean()
             df['ema_50'] = df['close'].ewm(span=50).mean()
-            
+
             # MACD básico
             ema12 = df['close'].ewm(span=12).mean()
             ema26 = df['close'].ewm(span=26).mean()
             df['macd'] = ema12 - ema26
             df['macd_signal'] = df['macd'].ewm(span=9).mean()
             df['macd_histogram'] = df['macd'] - df['macd_signal']
-            
+
             # Bollinger Bands básicas
             df['bb_middle'] = df['close'].rolling(20).mean()
             bb_std = df['close'].rolling(20).std()
             df['bb_upper'] = df['bb_middle'] + (bb_std * 2)
             df['bb_lower'] = df['bb_middle'] - (bb_std * 2)
-            
+
             # ROC manual
             df['roc_10'] = df['close'].pct_change(periods=10) * 100
             df['roc_20'] = df['close'].pct_change(periods=20) * 100
-            
+
             # Momentum manual
             df['momentum_10'] = df['close'] - df['close'].shift(10)
             df['momentum_20'] = df['close'] - df['close'].shift(20)
-            
+
             # ATR manual
             hl = df['high'] - df['low']
             hc = (df['high'] - df['close'].shift(1)).abs()
@@ -356,12 +356,12 @@ class CentralizedFeaturesEnginePandasTA:
             df['true_range'] = tr
             df['atr_14'] = tr.rolling(14).mean()
             df['atr_20'] = tr.rolling(20).mean()
-            
+
             # Volume features básicas
             df['volume_sma_10'] = df['volume'].rolling(10).mean()
             df['volume_sma_20'] = df['volume'].rolling(20).mean()
             df['obv'] = (df['volume'] * ((df['close'] > df['close'].shift(1)).astype(int) * 2 - 1)).cumsum()
-            
+
         except Exception as e:
             print(f"⚠️ Error en implementaciones manuales: {e}")
 
@@ -398,20 +398,20 @@ class CentralizedFeaturesEnginePandasTA:
             df['volatility'] = df['close'].pct_change().rolling(window=20, min_periods=1).std()
 
             # === FEATURES DEL TCN DEFINITIVO ===
-            
+
             # PRICE PATTERNS (8 features)
             hl_range = df['high'] - df['low']
             hl_range = hl_range.replace(0, 1e-8)
-            
+
             df['hl_ratio'] = hl_range / df['close']
             df['oc_ratio'] = (df['close'] - df['open']) / df['close']
             df['price_position'] = (df['close'] - df['low']) / hl_range
-            
+
             # Price changes
             df['price_change_1'] = df['close'].pct_change(1)
             df['price_change_5'] = df['close'].pct_change(5)
             df['price_change_10'] = df['close'].pct_change(10)
-            
+
             # Volatility windows
             returns = pd.Series(np.log(df['close'] / df['close'].shift(1)), index=df.index)
             df['volatility_10'] = returns.rolling(10).std()
@@ -420,18 +420,18 @@ class CentralizedFeaturesEnginePandasTA:
             # MARKET STRUCTURE (8 features)
             df['higher_high'] = (df['high'] > df['high'].shift(1)).astype(int)
             df['lower_low'] = (df['low'] < df['low'].shift(1)).astype(int)
-            
+
             df['uptrend_strength'] = (df['close'] > df['close'].shift(1)).rolling(10).sum() / 10
             df['downtrend_strength'] = (df['close'] < df['close'].shift(1)).rolling(10).sum() / 10
-            
+
             df['resistance_touch'] = (df['close'] >= df['close'].rolling(20).max() * 0.99).astype(int)
             df['support_touch'] = (df['close'] <= df['close'].rolling(20).min() * 1.01).astype(int)
-            
+
             # Market efficiency
             close_diff_abs = pd.Series(np.abs(df['close'].diff()), index=df.index)
             df['efficiency_ratio'] = (np.abs(df['close'] - df['close'].shift(10)) /
                                       close_diff_abs.rolling(10).sum()).fillna(0)
-            
+
             # Fractal dimension (simplified)
             df['fractal_dimension'] = 0.5  # Valor constante por ahora
 
@@ -442,7 +442,7 @@ class CentralizedFeaturesEnginePandasTA:
                 df['macd_momentum'] = df['macd_histogram'].diff().fillna(0)
             if 'ad' in df.columns:
                 df['ad_momentum'] = df['ad'].diff().fillna(0)
-                
+
             df['volume_momentum'] = df['volume'].pct_change().fillna(0)
             df['price_acceleration'] = df['price_change_1'].diff().fillna(0)
 
@@ -464,7 +464,7 @@ class CentralizedFeaturesEnginePandasTA:
                 tp_sma = tp.rolling(14).mean()
                 tp_mad = tp.rolling(14).apply(lambda x: np.mean(np.abs(x - x.mean())))
                 df['cci_14'] = (tp - tp_sma) / (0.015 * tp_mad)
-                
+
             if 'cci_20' not in df.columns:
                 tp = (df['high'] + df['low'] + df['close']) / 3
                 tp_sma = tp.rolling(20).mean()
@@ -501,7 +501,7 @@ class CentralizedFeaturesEnginePandasTA:
                 rmf_neg = rmf.where(tp < tp.shift(1), 0).rolling(14).sum()
                 mfi_ratio = rmf_pos / (rmf_neg + 1e-8)
                 df['mfi_14'] = 100 - (100 / (1 + mfi_ratio))
-                
+
             if 'mfi_20' not in df.columns:
                 tp = (df['high'] + df['low'] + df['close']) / 3
                 rmf = tp * df['volume']
@@ -563,75 +563,75 @@ class CentralizedFeaturesEnginePandasTA:
     async def compute_features(self, symbol: str, klines_data: List, feature_set: str = 'tcn_definitivo') -> np.ndarray:
         """
         Computar features desde datos de klines de Binance
-        
+
         Args:
             symbol: Símbolo del par (ej: BTCUSDT)
             klines_data: Lista de klines de Binance
             feature_set: Conjunto de features a calcular
-            
+
         Returns:
             np.ndarray: Features calculadas o None si error
         """
         try:
             print(f"🔄 Calculando {len(self.feature_sets.get(feature_set, []))} features para {symbol} (pandas-ta)...")
-            
+
             # Convertir klines a DataFrame
             df = self._klines_to_dataframe(klines_data)
             if df is None or df.empty:
                 print(f"❌ Error: DataFrame vacío para {symbol}")
                 return None
-            
+
             # Calcular features
             df_features = self.calculate_features(df, feature_set)
-            
+
             if df_features is None or df_features.empty:
                 print(f"❌ Error: No se calcularon features para {symbol}")
                 return None
-            
+
             # Seleccionar solo las features del conjunto solicitado
             feature_columns = self.feature_sets.get(feature_set, [])
             available_columns = [col for col in feature_columns if col in df_features.columns]
-            
+
             if not available_columns:
                 print(f"❌ Error: No hay features disponibles para {symbol}")
                 return None
-            
+
             # Obtener datos como numpy array
             features_array = df_features[available_columns].values
-            
+
             print(f"✅ Features calculadas: {len(available_columns)} de {len(feature_columns)} solicitadas")
-            
+
             return features_array
-            
+
         except Exception as e:
             print(f"❌ Error calculando features para {symbol}: {e}")
             return None
-    
+
     def _klines_to_dataframe(self, klines_data: List) -> pd.DataFrame:
         """Convertir datos de klines de Binance a DataFrame"""
         try:
             if not klines_data:
                 return None
-            
+
             # Formato esperado de klines de Binance:
             # [timestamp, open, high, low, close, volume, close_time, quote_asset_volume, number_of_trades, taker_buy_base_asset_volume, taker_buy_quote_asset_volume, ignore]
-            
+
             df = pd.DataFrame(klines_data, columns=[
                 'timestamp', 'open', 'high', 'low', 'close', 'volume',
                 'close_time', 'quote_asset_volume', 'number_of_trades',
                 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
             ])
-            
+
             # Convertir a tipos correctos
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             for col in ['open', 'high', 'low', 'close', 'volume']:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
-            
+
             # Ordenar por timestamp
             df = df.sort_values('timestamp').reset_index(drop=True)
-            
+
             return df
-            
+
         except Exception as e:
             print(f"❌ Error convirtiendo klines a DataFrame: {e}")
             return None
@@ -745,4 +745,4 @@ def test_centralized_features_pandas_ta():
 
 
 if __name__ == "__main__":
-    test_centralized_features_pandas_ta() 
+    test_centralized_features_pandas_ta()

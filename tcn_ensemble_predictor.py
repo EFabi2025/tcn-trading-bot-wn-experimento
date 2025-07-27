@@ -31,7 +31,7 @@ class TCNEnsemblePredictor:
         self.hybrid_metrics = {}  # {symbol: {timeframe: metrics}}
         self.model_windows = {}  # {symbol: {timeframe: lookback_window}} - NUEVO
 
-        self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT']
+        self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'DOTUSDT']
         self.timeframes = ['1m', '5m']
         self.features_engine = CentralizedFeaturesEngine()
 
@@ -352,7 +352,7 @@ class TCNEnsemblePredictor:
                     # Fallback: calcular confidence desde probabilidades
                     probs = [pred['probabilities']['SELL'], pred['probabilities']['HOLD'], pred['probabilities']['BUY']]
                     confidences.append(max(probs))
-            
+
             divergence = np.std(confidences) if confidences else 0.1
 
             if divergence > 0.15:  # Alta divergencia
@@ -432,7 +432,8 @@ class TCNEnsemblePredictor:
             'BTCUSDT': {'strong_sell': -0.0014, 'weak_sell': -0.0007, 'weak_buy': 0.0007, 'strong_buy': 0.0014},
             'ETHUSDT': {'strong_sell': -0.0026, 'weak_sell': -0.0012, 'weak_buy': 0.0013, 'strong_buy': 0.0027},
             'BNBUSDT': {'strong_sell': -0.0015, 'weak_sell': -0.0007, 'weak_buy': 0.0007, 'strong_buy': 0.0015},
-            'XRPUSDT': {'strong_sell': -0.0018, 'weak_sell': -0.0009, 'weak_buy': 0.0009, 'strong_buy': 0.0018}
+            'XRPUSDT': {'strong_sell': -0.0018, 'weak_sell': -0.0009, 'weak_buy': 0.0009, 'strong_buy': 0.0018},
+            'DOTUSDT': {'strong_sell': -0.0020, 'weak_sell': -0.0010, 'weak_buy': 0.0010, 'strong_buy': 0.0020}
         }
 
         validation_result = {
@@ -736,7 +737,8 @@ class TCNEnsemblePredictor:
                         'BTCUSDT': -0.10,  # Reducido de -0.15
                         'ETHUSDT': -0.03,  # Reducido de -0.05
                         'BNBUSDT': 0.03,   # Reducido de 0.05
-                        'XRPUSDT': 0.03     # Reducido de 0.05
+                        'XRPUSDT': 0.03,   # Reducido de 0.05
+                        'DOTUSDT': 0.05    # DOT es más volátil que otros alts
                     }
                     volatility_adj = volatility_factors.get(symbol, 0.0)
 
@@ -978,7 +980,7 @@ class TCNEnsemblePredictor:
                 # Fallback: calcular confidence desde probabilidades
                 probs = [pred['probabilities']['SELL'], pred['probabilities']['HOLD'], pred['probabilities']['BUY']]
                 confidences.append(max(probs))
-        
+
         stability = self.calculate_corrected_stability(confidences)
 
         return {
@@ -1069,7 +1071,7 @@ class TCNEnsemblePredictor:
                 # Fallback: calcular confidence desde probabilidades
                 probs = [pred['probabilities']['SELL'], pred['probabilities']['HOLD'], pred['probabilities']['BUY']]
                 all_confidences.append(max(probs))
-        
+
         stability = self.calculate_corrected_stability(all_confidences)
 
         # 🎯 CONFIANZA CALIBRADA multi-factor
