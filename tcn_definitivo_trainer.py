@@ -846,15 +846,28 @@ def get_intelligent_lookback_window(timeframe: str, symbol: str) -> int:
         }
     }
     
-    # Recomendaciones específicas por símbolo
+    # Recomendaciones específicas por símbolo y timeframe
     symbol_recommendations = {
-        'BTCUSDT': 'balanced',  # BTC más estable, balance es bueno
-        'ETHUSDT': 'balanced',  # ETH similar a BTC
-        'BNBUSDT': 'reactive',  # BNB más volátil, mejor reactividad
-        'XRPUSDT': 'reactive',  # XRP muy volátil
-        'DOTUSDT': 'reactive',  # DOT volátil
-        'ADAUSDT': 'balanced',  # ADA intermedio
-        'SOLUSDT': 'reactive'   # SOL muy volátil
+        '1m': {
+            'BTCUSDT': 'balanced', 'ETHUSDT': 'balanced', 'BNBUSDT': 'short_term',
+            'XRPUSDT': 'scalping', 'DOTUSDT': 'scalping', 'ADAUSDT': 'balanced', 'SOLUSDT': 'scalping'
+        },
+        '5m': {
+            'BTCUSDT': 'balanced', 'ETHUSDT': 'balanced', 'BNBUSDT': 'reactive',
+            'XRPUSDT': 'reactive', 'DOTUSDT': 'reactive', 'ADAUSDT': 'balanced', 'SOLUSDT': 'reactive'
+        },
+        '15m': {
+            'BTCUSDT': 'swing', 'ETHUSDT': 'swing', 'BNBUSDT': 'intraday',
+            'XRPUSDT': 'intraday', 'DOTUSDT': 'intraday', 'ADAUSDT': 'swing', 'SOLUSDT': 'intraday'
+        },
+        '1h': {
+            'BTCUSDT': 'weekly', 'ETHUSDT': 'weekly', 'BNBUSDT': 'daily',
+            'XRPUSDT': 'daily', 'DOTUSDT': 'daily', 'ADAUSDT': 'weekly', 'SOLUSDT': 'daily'
+        },
+        '4h': {
+            'BTCUSDT': 'monthly', 'ETHUSDT': 'monthly', 'BNBUSDT': 'weekly',
+            'XRPUSDT': 'weekly', 'DOTUSDT': 'weekly', 'ADAUSDT': 'monthly', 'SOLUSDT': 'weekly'
+        }
     }
     
     print(f"\n🔍 SELECCIÓN DE LOOKBACK WINDOW PARA {timeframe.upper()}")
@@ -863,8 +876,14 @@ def get_intelligent_lookback_window(timeframe: str, symbol: str) -> int:
     # Obtener configuraciones para el timeframe
     configs = lookback_configs.get(timeframe, lookback_configs['5m'])
     
-    # Recomendar categoría basada en el símbolo
-    recommended_category = symbol_recommendations.get(symbol, 'balanced')
+    # Recomendar categoría basada en el símbolo y timeframe
+    timeframe_recommendations = symbol_recommendations.get(timeframe, {})
+    recommended_category = timeframe_recommendations.get(symbol, 'balanced')
+    
+    # Validar que la categoría recomendada existe para este timeframe
+    if recommended_category not in configs:
+        # Usar la primera categoría disponible como fallback
+        recommended_category = list(configs.keys())[0]
     
     print(f"💡 Recomendación automática para {symbol}: {recommended_category.upper()}")
     print(f"   ({configs[recommended_category]['description']})")
