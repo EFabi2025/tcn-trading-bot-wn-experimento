@@ -1367,7 +1367,7 @@ class SimpleProfessionalTradingManager:
                         'balance_sufficient': self.current_balance >= (self.risk_manager.limits.min_position_value_usdt if self.risk_manager and self.risk_manager.limits else 11.0),
                         # ✅ NUEVO: Información del contexto de mercado
                         'market_context': market_context,
-                        'context_filter_applied': filtered_signal != prediction['signal']
+                        'context_filter_applied': filtered_signal != prediction['ensemble_signal']
                     }
                     print(f"  ✅ SEÑAL AÑADIDA A LA COLA: {symbol} {signal} ({confidence_level:.1f}%)")
 
