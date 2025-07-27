@@ -877,12 +877,25 @@ class TCNEnsemblePredictor:
                     model_accuracy = model_metrics.get('final_accuracy', 0.5)
                     accuracy_factor = (model_accuracy - 0.5) * 0.2  # Reducido de 0.4 a 0.2
 
+                    # 🎯 NUEVO: Factor de penalización por ventana larga en modelos 1m
+                    window_penalty = 0.0
+                    if timeframe == '1m':
+                        detected_window = self.model_windows.get(symbol, {}).get(timeframe, 24)
+                        if detected_window > 40:  # Ventanas > 40min en 1m reducen sensibilidad
+                            penalty_intensity = min((detected_window - 40) / 20, 0.25)  # Max 25% penalty
+                            window_penalty = -penalty_intensity
+                            print(f"⚠️ {symbol}-{timeframe}: Penalización por ventana larga ({detected_window}min): {window_penalty:.3f}")
+                        elif detected_window <= 30:  # Ventanas óptimas reciben bonus
+                            window_bonus = 0.05
+                            window_penalty = window_bonus
+                            print(f"✅ {symbol}-{timeframe}: Bonus por ventana óptima ({detected_window}min): +{window_bonus:.3f}")
+
                     # Componente aleatoria más pequeña para mayor estabilidad
                     np.random.seed(hash(f"{symbol}_{timeframe}") % 2**32)
                     randomness = (np.random.random() - 0.5) * 0.03  # Reducido de 0.05 a 0.03
 
-                    # Calcular MI final
-                    mi_value = base_mi + volatility_adj + timeframe_factor + accuracy_factor + randomness
+                    # Calcular MI final incluyendo penalización por ventana
+                    mi_value = base_mi + volatility_adj + timeframe_factor + accuracy_factor + window_penalty + randomness
 
                     # Clamp a rango más conservador [0.2, 0.8] para evitar extremos
                     mi_value = max(0.2, min(0.8, mi_value))
