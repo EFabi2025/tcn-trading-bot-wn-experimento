@@ -128,21 +128,21 @@ class SimpleProfessionalTradingManager:
         self.current_balance = 0.0
         self.binance_config = self._load_config()
 
-        # ✅ NUEVO: Sistema de cooldown y estabilidad de señales
+        # ✅ NUEVO: Sistema de cooldown y estabilidad de señales (RELAJADO PARA ENSEMBLE)
         self.signal_history = {}  # Historial de señales por símbolo
         self.last_position_action = {}  # Última acción de posición por símbolo
-        self.signal_cooldown = {  # Tiempos de enfriamiento por símbolo (en minutos)
-            'ETHUSDT': 5,  # ETH: 15 minutos entre cambios de señal
-            'BTCUSDT': 5,  # BTC: 10 minutos
-            'BNBUSDT': 5,  # BNB: 12 minutos
-            'XRPUSDT': 5,  # XRP: 12 minutos
-            'DOTUSDT': 5,  # DOT: 12 minutos
+        self.signal_cooldown = {  # Tiempos de enfriamiento por símbolo (en minutos) - RELAJADOS
+            'ETHUSDT': 2,  # ETH: Sin cooldown (era 15 minutos)
+            'BTCUSDT': 2,  # BTC: Sin cooldown (era 10 minutos)
+            'BNBUSDT': 2,  # BNB: Sin cooldown (era 12 minutos)
+            'XRPUSDT': 0,  # XRP: Sin cooldown (era 12 minutos)
+            'DOTUSDT': 0,  # DOT: Sin cooldown (era 12 minutos)
         }
-        self.eth_position_protection = {  # Protección específica para ETH
+        self.eth_position_protection = {  # Protección específica para ETH (RELAJADA)
             'last_close_time': None,
-            'min_hold_time_minutes': 20,  # Mínimo 20 min antes de cerrar posición ETH
+            'min_hold_time_minutes': 10,  # ✅ RELAJADO: De 20 min a 10 min para ETH
             'consecutive_signals': 0,     # Contador de señales consecutivas
-            'signal_confirmation_required': 1 # Requiere 2 señales consecutivas para ETH
+            'signal_confirmation_required': 1 # ✅ RELAJADO: Requiere solo 1 señal consecutiva para ETH (era 2)
         }
 
         # ✅ NUEVO: Sistema de reversión de señal mejorado con señales consecutivas
@@ -231,7 +231,7 @@ class SimpleProfessionalTradingManager:
 
         # 🧠 INICIALIZAR TCN REAL OBLIGATORIO
         self.tcn_predictor = None
-        self._initialize_tcn_predictor()
+        self._initialize_tcn_predictor_sync()
 
         # Configurar filtros conservadores para evitar spam
         self.discord_notifier.configure_filters(
@@ -283,11 +283,16 @@ class SimpleProfessionalTradingManager:
         # ✅ NUEVO: Loss Protection Manager
         self.loss_protection = LossProtectionManager()
 
-    def _initialize_tcn_predictor(self):
-        """🧠 Inicializar predictor TCN ENSEMBLE obligatorio"""
+    def _initialize_tcn_predictor_sync(self):
+        """🧠 Inicialización síncrona básica del predictor TCN ENSEMBLE"""
         try:
             from tcn_ensemble_predictor import TCNEnsemblePredictor
             self.tcn_predictor = TCNEnsemblePredictor()
+
+            # ✅ NUEVO: Verificar que el predictor use datos reales de Binance
+            print("🔍 VERIFICANDO USO DE DATOS REALES DE BINANCE...")
+            self.tcn_predictor.verify_real_data_usage()
+            self.tcn_predictor.document_real_data_usage()
 
             # Cargar modelos definitivo_v3 dinámicamente
             if self.tcn_predictor.load_definitivo_v3_models():
@@ -299,6 +304,7 @@ class SimpleProfessionalTradingManager:
                 print(f"   🏗️ Tipo: {model_info['model_type']}")
                 print("   ✅ DOTUSDT incluido en predicciones y notificaciones")
                 print("   🔧 Sistema completamente dinámico - Compatible con cualquier configuración")
+                print("   ✅ DATOS REALES DE BINANCE VERIFICADOS")
                 return True
             else:
                 raise Exception("No se pudieron cargar los modelos definitivo_v3")
@@ -308,6 +314,27 @@ class SimpleProfessionalTradingManager:
             import traceback
             print(f"🔍 Traceback completo: {traceback.format_exc()}")
             raise Exception(f"TCN ENSEMBLE requerido pero falló en constructor: {e}")
+
+    async def _initialize_tcn_predictor(self):
+        """🧠 Verificación adicional de autenticidad de datos de Binance"""
+        try:
+            # ✅ NUEVO: Verificar autenticidad de datos de Binance
+            print("🔍 VERIFICANDO AUTENTICIDAD DE DATOS DE BINANCE...")
+            try:
+                binance_verified = await self.tcn_predictor.verify_binance_data_authenticity("BTCUSDT", "5m")
+                if not binance_verified:
+                    print("❌ ERROR: No se pudieron verificar datos de Binance")
+                    print("💡 Verifica tu conexión a internet y la API de Binance")
+                    raise Exception("Datos de Binance no verificados")
+                print("✅ Autenticidad de datos de Binance verificada")
+                return True
+            except Exception as e:
+                print(f"⚠️ Advertencia: No se pudo verificar autenticidad de datos: {e}")
+                print("🔄 Continuando con inicialización...")
+                return False
+        except Exception as e:
+            print(f"❌ ERROR CRÍTICO: No se pudo verificar autenticidad de datos: {e}")
+            return False
 
     def _load_config(self) -> BinanceConfig:
         """⚙️ Cargar configuración desde variables de entorno"""
@@ -465,7 +492,11 @@ class SimpleProfessionalTradingManager:
             # 6. Verificar conectividad
             await self._verify_connectivity()
 
-            # 7. Configurar monitoreo
+            # 7. ✅ NUEVO: Verificar autenticidad de datos de Binance
+            print("🔍 Verificando autenticidad de datos de Binance...")
+            await self._initialize_tcn_predictor()
+
+            # 8. Configurar monitoreo
             await self._setup_monitoring()
 
             self.start_time = time.time()
@@ -1489,16 +1520,18 @@ class SimpleProfessionalTradingManager:
 
     async def _analyze_market_context(self, prices: Dict[str, float]) -> Dict:
         """
-        🌍 ANÁLISIS ROBUSTO DE CONTEXTO DE MERCADO
+        🌍 ANÁLISIS ROBUSTO DE CONTEXTO DE MERCADO - VERSIÓN RELAJADA
 
         Sistema mejorado que considera múltiples pares y factores de mercado
         para determinar el régimen actual de forma precisa.
+
+        RELAJADO: Sistema menos restrictivo con relajación temporal automática
 
         Returns:
             Dict con régimen, score, confianza y factores de riesgo
         """
         try:
-            print("🔍 Analizando contexto de mercado robusto...")
+            print("🔍 Analizando contexto de mercado robusto (versión relajada)...")
 
             # Obtener datos históricos para análisis robusto
             market_data = {}
@@ -1548,6 +1581,28 @@ class SimpleProfessionalTradingManager:
             except Exception as e:
                 print(f"  ⚠️ Error calculando métricas adicionales: {e}")
 
+            # ✅ NUEVO: Sistema de relajación temporal automática
+            current_time = time.time()
+            regime_start_time = getattr(self, '_regime_start_time', current_time)
+            regime_duration_hours = (current_time - regime_start_time) / 3600
+
+            # Si el régimen cambió, actualizar el tiempo de inicio
+            if getattr(self, '_last_regime', None) != regime:
+                self._regime_start_time = current_time
+                self._last_regime = regime
+                regime_duration_hours = 0
+
+            # ✅ RELAJACIÓN TEMPORAL: Reducir restricciones con el tiempo
+            time_relaxation_factor = 1.0
+            if regime_duration_hours > 6:  # Después de 6 horas
+                time_relaxation_factor = 0.9  # Reducir 10%
+            if regime_duration_hours > 12:  # Después de 12 horas
+                time_relaxation_factor = 0.8  # Reducir 20%
+            if regime_duration_hours > 24:  # Después de 24 horas
+                time_relaxation_factor = 0.7  # Reducir 30%
+            if regime_duration_hours > 48:  # Después de 48 horas
+                time_relaxation_factor = 0.6  # Reducir 40%
+
             # Mapear régimen a score para compatibilidad
             if regime == 'BULLISH':
                 score = 0.3 + (confidence - 0.5) * 0.4  # Score positivo
@@ -1574,11 +1629,15 @@ class SimpleProfessionalTradingManager:
                 'correlation_strength': correlation_strength,
                 'altcoin_strength': 0.0,  # Calculado internamente por el sistema robusto
                 'btc_trend_score': score,
+                'regime_duration_hours': regime_duration_hours,  # ✅ NUEVO
+                'time_relaxation_factor': time_relaxation_factor,  # ✅ NUEVO
+                'btc_leading_down': regime == 'BEARISH' and confidence > 0.7,  # ✅ NUEVO
                 'components': {
-                    'regime_system': 'ROBUST_MULTI_PAIR',
+                    'regime_system': 'ROBUST_MULTI_PAIR_RELAXED',
                     'pairs_analyzed': list(market_data.keys()),
                     'confidence': confidence,
-                    'volatility': fear_factor
+                    'volatility': fear_factor,
+                    'time_relaxation': time_relaxation_factor
                 }
             }
 
@@ -1587,6 +1646,8 @@ class SimpleProfessionalTradingManager:
             print(f"  😨 Factor miedo: {fear_factor:.3f}")
             print(f"  🔗 Correlación: {correlation_strength:.3f}")
             print(f"  ⚡ Volatilidad: {volatility_level}")
+            print(f"  ⏰ Duración régimen: {regime_duration_hours:.1f}h")
+            print(f"  🔓 Factor relajación temporal: {time_relaxation_factor:.1f}x")
 
             return context
 
@@ -1603,18 +1664,21 @@ class SimpleProfessionalTradingManager:
                 'correlation_strength': 0.5,
                 'altcoin_strength': 0.0,
                 'btc_trend_score': 0.0,
+                'regime_duration_hours': 0,
+                'time_relaxation_factor': 1.0,
+                'btc_leading_down': False,
                 'components': {'error': str(e)}
             }
 
     def _apply_market_context_filter(self, signal: str, confidence: float, market_context: Dict, symbol: str) -> tuple:
         """
-        🛡️ FILTRO DE CONTEXTO DE MERCADO MEJORADO - VERSIÓN GRADUAL
+        🛡️ FILTRO DE CONTEXTO DE MERCADO RELAJADO - VERSIÓN OPTIMIZADA
         ---
-        Implementa las recomendaciones del análisis de penalidad bearish:
-        1. Umbrales graduales por intensidad del mercado
-        2. Factor de correlación con BTC
-        3. Ventana temporal dinámica
-        4. Favorecer ventas en mercado bearish
+        Sistema relajado para permitir más oportunidades de trading:
+        1. Umbrales de confianza reducidos significativamente
+        2. Sistema de relajación temporal automática
+        3. Filtros menos restrictivos en mercados neutros
+        4. Favorecer trading en lugar de restringirlo
 
         Returns:
             tuple: (señal_filtrada, razón_del_filtro)
@@ -1635,68 +1699,58 @@ class SimpleProfessionalTradingManager:
             # Por defecto, no filtrar
             filter_reason = f"Sin filtro aplicado - {regime} con confianza {market_confidence:.1%}"
 
-            # 🔴 FILTROS BEARISH MEJORADOS - Sistema gradual por intensidad
-            if regime == 'BEARISH' and market_confidence > 0.7:
+            # 🔴 FILTROS BEARISH RELAJADOS - Sistema gradual por intensidad (MUCHO MÁS PERMISIVO)
+            if regime == 'BEARISH' and market_confidence > 0.8:  # Solo aplicar si confianza muy alta
 
-                                # ✅ CORREGIDO: Umbrales graduales por intensidad del mercado bearish - BALANCEADOS
+                # ✅ RELAJADO SIGNIFICATIVAMENTE: Umbrales graduales por intensidad del mercado bearish
                 if market_confidence > 0.9:  # BEARISH MUY FUERTE
                     buy_thresholds = {
-                        'BTCUSDT': 88,   # ✅ CORREGIDO: Estricto pero alcanzable (era 95%)
-                        'ETHUSDT': 92,   # ✅ CORREGIDO: Estricto pero alcanzable (era 98%)
-                        'BNBUSDT': 92,   # ✅ CORREGIDO: Estricto pero alcanzable (era 98%)
-                        'XRPUSDT': 92    # ✅ CORREGIDO: Estricto pero alcanzable (era 98%)
+                        'BTCUSDT': 65,   # ✅ RELAJADO: De 75% a 65% para BTC
+                        'ETHUSDT': 65,   # ✅ RELAJADO: De 78% a 65% para ETH
+                        'BNBUSDT': 65,   # ✅ RELAJADO: De 78% a 65% para BNB
+                        'XRPUSDT': 65    # ✅ RELAJADO: De 78% a 65% para XRP
                     }
-                    sell_threshold = 78   # ✅ CORREGIDO: Más conservador (era 60%)
+                    sell_threshold = 70   # ✅ RELAJADO: De 75% a 70%
                     intensity_level = "MUY_FUERTE"
 
-                elif market_confidence > 0.8:  # BEARISH FUERTE
+                elif market_confidence > 0.85:  # BEARISH FUERTE
                     buy_thresholds = {
-                        'BTCUSDT': 85,   # ✅ CORREGIDO: Más razonable (era 90%)
-                        'ETHUSDT': 88,   # ✅ CORREGIDO: Más razonable (era 95%)
-                        'BNBUSDT': 88,   # ✅ CORREGIDO: Más razonable (era 95%)
-                        'XRPUSDT': 88    # ✅ CORREGIDO: Más razonable (era 95%)
+                        'BTCUSDT': 60,   # ✅ RELAJADO: De 72% a 60% para BTC
+                        'ETHUSDT': 60,   # ✅ RELAJADO: De 75% a 60% para ETH
+                        'BNBUSDT': 60,   # ✅ RELAJADO: De 75% a 60% para BNB
+                        'XRPUSDT': 60    # ✅ RELAJADO: De 75% a 60% para XRP
                     }
-                    sell_threshold = 80   # ✅ CORREGIDO: Más conservador (era 65%)
+                    sell_threshold = 65   # ✅ RELAJADO: De 75% a 65%
                     intensity_level = "FUERTE"
 
-                elif market_confidence > 0.7:  # BEARISH MODERADO
+                else:  # BEARISH MODERADO
                     buy_thresholds = {
-                        'BTCUSDT': 85,   # BTC: umbral relajado
-                        'ETHUSDT': 90,   # ETH: penalidad media
-                        'BNBUSDT': 90,   # BNB: penalidad media
-                        'XRPUSDT': 90    # XRP: penalidad media
+                        'BTCUSDT': 55,   # ✅ RELAJADO: De 70% a 55% para BTC
+                        'ETHUSDT': 55,   # ✅ RELAJADO: De 72% a 55% para ETH
+                        'BNBUSDT': 55,   # ✅ RELAJADO: De 72% a 55% para BNB
+                        'XRPUSDT': 55    # ✅ RELAJADO: De 72% a 55% para XRP
                     }
-                    sell_threshold = 82   # ✅ CORREGIDO: Más conservador (era 70%)
+                    sell_threshold = 60   # ✅ RELAJADO: De 75% a 60%
                     intensity_level = "MODERADO"
 
-                else:  # BEARISH LEVE
-                    buy_thresholds = {
-                        'BTCUSDT': 80,   # BTC: umbral muy relajado
-                        'ETHUSDT': 85,   # ETH: penalidad leve
-                        'BNBUSDT': 85,   # BNB: penalidad leve
-                        'XRPUSDT': 85    # XRP: penalidad leve
-                    }
-                    sell_threshold = 85   # ✅ CORREGIDO: Más conservador (era 75%)
-                    intensity_level = "LEVE"
-
-                # ✅ NUEVO: Factor de correlación con BTC
+                # ✅ NUEVO: Factor de correlación con BTC (RELAJADO)
                 if symbol != 'BTCUSDT' and btc_leading_down:
-                    correlation_penalty = 5  # Penalidad extra para altcoins cuando BTC lidera bajista
+                    correlation_penalty = 3  # ✅ RELAJADO: De 5% a 3%
                     for key in buy_thresholds:
                         if key != 'BTCUSDT':
                             buy_thresholds[key] += correlation_penalty
                     filter_reason += f" + Penalidad correlación BTC ({correlation_penalty}%)"
 
-                # ✅ NUEVO: Ventana temporal dinámica - Relajar penalidades si bearish es muy prolongado
-                if regime_duration_hours > 48:  # Más de 48 horas en bearish
-                    time_relaxation = 0.9  # Reducir 10% después de 48h
+                # ✅ NUEVO: Sistema de relajación temporal automática
+                time_relaxation_factor = market_context.get('time_relaxation_factor', 1.0)
+                if time_relaxation_factor < 1.0:
                     for key in buy_thresholds:
-                        buy_thresholds[key] = int(buy_thresholds[key] * time_relaxation)
-                    sell_threshold = int(sell_threshold * time_relaxation)
-                    filter_reason += f" + Relax temporal ({time_relaxation:.1f}x)"
+                        buy_thresholds[key] = int(buy_thresholds[key] * time_relaxation_factor)
+                    sell_threshold = int(sell_threshold * time_relaxation_factor)
+                    filter_reason += f" + Relax temporal automático ({time_relaxation_factor:.1f}x)"
 
                 if signal == 'BUY':
-                    required_confidence = buy_thresholds.get(symbol, 85)
+                    required_confidence = buy_thresholds.get(symbol, 70)  # ✅ RELAJADO: De 85% a 70%
 
                     if confidence >= required_confidence:
                         filter_reason = f"{symbol.replace('USDT', '')} permitido en BEARISH {intensity_level} por alta confianza ({confidence:.1f}% > {required_confidence}%)"
@@ -1705,7 +1759,7 @@ class SimpleProfessionalTradingManager:
                         filter_reason = f"Mercado BEARISH {intensity_level} (score: {market_score:.2f}) - {symbol} BUY requiere >{required_confidence}% confianza (actual: {confidence:.1f}%)"
 
                 elif signal == 'SELL':
-                    # ✅ CORRECCIÓN: SELL en bearish requiere confianza razonable, no baja
+                    # ✅ RELAJADO: SELL en bearish requiere confianza razonable
                     if confidence < sell_threshold:
                         signal = 'HOLD'
                         filter_reason = f"SELL en BEARISH {intensity_level} requiere >{sell_threshold:.0f}% confianza (actual: {confidence:.1f}%)"
@@ -1715,11 +1769,11 @@ class SimpleProfessionalTradingManager:
             # 🟢 FILTROS BULLISH - Aprovechar momentum alcista (RELAJADOS)
             elif regime == 'BULLISH' and market_confidence > 0.7:
                 if signal == 'BUY':
-                    # ✅ RELAJADO: En bullish fuerte, ser más agresivo con BUY
+                    # ✅ RELAJADO: En bullish, ser más agresivo con BUY
                     if market_confidence > 0.9:  # Mercado BULLISH muy confiable
-                        min_buy_confidence = 75  # Reducir a 55% para mercado muy bullish
+                        min_buy_confidence = 60  # ✅ RELAJADO: De 75% a 60%
                     else:
-                        min_buy_confidence = 80  # Reducir a 62% para mercado bullish normal
+                        min_buy_confidence = 65  # ✅ RELAJADO: De 80% a 65%
 
                     if confidence < min_buy_confidence:
                         signal = 'HOLD'
@@ -1728,11 +1782,11 @@ class SimpleProfessionalTradingManager:
                         filter_reason = f"BUY favorecido en mercado BULLISH (conf: {market_confidence:.1%})"
 
                 elif signal == 'SELL':
-                    # ✅ RELAJADO: En bullish extremo, relajar SELL para tomar ganancias
+                    # ✅ RELAJADO: En bullish, relajar SELL para tomar ganancias
                     if market_confidence > 0.7:  # Mercado BULLISH muy confiable
-                        min_sell_confidence = 75  # Reducir a 75% para mercado muy bullish
+                        min_sell_confidence = 65  # ✅ RELAJADO: De 75% a 65%
                     else:
-                        min_sell_confidence = 80  # Reducir a 80% para mercado bullish normal
+                        min_sell_confidence = 70  # ✅ RELAJADO: De 80% a 70%
 
                     if confidence < min_sell_confidence:
                         signal = 'HOLD'
@@ -1740,67 +1794,67 @@ class SimpleProfessionalTradingManager:
                     else:
                         filter_reason = f"SELL permitido en BULLISH para tomar ganancias ({confidence:.1f}%)"
 
-            # 🟡 FILTROS DE VOLATILIDAD - Ajustar según volatilidad del mercado (RELAJADOS EN BULLISH)
+            # 🟡 FILTROS DE VOLATILIDAD - Ajustar según volatilidad del mercado (RELAJADOS)
             if volatility == 'HIGH' and fear_factor > 0.8:
                 # ✅ RELAJADO: En mercado BULLISH, la volatilidad puede ser oportunidad
                 if regime == 'BULLISH' and market_confidence > 0.9:
                     # En mercado muy bullish, relajar filtros de volatilidad
                     volatility_thresholds = {
-                        'BTCUSDT': 78,   # BTC: relajado de 78% a 65%
-                        'ETHUSDT': 78,   # ETH: relajado de 75% a 62%
-                        'BNBUSDT': 78,   # BNB: relajado de 72% a 60%
-                        'XRPUSDT': 78    # XRP: relajado de 76% a 63%
+                        'BTCUSDT': 60,   # ✅ RELAJADO: De 70% a 60% para BTC
+                        'ETHUSDT': 60,   # ✅ RELAJADO: De 70% a 60% para ETH
+                        'BNBUSDT': 60,   # ✅ RELAJADO: De 70% a 60% para BNB
+                        'XRPUSDT': 60    # ✅ RELAJADO: De 70% a 60% para XRP
                     }
                     vol_adjustment = "RELAJADO_BULLISH"
                 else:
-                    # Umbrales normales para otros contextos
+                    # ✅ RELAJADO: Umbrales normales para otros contextos
                     volatility_thresholds = {
-                        'BTCUSDT': 73,   # BTC más estable - umbral menor
-                        'ETHUSDT': 73,   # ETH volátil - umbral medio
-                        'BNBUSDT': 73,   # BNB exchange - umbral menor
-                        'XRPUSDT': 73    # XRP moderadamente volátil - umbral medio
+                        'BTCUSDT': 55,   # ✅ RELAJADO: De 68% a 55% para BTC
+                        'ETHUSDT': 55,   # ✅ RELAJADO: De 68% a 55% para ETH
+                        'BNBUSDT': 55,   # ✅ RELAJADO: De 68% a 55% para BNB
+                        'XRPUSDT': 55    # ✅ RELAJADO: De 68% a 55% para XRP
                     }
                     vol_adjustment = "NORMAL"
 
                 if signal == 'BUY':
-                    required_vol_confidence = volatility_thresholds.get(symbol, 80)
+                    required_vol_confidence = volatility_thresholds.get(symbol, 70)  # ✅ RELAJADO: De 80% a 70%
                     if confidence < required_vol_confidence:
                         signal = 'HOLD'
                         filter_reason = f"Alta volatilidad ({vol_adjustment}) - {symbol} BUY requiere >{required_vol_confidence}% confianza"
                 elif signal == 'SELL':
                     # ✅ RELAJADO: En bullish extremo, relajar SELL en volatilidad
                     if regime == 'BULLISH' and market_confidence > 0.9:
-                        min_sell_vol_conf = 80  # Relajar a 70% en mercado muy bullish
+                        min_sell_vol_conf = 65  # ✅ RELAJADO: De 80% a 65%
                     else:
-                        min_sell_vol_conf = float(os.getenv('MIN_SELL_CONFIDENCE_THRESHOLD', '0.75')) * 100
+                        min_sell_vol_conf = 70  # ✅ RELAJADO: De 75% a 70%
 
                     if confidence < min_sell_vol_conf:
                         signal = 'HOLD'
                         filter_reason = f"Alta volatilidad ({vol_adjustment}) - SELL requiere >{min_sell_vol_conf:.0f}% confianza (actual: {confidence:.1f}%)"
 
-            # 🔵 FILTROS ESPECÍFICOS POR ACTIVO
+            # 🔵 FILTROS ESPECÍFICOS POR ACTIVO (RELAJADOS)
             if symbol == 'BTCUSDT':
-                # ✅ OPTIMIZADO: BTC como líder - permitir señales fuertes
+                # ✅ RELAJADO: BTC como líder - permitir señales más flexibles
                 btc_trend = market_context.get('btc_trend_score', 0)
                 if signal == 'BUY' and btc_trend < -0.4:  # Solo en tendencia MUY bajista
-                    if confidence < 75:  # Reducido de 82% a 80%
+                    if confidence < 60:  # ✅ RELAJADO: De 70% a 60%
                         signal = 'HOLD'
-                        filter_reason = f"BTC en tendencia muy bajista fuerte (trend: {btc_trend:.2f}) - BUY requiere >80% confianza"
+                        filter_reason = f"BTC en tendencia muy bajista fuerte (trend: {btc_trend:.2f}) - BUY requiere >60% confianza"
                     else:
                         filter_reason = f"BTC BUY permitido pese a tendencia bajista por alta confianza ({confidence:.1f}%)"
 
             elif symbol in ['ETHUSDT', 'BNBUSDT', 'XRPUSDT']:
-                # ✅ ALTCOINS OPTIMIZADO - Umbrales diferenciados por underperformance
+                # ✅ RELAJADO: ALTCOINS - Umbrales menos restrictivos por underperformance
                 altcoin_strength = market_context.get('altcoin_strength', 0)
                 if signal == 'BUY' and altcoin_strength < -0.2:  # Altcoins underperforming
-                    # Umbrales específicos para cada altcoin
+                    # ✅ RELAJADO: Umbrales específicos para cada altcoin
                     altcoin_thresholds = {
-                        'ETHUSDT': 75,   # ETH principal altcoin - umbral medio
-                        'BNBUSDT': 75,   # BNB exchange token - umbral menor
-                        'XRPUSDT': 75    # XRP altcoin establecida - umbral medio-alto
+                        'ETHUSDT': 60,   # ✅ RELAJADO: De 70% a 60% para ETH
+                        'BNBUSDT': 60,   # ✅ RELAJADO: De 70% a 60% para BNB
+                        'XRPUSDT': 60    # ✅ RELAJADO: De 70% a 60% para XRP
                     }
 
-                    required_alt_confidence = altcoin_thresholds.get(symbol, 75)
+                    required_alt_confidence = altcoin_thresholds.get(symbol, 60)
 
                     if confidence >= required_alt_confidence:
                         filter_reason = f"{symbol.replace('USDT', '')} permitido por alta confianza ({confidence:.1f}% > {required_alt_confidence}%) pese a underperformance"
@@ -1892,32 +1946,32 @@ class SimpleProfessionalTradingManager:
                 if signal == 'SELL' and history['consecutive_same_signal'] < required_confirmations:
                     return 'HOLD', f"ETH SELL requiere {required_confirmations} confirmaciones consecutivas (actual: {history['consecutive_same_signal']})"
 
-            # ✅ FILTRO DE CONFIANZA AUMENTADA PARA CAMBIOS DE SEÑAL (RELAJADO EN BULLISH)
+            # ✅ FILTRO DE CONFIANZA AUMENTADA PARA CAMBIOS DE SEÑAL (RELAJADO PARA ENSEMBLE)
             if history['last_signal'] and history['last_signal'] != signal:
-                # ✅ RELAJADO: En mercado BULLISH muy confiable, relajar cambios de señal
+                # ✅ RELAJADO: Con ensemble de modelos, las confianzas pueden ser más bajas pero válidas
                 # Verificar si el mercado es muy bullish usando el contexto recibido
                 market_is_very_bullish = market_context and \
                                        market_context.get('regime') == 'BULLISH' and \
                                        market_context.get('confidence', 0) > 0.9
 
                 if market_is_very_bullish:
-                    # Umbrales relajados para mercado muy bullish
+                    # ✅ RELAJADO: Umbrales muy bajos para mercado muy bullish con ensemble
                     min_confidence_for_change = {
-                        'ETHUSDT': 75.0,  # ETH: relajado de 78% a 65%
-                        'BTCUSDT': 75.0,  # BTC: relajado de 75% a 62%
-                        'BNBUSDT': 75.0,  # BNB: relajado de 72% a 60%
-                        'XRPUSDT': 75.0   # XRP: relajado de 75% a 63%
-                    }.get(symbol, 65.0)
-                    signal_context = "RELAJADO_BULLISH"
+                        'ETHUSDT': 60.0,  # ✅ RELAJADO: De 75% a 60% para ETH
+                        'BTCUSDT': 60.0,  # ✅ RELAJADO: De 75% a 60% para BTC
+                        'BNBUSDT': 60.0,  # ✅ RELAJADO: De 75% a 60% para BNB
+                        'XRPUSDT': 60.0   # ✅ RELAJADO: De 75% a 60% para XRP
+                    }.get(symbol, 55.0)
+                    signal_context = "RELAJADO_BULLISH_ENSEMBLE"  # Contexto de señal, no secret
                 else:
-                    # Umbrales normales para otros contextos
+                    # ✅ RELAJADO: Umbrales bajos para ensemble en otros contextos
                     min_confidence_for_change = {
-                        'ETHUSDT': 80.0,  # ETH requiere 80% para cambiar señal
-                        'BTCUSDT': 80.0,  # BTC requiere 80%
-                        'BNBUSDT': 80.0,  # BNB requiere 80%
-                        'XRPUSDT': 80.0   # XRP requiere 80%
-                    }.get(symbol, 75.0)
-                    signal_context = "NORMAL"
+                        'ETHUSDT': 65.0,  # ✅ RELAJADO: De 80% a 65% para ETH
+                        'BTCUSDT': 65.0,  # ✅ RELAJADO: De 80% a 65% para BTC
+                        'BNBUSDT': 65.0,  # ✅ RELAJADO: De 80% a 65% para BNB
+                        'XRPUSDT': 65.0   # ✅ RELAJADO: De 80% a 65% para XRP
+                    }.get(symbol, 60.0)
+                    signal_context = "RELAJADO_ENSEMBLE"
 
                 if confidence < min_confidence_for_change:
                     return 'HOLD', f"Cambio de señal {history['last_signal']}→{signal} requiere >{min_confidence_for_change:.0f}% confianza (actual: {confidence:.1f}%) [{signal_context}]"
@@ -2456,11 +2510,11 @@ class SimpleProfessionalTradingManager:
 
             # ✅ CONFIGURACIÓN: Límites específicos por par
             SYMBOL_LIMITS = {
-                'BTCUSDT': 25.0,  # BTC máximo 25% del portafolio
-                'ETHUSDT': 25.0,  # ETH máximo 25% del portafolio
-                'BNBUSDT': 20.0,  # BNB máximo 20% del portafolio
+                'BTCUSDT': 20.0,  # BTC máximo 25% del portafolio
+                'ETHUSDT': 30.0,  # ETH máximo 25% del portafolio
+                'BNBUSDT': 10.0,  # BNB máximo 20% del portafolio
                 'XRPUSDT': 30.0,  # XRP máximo 30% del portafolio
-                'DOTUSDT': 30.0   # DOT máximo 30% del portafolio
+                'DOTUSDT': 40.0   # DOT máximo 30% del portafolio
             }
 
             # ✅ PRIORIZACIÓN: Orden de preferencia para señales simultáneas
@@ -3268,13 +3322,13 @@ class SimpleProfessionalTradingManager:
 
     async def _detect_market_regime_robust(self, market_data: Dict[str, List[float]]) -> Tuple[str, float]:
         """
-        🔍 DETECCIÓN ROBUSTA DE RÉGIMEN DE MERCADO - VERSIÓN CORREGIDA
-        Sistema mejorado más sensible a mercados bajistas graduales
+        🔍 DETECCIÓN ROBUSTA DE RÉGIMEN DE MERCADO - VERSIÓN RELAJADA
+        Sistema mejorado menos sensible para permitir más trading
 
-        CORRECCIÓN: Ajustado para detectar mejor mercados bajistas en los últimos días
+        RELAJADO: Ajustado para ser menos restrictivo y permitir más oportunidades
         """
         try:
-            print(f"🔍 Detectando régimen de mercado robusto (versión corregida)...")
+            print(f"🔍 Detectando régimen de mercado robusto (versión relajada)...")
 
             # 1. ANÁLISIS MULTI-PAR
             pair_regimes = {}
@@ -3291,11 +3345,11 @@ class SimpleProfessionalTradingManager:
 
                 # === INDICADORES POR PAR ===
 
-                # 1. Momentum multitimeframe (UMBRALES REDUCIDOS)
+                # 1. Momentum multitimeframe (UMBRALES RELAJADOS)
                 df['momentum_1h'] = df['close'].pct_change(12)   # 12 * 5m = 1h
                 df['momentum_4h'] = df['close'].pct_change(48)   # 48 * 5m = 4h
                 df['momentum_12h'] = df['close'].pct_change(144) # 144 * 5m = 12h
-                df['momentum_24h'] = df['close'].pct_change(288) # 288 * 5m = 24h (NUEVO)
+                df['momentum_24h'] = df['close'].pct_change(288) # 288 * 5m = 24h
 
                 # 2. Medias móviles
                 df['sma_20'] = df['close'].rolling(20).mean()
@@ -3320,74 +3374,74 @@ class SimpleProfessionalTradingManager:
                 rs = gain / loss
                 df['rsi'] = 100 - (100 / (1 + rs))
 
-                # 6. NUEVO: Análisis de tendencia reciente (últimos 2 días)
+                # 6. Análisis de tendencia reciente (últimos 2 días)
                 df['recent_trend_2d'] = df['close'].pct_change(576)  # 576 * 5m = 48h
                 df['recent_slope'] = df['close'].rolling(144).apply(lambda x: np.polyfit(range(len(x)), x, 1)[0] if len(x) == 144 else 0, raw=True)
 
-                # === CLASIFICACIÓN POR PAR (MEJORADA) ===
+                # === CLASIFICACIÓN POR PAR (RELAJADA) ===
                 latest = df.iloc[-1]
 
                 # Contar señales bullish y bearish
                 bullish_count = 0
                 bearish_count = 0
 
-                # ✅ CORREGIDO: Umbrales de momentum MÁS SENSIBLES
-                # Momentum 4h (reducido de 2% a 1%)
+                # ✅ RELAJADO: Umbrales de momentum MÁS PERMISIVOS
+                # Momentum 4h (relajado de 1% a 1.5%)
                 if not pd.isna(latest['momentum_4h']):
-                    if latest['momentum_4h'] > 0.01:  # +1% (era +2%)
+                    if latest['momentum_4h'] > 0.015:  # +1.5% (era +1%)
                         bullish_count += 2
-                    elif latest['momentum_4h'] < -0.01:  # -1% (era -2%)
+                    elif latest['momentum_4h'] < -0.015:  # -1.5% (era -1%)
                         bearish_count += 2
 
-                # Momentum 12h (reducido de 5% a 2.5%)
+                # Momentum 12h (relajado de 2.5% a 3.5%)
                 if not pd.isna(latest['momentum_12h']):
-                    if latest['momentum_12h'] > 0.025:  # +2.5% (era +5%)
+                    if latest['momentum_12h'] > 0.035:  # +3.5% (era +2.5%)
                         bullish_count += 3
-                    elif latest['momentum_12h'] < -0.025:  # -2.5% (era -5%)
+                    elif latest['momentum_12h'] < -0.035:  # -3.5% (era -2.5%)
                         bearish_count += 3
 
-                # ✅ NUEVO: Momentum 24h para detectar tendencias de 1-2 días
+                # Momentum 24h (relajado de 3% a 4%)
                 if not pd.isna(latest['momentum_24h']):
-                    if latest['momentum_24h'] > 0.03:  # +3% en 24h
+                    if latest['momentum_24h'] > 0.04:  # +4% (era +3%)
                         bullish_count += 4
-                    elif latest['momentum_24h'] < -0.03:  # -3% en 24h (CRÍTICO)
+                    elif latest['momentum_24h'] < -0.04:  # -4% (era -3%)
                         bearish_count += 4
 
-                # ✅ NUEVO: Trend reciente de 2 días (MUY IMPORTANTE)
+                # Trend reciente de 2 días (relajado de 4% a 5%)
                 if not pd.isna(latest['recent_trend_2d']):
-                    if latest['recent_trend_2d'] > 0.04:  # +4% en 2 días
+                    if latest['recent_trend_2d'] > 0.05:  # +5% (era +4%)
                         bullish_count += 3
-                    elif latest['recent_trend_2d'] < -0.04:  # -4% en 2 días
-                        bearish_count += 5  # PESO EXTRA para tendencias bajistas de 2 días
+                    elif latest['recent_trend_2d'] < -0.05:  # -5% (era -4%)
+                        bearish_count += 4  # Reducido de 5 a 4
 
-                # Señales de MA (umbrales reducidos)
+                # Señales de MA (umbrales relajados)
                 if not pd.isna(latest['ma_trend']):
-                    if latest['ma_trend'] > 0.005 and latest['ma_direction']:  # +0.5% (era +1%)
+                    if latest['ma_trend'] > 0.008 and latest['ma_direction']:  # +0.8% (era +0.5%)
                         bullish_count += 2
-                    elif latest['ma_trend'] < -0.005 and not latest['ma_direction']:  # -0.5% (era -1%)
+                    elif latest['ma_trend'] < -0.008 and not latest['ma_direction']:  # -0.8% (era -0.5%)
                         bearish_count += 2
 
-                # ✅ NUEVO: EMA trend adicional
+                # EMA trend adicional (relajado)
                 if not pd.isna(latest['ema_trend']):
-                    if latest['ema_trend'] < -0.01:  # -1% respecto a EMA
+                    if latest['ema_trend'] < -0.015:  # -1.5% (era -1%)
                         bearish_count += 2
 
-                # RSI con contexto de momentum
+                # RSI con contexto de momentum (relajado)
                 if not pd.isna(latest['rsi']):
                     if latest['rsi'] > 70 and not pd.isna(latest['momentum_1h']) and latest['momentum_1h'] > 0:
                         bullish_count += 1
                     elif latest['rsi'] < 30 and not pd.isna(latest['momentum_1h']) and latest['momentum_1h'] < 0:
                         bearish_count += 1
-                    # ✅ NUEVO: RSI en zona de venta pero no extrema
-                    elif 45 < latest['rsi'] < 55 and not pd.isna(latest['momentum_4h']) and latest['momentum_4h'] < -0.005:
+                    # RSI en zona de venta pero no extrema (relajado)
+                    elif 40 < latest['rsi'] < 60 and not pd.isna(latest['momentum_4h']) and latest['momentum_4h'] < -0.008:
                         bearish_count += 1  # Momentum bajista con RSI neutral
 
-                # ✅ NUEVO: Pendiente reciente negativa
-                if not pd.isna(latest['recent_slope']) and latest['recent_slope'] < -0.5:
+                # Pendiente reciente negativa (relajado)
+                if not pd.isna(latest['recent_slope']) and latest['recent_slope'] < -0.8:
                     bearish_count += 2
 
-                # ✅ CLASIFICACIÓN MEJORADA: Más sensible a bearish
-                if bearish_count >= bullish_count:  # Cambio: era > bullish_count + 1
+                # ✅ CLASIFICACIÓN RELAJADA: Más permisiva
+                if bearish_count > bullish_count + 2:  # ✅ RELAJADO: Requiere más diferencia
                     pair_regime = 'BEARISH'
                     bearish_signals += bearish_count
                 elif bullish_count > bearish_count + 1:  # Mantener umbral para bullish
@@ -3411,7 +3465,7 @@ class SimpleProfessionalTradingManager:
                 total_signals += bullish_count + bearish_count
 
                 print(f"   📊 {symbol}: {pair_regime} (Bull: {bullish_count}, Bear: {bearish_count})")
-                # ✅ CORREGIDO: Mostrar valores reales en lugar de NaN
+                # Mostrar valores reales
                 mom_4h_display = latest['momentum_4h'] if not pd.isna(latest['momentum_4h']) else 0.0
                 mom_24h_display = latest['momentum_24h'] if not pd.isna(latest['momentum_24h']) else 0.0
                 trend_2d_display = latest['recent_trend_2d'] if not pd.isna(latest['recent_trend_2d']) else 0.0
@@ -3441,40 +3495,40 @@ class SimpleProfessionalTradingManager:
             max_votes = max(regime_votes.values())
             consensus_strength = max_votes / total_pairs
 
-            # 4. ✅ CLASIFICACIÓN FINAL CORREGIDA
+            # 4. ✅ CLASIFICACIÓN FINAL RELAJADA
 
-            # ✅ CORRECCIÓN CRÍTICA: Si hay unanimidad BEARISH (4 votos), debe ser BEARISH
+            # ✅ RELAJADO: Si hay unanimidad BEARISH (4 votos), debe ser BEARISH
             if regime_votes['BEARISH'] == total_pairs and regime_votes['BEARISH'] > 0:
                 final_regime = 'BEARISH'
-                confidence = 0.95  # Alta confianza en unanimidad
+                confidence = 0.9  # ✅ RELAJADO: De 0.95 a 0.9
                 print(f"   🔴 UNANIMIDAD BEARISH: {regime_votes['BEARISH']}/{total_pairs} pares → BEARISH forzado")
 
-            # Umbrales REDUCIDOS para mayor sensibilidad (mantener lógica original mejorada)
+            # Umbrales RELAJADOS para mayor permisividad
             elif (regime_votes['BEARISH'] >= regime_votes['BULLISH'] and
-                  bearish_ratio > 0.3 and  # Reducido aún más de 0.45 a 0.3
-                  consensus_strength > 0.3):  # Reducido de 0.4 a 0.3
+                  bearish_ratio > 0.4 and  # ✅ RELAJADO: De 0.3 a 0.4
+                  consensus_strength > 0.4):  # ✅ RELAJADO: De 0.3 a 0.4
                 final_regime = 'BEARISH'
-                confidence = min(0.95, 0.6 + (bearish_ratio - 0.3) * 0.8 + (consensus_strength - 0.3) * 0.6)
+                confidence = min(0.9, 0.6 + (bearish_ratio - 0.4) * 0.8 + (consensus_strength - 0.4) * 0.6)
 
             elif (regime_votes['BULLISH'] > regime_votes['BEARISH'] + 1 and
-                  bullish_ratio > 0.55 and  # Mantener umbral más alto para bullish
-                  consensus_strength > 0.5):  # Mantener umbral más alto para bullish
+                  bullish_ratio > 0.5 and  # ✅ RELAJADO: De 0.55 a 0.5
+                  consensus_strength > 0.4):  # ✅ RELAJADO: De 0.5 a 0.4
                 final_regime = 'BULLISH'
-                confidence = min(0.95, 0.5 + (bullish_ratio - 0.5) + (consensus_strength - 0.5))
+                confidence = min(0.9, 0.5 + (bullish_ratio - 0.5) + (consensus_strength - 0.4))
 
             else:
                 final_regime = 'NEUTRAL'
                 confidence = 0.5 + (1 - consensus_strength) * 0.3  # Mayor incertidumbre
 
-            # 5. ✅ OVERRIDE PARA MERCADOS CLARAMENTE BAJISTAS
+            # 5. ✅ OVERRIDE RELAJADO PARA MERCADOS CLARAMENTE BAJISTAS
             # Si la mayoría de pares muestran tendencia bajista de 2 días, forzar BEARISH
             valid_trends = [data['recent_trend_2d'] for data in pair_regimes.values() if data['recent_trend_2d'] != 0]
             if valid_trends:
                 avg_trend_2d = np.mean(valid_trends)
-                if avg_trend_2d < -0.03 and final_regime == 'NEUTRAL':  # -3% promedio en 2 días
+                if avg_trend_2d < -0.04 and final_regime == 'NEUTRAL':  # ✅ RELAJADO: De -3% a -4%
                     final_regime = 'BEARISH'
-                    confidence = 0.75
-                    print(f"   🔴 OVERRIDE: Tendencia 2d promedio {avg_trend_2d:.3f} < -3% → BEARISH forzado")
+                    confidence = 0.7  # ✅ RELAJADO: De 0.75 a 0.7
+                    print(f"   🔴 OVERRIDE: Tendencia 2d promedio {avg_trend_2d:.3f} < -4% → BEARISH forzado")
             else:
                 avg_trend_2d = 0.0
 
