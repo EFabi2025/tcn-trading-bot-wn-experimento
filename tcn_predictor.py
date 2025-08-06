@@ -2,7 +2,7 @@
 CORRECCIONES MATEMÁTICAS CRÍTICAS APLICADAS
 
 PROBLEMAS IDENTIFICADOS Y CORREGIDOS:
-✅ 1. Clipping agresivo (0.001, 0.999) → (0.01, 0.99) 
+✅ 1. Clipping agresivo (0.001, 0.999) → (0.01, 0.99)
 ✅ 2. Pesos adaptativos conservadores → MÁS AGRESIVOS
 ✅ 3. Combinación híbrida que diluye → BAYESIANO PURO para consenso
 ✅ 4. Calibración excesivamente penalizante → MENOS RESTRICTIVA
@@ -82,13 +82,13 @@ class TCNEnsemblePredictorCORREGIDO:
     # ========================================================================
     def calculate_adaptive_weights_CORREGIDO(self, symbol: str, predictions: Dict[str, Dict]) -> Dict[str, float]:
         \"\"\"🔧 CORRECCIÓN CRÍTICA: Pesos MÁS AGRESIVOS para señales claras\"\"\"
-        
+
         weights = {}
 
         # Base: Información mutua
         total_mi = 0.0
         for timeframe in predictions.keys():
-            mi = predictions[timeframe].get('dynamic_mi', 
+            mi = predictions[timeframe].get('dynamic_mi',
                 self.mutual_information_cache.get(symbol, {}).get(timeframe, 0.5))
             total_mi += mi
 
@@ -160,29 +160,29 @@ class TCNEnsemblePredictorCORREGIDO:
     def combinacion_bayesiana_CORREGIDA(self, predictions: Dict[str, Dict],
                                        adaptive_weights: Dict[str, float]) -> np.ndarray:
         \"\"\"🔧 CORRECCIÓN CRÍTICA: Sin dilución excesiva de probabilidades\"\"\"
-        
+
         try:
             if not predictions:
                 return np.array([1/3, 1/3, 1/3])
-            
+
             # Normalización de pesos
             total_weight = sum(adaptive_weights.values())
             if total_weight <= 0:
                 normalized_weights = {tf: 1.0 / len(predictions) for tf in predictions.keys()}
             else:
                 normalized_weights = {tf: w / total_weight for tf, w in adaptive_weights.items()}
-            
+
             # ✅ DECISIÓN CRÍTICA: ¿Hay consenso?
             signals = [pred['signal'] for pred in predictions.values()]
             consensus = len(set(signals)) == 1
-            
+
             if consensus:
                 print(f\"🎯 CONSENSO DETECTADO: {signals[0]} - USANDO 100% BAYESIANO PURO\")
                 return self._bayesiano_puro_CORREGIDO(predictions, normalized_weights)
             else:
                 print(f\"🎯 SIN CONSENSO: {set(signals)} - USANDO HÍBRIDO BALANCEADO\")
                 return self._hibrido_balanceado_CORREGIDO(predictions, normalized_weights)
-                
+
         except Exception as e:
             print(f\"⚠️ Error en combinación bayesiana: {e}\")
             return np.array([1/3, 1/3, 1/3])
@@ -190,63 +190,63 @@ class TCNEnsemblePredictorCORREGIDO:
     def _bayesiano_puro_CORREGIDO(self, predictions: Dict[str, Dict],
                                 normalized_weights: Dict[str, float]) -> np.ndarray:
         \"\"\"🔧 BAYESIANO PURO - Sin dilución para consenso claro\"\"\"
-        
+
         log_combined = np.zeros(3)
-        
+
         for timeframe, pred in predictions.items():
             tf_probs = np.array([
                 pred['probabilities']['SELL'],
                 pred['probabilities']['HOLD'],
                 pred['probabilities']['BUY']
             ])
-            
+
             # ✅ CORRECCIÓN 1: Clipping MENOS agresivo
             tf_probs = np.clip(tf_probs, 0.01, 0.99)  # ERA 0.001, 0.999
-            
+
             # ✅ CORRECCIÓN 2: Solo normalizar si realmente se necesita
             prob_sum = np.sum(tf_probs)
             if prob_sum < 0.85 or prob_sum > 1.15:  # Tolerancia más amplia
                 tf_probs = tf_probs / prob_sum
-            
+
             # Combinación bayesiana: log(P) = Σ w_i * log(P_i)
             log_probs = np.log(tf_probs)
             weight = normalized_weights.get(timeframe, 1.0 / len(predictions))
             log_combined += weight * log_probs
-        
+
         # ✅ CORRECCIÓN 3: UNA SOLA exponenciación y normalización
         combined_probs = np.exp(log_combined)
         combined_probs = combined_probs / np.sum(combined_probs)
-        
+
         return combined_probs
 
     def _hibrido_balanceado_CORREGIDO(self, predictions: Dict[str, Dict],
                                     normalized_weights: Dict[str, float]) -> np.ndarray:
         \"\"\"🔧 HÍBRIDO BALANCEADO - Para casos sin consenso\"\"\"
-        
+
         # Método 1: Bayesiano
         bayesian_probs = self._bayesiano_puro_CORREGIDO(predictions, normalized_weights)
-        
+
         # Método 2: Promedio ponderado
         simple_probs = np.zeros(3)
         total_weight = 0.0
-        
+
         for timeframe, pred in predictions.items():
             tf_probs = np.array([
                 pred['probabilities']['SELL'],
                 pred['probabilities']['HOLD'],
                 pred['probabilities']['BUY']
             ])
-            
+
             weight = normalized_weights.get(timeframe, 1.0)
             simple_probs += weight * tf_probs
             total_weight += weight
-        
+
         if total_weight > 0:
             simple_probs = simple_probs / total_weight
-        
+
         # ✅ CORRECCIÓN: Mix MENOS conservador (60% vs 80% anterior)
         combined_probs = 0.6 * bayesian_probs + 0.4 * simple_probs
-        
+
         return combined_probs
 
     # ========================================================================
@@ -255,7 +255,7 @@ class TCNEnsemblePredictorCORREGIDO:
     def calibracion_confianza_CORREGIDA(self, raw_confidence: float, agreement: float,
                                        uncertainty: float, stability: float) -> float:
         \"\"\"🔧 CALIBRACIÓN MENOS PENALIZANTE para señales claras\"\"\"
-        
+
         # ✅ PARÁMETROS CORREGIDOS
         alpha = 0.25  # ✅ REDUCIDO de 0.5 (menos penalización por incertidumbre)
         beta = 0.45   # ✅ AUMENTADO de 0.3 (más peso al agreement)
@@ -296,7 +296,7 @@ class TCNEnsemblePredictorCORREGIDO:
     # ========================================================================
     def calcular_informacion_mutua_CORREGIDA(self, X_tf: np.ndarray, y: np.ndarray) -> float:
         \"\"\"🔧 MI sin techo artificial para señales altamente correlacionadas\"\"\"
-        
+
         try:
             if X_tf.ndim > 1:
                 X_summary = np.mean(X_tf, axis=1)
@@ -346,7 +346,7 @@ class TCNEnsemblePredictorCORREGIDO:
     # ========================================================================
     def combinar_predicciones_timeframes_CORREGIDO(self, tf_predictions: Dict[str, Dict]) -> Dict:
         \"\"\"🔧 FUNCIÓN PRINCIPAL CORREGIDA - Sin sesgo HOLD\"\"\"
-        
+
         if not tf_predictions:
             return None
 
@@ -381,12 +381,12 @@ class TCNEnsemblePredictorCORREGIDO:
         agreement_score = 1.0 if consensus else 0.4  # Menos penalización por desacuerdo
 
         uncertainty = entropy(combined_probs) / np.log(3)
-        
+
         # Confidence corregida
         all_confidences = []
         for pred in tf_predictions.values():
-            conf = pred.get('confidence', max(pred['probabilities']['SELL'], 
-                                            pred['probabilities']['HOLD'], 
+            conf = pred.get('confidence', max(pred['probabilities']['SELL'],
+                                            pred['probabilities']['HOLD'],
                                             pred['probabilities']['BUY']))
             all_confidences.append(conf)
 
@@ -456,7 +456,7 @@ class TCNEnsemblePredictorCORREGIDO:
     def discover_available_timeframes(self) -> Dict[str, List[str]]:
         \"\"\"🔍 Autodetectar timeframes disponibles\"\"\"
         print(\"🔍 Autodetectando timeframes disponibles...\")
-        
+
         symbol_timeframes = {}
         all_timeframes = set()
 
@@ -535,25 +535,25 @@ class TCNEnsemblePredictorCORREGIDO:
         print(\"   ❌ ANTES: np.clip(probs, 0.001, 0.999)\")
         print(\"   ✅ AHORA: np.clip(probs, 0.01, 0.99)\")
         print(\"   📈 IMPACTO: +15% probabilidades extremas preservadas\")
-        
+
         print(\"\
 ✅ PROBLEMA 2: Pesos adaptativos conservadores\")
         print(\"   ❌ ANTES: accuracy_multiplier máximo = 2.5\")
         print(\"   ✅ AHORA: accuracy_multiplier máximo = 5.0\")
         print(\"   📈 IMPACTO: +100% agresividad para modelos excelentes\")
-        
+
         print(\"\
 ✅ PROBLEMA 3: Combinación híbrida que diluye\")
         print(\"   ❌ ANTES: 80% bayesiano + 20% simple (siempre)\")
         print(\"   ✅ AHORA: 100% bayesiano si hay consenso, 60%+40% si no\")
         print(\"   📈 IMPACTO: +25% preservación de señales claras\")
-        
+
         print(\"\
 ✅ PROBLEMA 4: Calibración excesivamente penalizante\")
         print(\"   ❌ ANTES: alpha=0.5, uncertainty_factor muy penalizante\")
         print(\"   ✅ AHORA: alpha=0.25, 60% menos penalización para señales claras\")
         print(\"   📈 IMPACTO: +40% confianza final para BUY/SELL claros\")
-        
+
         print(\"\
 ✅ PROBLEMA 5: Normalizaciones múltiples\")
         print(\"   ❌ ANTES: 3-4 normalizaciones → empuja hacia uniformidad\")
@@ -563,7 +563,7 @@ class TCNEnsemblePredictorCORREGIDO:
         print(\"   ❌ ANTES: MI limitada a max(0.0, min(2.0, mi))\")
         print(\"   ✅ AHORA: MI limitada a max(0.0, min(4.0, mi))\")
         print(\"   📈 IMPACTO: +100% rango para señales altamente correlacionadas\")
-        
+
         print(\"\
 🎯 RESULTADO ESPERADO:\")
         print(\"   📊 Probabilidades BUY: 30-35% → 60-80% (para señales claras)\")
@@ -601,21 +601,21 @@ class TCNEnsemblePredictorCORREGIDO:
             for timeframe in available_timeframes:
                 model_dir = None
                 model_type = None
-                
+
                 # Buscar modelos nuevos primero
                 model_dirs_to_check = []
                 if os.path.exists('models/'):
                     for dir_name in os.listdir('models/'):
                         if dir_name.startswith(f'adaptive_{symbol.lower()}_{timeframe}_'):
                             model_dirs_to_check.append(f'models/{dir_name}')
-                
+
                 # Buscar modelos legacy
                 if not model_dirs_to_check:
                     if timeframe == '1m':
                         legacy_dir = f'models/definitivo_v3_{symbol.lower()}'
                     else:
                         legacy_dir = f'models/definitivo_v3_{timeframe}_{symbol.lower()}'
-                    
+
                     if os.path.exists(legacy_dir):
                         model_dirs_to_check.append(legacy_dir)
 
@@ -647,7 +647,7 @@ class TCNEnsemblePredictorCORREGIDO:
                     if os.path.exists(model_path):
                         model = tf.keras.models.load_model(model_path)
                         self.models[symbol][timeframe] = model
-                        
+
                         if model_type == 'adaptive_tcn':
                             horizon = model_config.get('prediction_horizon', '?')
                             window = model_config.get('lookback_window', '?')
@@ -655,7 +655,7 @@ class TCNEnsemblePredictorCORREGIDO:
                             print(f\"✅ Modelo NUEVO cargado: {symbol} - {timeframe} | H:{horizon}h W:{window}w | Acc:{accuracy:.3f}\")
                         else:
                             print(f\"✅ Modelo LEGACY cargado: {symbol} - {timeframe} (definitivo_v3)\")
-                        
+
                         loaded_models += 1
 
                         # Detectar ventana
@@ -694,11 +694,11 @@ class TCNEnsemblePredictorCORREGIDO:
                         features_path = f'{model_dir}/features.pkl'
                     elif os.path.exists(f'{model_dir}/feature_columns.pkl'):
                         features_path = f'{model_dir}/feature_columns.pkl'
-                    
+
                     if features_path:
                         with open(features_path, 'rb') as f:
                             features_data = pickle.load(f)
-                        
+
                         if isinstance(features_data, dict):
                             self.feature_columns[symbol][timeframe] = features_data.get('feature_columns', [])
                         else:
@@ -715,29 +715,29 @@ class TCNEnsemblePredictorCORREGIDO:
                     model_accuracy = model_metrics.get('final_accuracy', 0.5)
                     model_precision = model_metrics.get('test_precision', 0.5)
                     model_recall = model_metrics.get('test_recall', 0.5)
-                    
+
                     # MI basado en performance real
                     base_mi = model_accuracy * 0.8
                     quality_factor = (model_precision + model_recall) / 2
                     quality_boost = (quality_factor - 0.5) * 0.3
-                    
+
                     timeframe_quality_map = {
-                        '1m': 0.85, '3m': 0.90, '5m': 0.95, '15m': 0.88, 
+                        '1m': 0.85, '3m': 0.90, '5m': 0.95, '15m': 0.88,
                         '1h': 0.92, '4h': 0.85, '1d': 0.80
                     }
                     timeframe_quality = timeframe_quality_map.get(timeframe, 0.85)
-                    
+
                     volatility_quality_map = {
                         'BTCUSDT': 0.95, 'ETHUSDT': 0.92, 'BNBUSDT': 0.90,
                         'XRPUSDT': 0.85, 'DOTUSDT': 0.83
                     }
                     symbol_quality = volatility_quality_map.get(symbol, 0.85)
-                    
+
                     mi_value = base_mi + quality_boost + (timeframe_quality - 0.85) * 0.2 + (symbol_quality - 0.85) * 0.15
                     mi_value = max(0.2, min(0.9, mi_value))
-                    
+
                     self.mutual_information_cache[symbol][timeframe] = mi_value
-                    
+
                     print(f\"📊 MI REAL para {symbol}-{timeframe}: {mi_value:.3f}\")
 
                 except Exception as e:
@@ -770,13 +770,13 @@ class TCNEnsemblePredictorCORREGIDO:
             for test_window in common_windows:
                 try:
                     # Crear tensor de prueba
-                    if (symbol in self.scalers and timeframe in self.scalers[symbol] and 
+                    if (symbol in self.scalers and timeframe in self.scalers[symbol] and
                         symbol in self.feature_columns and timeframe in self.feature_columns[symbol]):
-                        
+
                         feature_columns = self.feature_columns[symbol][timeframe]
                         num_features = len(feature_columns)
                         test_input = np.random.randn(1, test_window, num_features)
-                        
+
                         prediction = model.predict(test_input, verbose=0)
                         if prediction is not None and len(prediction) > 0:
                             print(f\"🔍 {symbol} - {timeframe}: Ventana detectada = {test_window} ✅\")
@@ -951,7 +951,7 @@ class TCNEnsemblePredictorCORREGIDO:
         try:
             model = self.models[symbol][timeframe]
             predictions = model.predict(sequence, verbose=0)
-            
+
             if isinstance(predictions, list):
                 prediction = predictions[0]
                 uncertainty = predictions[1] if len(predictions) > 1 else None
@@ -961,21 +961,21 @@ class TCNEnsemblePredictorCORREGIDO:
 
             # Calcular MI dinámico
             dynamic_mi = self.calcular_informacion_mutua_CORREGIDA(
-                sequence.reshape(-1, sequence.shape[-1]), 
+                sequence.reshape(-1, sequence.shape[-1]),
                 prediction.flatten()
             )
-            
+
             if symbol not in self.mutual_information_cache:
                 self.mutual_information_cache[symbol] = {}
             self.mutual_information_cache[symbol][timeframe] = dynamic_mi
 
             num_classes = len(prediction[0])
-            
+
             if num_classes == 3:
                 class_names = ['SELL', 'HOLD', 'BUY']
                 predicted_class = np.argmax(prediction[0])
                 confidence = prediction[0][predicted_class]
-                
+
                 probabilities = {
                     'SELL': float(prediction[0][0]),
                     'HOLD': float(prediction[0][1]),
@@ -985,7 +985,7 @@ class TCNEnsemblePredictorCORREGIDO:
                 class_names = ['SELL', 'BUY']
                 predicted_class = np.argmax(prediction[0])
                 confidence = prediction[0][predicted_class]
-                
+
                 probabilities = {
                     'SELL': float(prediction[0][0]),
                     'BUY': float(prediction[0][1])
@@ -1159,7 +1159,7 @@ class TCNEnsemblePredictorCORREGIDO:
     def discover_available_timeframes(self) -> Dict[str, List[str]]:
         \"\"\"🔍 Autodetectar timeframes disponibles\"\"\"
         print(\"🔍 Autodetectando timeframes disponibles...\")
-        
+
         symbol_timeframes = {}
         all_timeframes = set()
 

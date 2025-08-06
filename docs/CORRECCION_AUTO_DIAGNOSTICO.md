@@ -137,4 +137,4 @@ predictor = TCNEnsemblePredictor()
 
 ---
 
-**✅ CORRECCIONES COMPLETADAS: El auto-diagnóstico ahora funciona sin errores** 
+**✅ CORRECCIONES COMPLETADAS: El auto-diagnóstico ahora funciona sin errores**

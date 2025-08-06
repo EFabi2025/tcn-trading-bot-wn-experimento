@@ -32,23 +32,23 @@ Donde:
 def bayesian_combination(self, predictions: Dict[str, Dict],
                        adaptive_weights: Dict[str, float]) -> np.ndarray:
     """🎯 VERDADERA COMBINACIÓN BAYESIANA: P(C|D1,D2,...,Dn) ∝ P(C) * ∏ P(Di|C)"""
-    
+
     # Log-space para estabilidad numérica
     log_posterior = np.zeros(3)
-    
+
     # Prior uniforme en log-space
     log_prior = np.log(1/3)
     log_posterior += log_prior
-    
+
     # Acumular log-likelihoods
     for tf, pred in predictions.items():
-        probs = np.array([pred['probabilities'][k] 
+        probs = np.array([pred['probabilities'][k]
                          for k in ['SELL', 'HOLD', 'BUY']])
         weight = adaptive_weights.get(tf, 1.0)
-        
+
         # Log-likelihood ponderada
         log_posterior += weight * np.log(np.clip(probs, 1e-10, 1.0))
-    
+
     # Normalizar en probability space
     posterior = np.exp(log_posterior - np.max(log_posterior))
     return posterior / posterior.sum()
@@ -90,17 +90,17 @@ log_posterior += weight * np.log(np.clip(probs, 1e-10, 1.0))
 ```python
 def test_bayesian_combination_correctness(self) -> bool:
     """🧪 Probar que la combinación bayesiana es matemáticamente correcta"""
-    
+
     # Datos de prueba
     test_predictions = {
         '1m': {'probabilities': {'SELL': 0.3, 'HOLD': 0.4, 'BUY': 0.3}},
         '5m': {'probabilities': {'SELL': 0.2, 'HOLD': 0.3, 'BUY': 0.5}}
     }
     test_weights = {'1m': 0.6, '5m': 0.4}
-    
+
     # Aplicar combinación bayesiana
     result = self.bayesian_combination(test_predictions, test_weights)
-    
+
     # ✅ VALIDACIONES MATEMÁTICAS
     # 1. Normalización: suma = 1.0
     # 2. Positividad: todas > 0
@@ -179,4 +179,4 @@ ensemble_probs = self.bayesian_combination(predictions, adaptive_weights)
 
 ---
 
-**🎯 IMPACTO**: La combinación de predicciones ahora es matemáticamente correcta y proporciona resultados más precisos y confiables para el trading. 
+**🎯 IMPACTO**: La combinación de predicciones ahora es matemáticamente correcta y proporciona resultados más precisos y confiables para el trading.

@@ -227,4 +227,4 @@ await backtester.run_backtest(tcn_model, days=15)
 
 ---
 
-**✅ Integración Completada: El sistema ahora usa exclusivamente el motor de features centralizado y el backtest detecta correctamente los archivos del entrenador TCN definitivo.** 
+**✅ Integración Completada: El sistema ahora usa exclusivamente el motor de features centralizado y el backtest detecta correctamente los archivos del entrenador TCN definitivo.**

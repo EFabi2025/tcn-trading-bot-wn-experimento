@@ -37,13 +37,13 @@ def _get_tcn_final_features(self) -> List[str]:
     return [
         # === RETURNS Y MOMENTUM (5 features) ===
         'returns_1', 'returns_3', 'returns_5', 'returns_10', 'returns_20',
-        
+
         # === MOVING AVERAGES (3 features) ===
         'sma_5', 'sma_20', 'ema_12',
-        
+
         # === MOMENTUM INDICATORS (4 features) ===
         'rsi_14', 'macd', 'macd_signal', 'macd_histogram',
-        
+
         # === VOLATILITY & VOLUME (4 features) ===
         'bb_position', 'bb_width', 'volume_ratio', 'volatility'
     ]
@@ -94,7 +94,7 @@ if (macd_range < macd_range_threshold or  # Rango muy pequeño
 
 1. **RSI preservado en rango [0, 100]:**
    - rsi_14: [17.85, 74.37] ✅
-   - rsi_21: [25.43, 68.36] ✅  
+   - rsi_21: [25.43, 68.36] ✅
    - rsi_7: [6.95, 88.32] ✅
 
 2. **MACD mantiene valores extremos:**
@@ -205,4 +205,4 @@ if (macd_range < macd_range_threshold or  # Rango muy pequeño
 
 **✅ ESTADO: TODOS LOS ERRORES MENORES RESTANTES CORREGIDOS**
 **📅 FECHA: 10 de Junio 2025**
-**🔧 VERSIÓN: centralized_features_engine2.py MEJORADO FINAL** 
+**🔧 VERSIÓN: centralized_features_engine2.py MEJORADO FINAL**

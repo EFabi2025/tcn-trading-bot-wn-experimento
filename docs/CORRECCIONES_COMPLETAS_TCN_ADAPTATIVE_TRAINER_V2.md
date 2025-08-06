@@ -127,21 +127,21 @@ def monitor_memory_usage(self)
 ```python
 def attention_layer(x):
     """🎯 Mecanismo de atención robusto para dimensiones dinámicas y estáticas"""
-    
+
     # Obtener dimensiones de forma segura
     shape = tf.shape(x)
     batch_size = shape[0]
     seq_len = shape[1]
     features = shape[2]
-    
+
     # Usar Dense layers que manejan dimensiones dinámicas
     attention_weights = tf.keras.layers.Dense(1, activation='tanh')(x)
     attention_weights = tf.keras.layers.Softmax(axis=1)(attention_weights)
-    
+
     # Aplicar atención de forma segura
     attention_weights_expanded = tf.expand_dims(attention_weights, axis=-1)
     context = tf.keras.layers.Multiply()([x, attention_weights_expanded])
-    
+
     return tf.keras.layers.Add()([x, context])
 ```
 
@@ -149,17 +149,17 @@ def attention_layer(x):
 ```python
 def volatility_adaptation(x):
     """🎯 Adaptación a volatilidad del mercado con dimensiones dinámicas"""
-    
+
     shape = tf.shape(x)
     features = shape[2]
-    
+
     # Detectar volatilidad usando convoluciones que manejan dimensiones dinámicas
     vol_detector = tf.keras.layers.Conv1D(1, 3, padding='same', activation='sigmoid')(x)
     vol_gate = tf.keras.layers.Conv1D(features, 1, activation='sigmoid')(vol_detector)
-    
+
     # Aplicar gate de volatilidad de forma segura
     gated = tf.keras.layers.Multiply()([x, vol_gate])
-    
+
     return tf.keras.layers.Add()([x, gated])
 ```
 
@@ -289,4 +289,4 @@ success = await trainer.train_adaptive_model('BTCUSDT')
 
 ---
 
-**🎯 RESULTADO**: Sistema completamente robusto con manejo inteligente de errores, validaciones exhaustivas, diagnóstico automático de problemas y gestión eficiente de memoria. Los 5 problemas críticos han sido corregidos y el sistema ahora es mucho más confiable para trading en producción. 
+**🎯 RESULTADO**: Sistema completamente robusto con manejo inteligente de errores, validaciones exhaustivas, diagnóstico automático de problemas y gestión eficiente de memoria. Los 5 problemas críticos han sido corregidos y el sistema ahora es mucho más confiable para trading en producción.

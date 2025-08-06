@@ -29,13 +29,13 @@ class TCNEnsembleTrainer:
     def __init__(self):
         self.pairs = ["BNBUSDT","XRPUSDT"]
         self.features_engine = CentralizedFeaturesEngine()
-        
+
         # Configuración de timeframes
         self.timeframes = {
             '5m': {'lookback_window': 48, 'prediction_horizon': 12},  # 48 min lookback, 12 min ahead
             ##'5m': {'lookback_window': 24, 'prediction_horizon': 6}    # 2h lookback, 30 min ahead
         }
-        
+
         # THRESHOLDS COMPLETAMENTE CORREGIDOS
         self.thresholds = {
             'BTCUSDT': {
@@ -58,7 +58,7 @@ class TCNEnsembleTrainer:
 
     async def get_market_data(self, symbol: str, timeframe: str, days: int = 90) -> pd.DataFrame:
         """📊 Obtener datos de mercado para el timeframe especificado"""
-        
+
         print(f"📊 Obteniendo {days} días de datos {timeframe} para {symbol}...")
 
         base_url = "https://api.binance.com"
@@ -112,7 +112,7 @@ class TCNEnsembleTrainer:
         print(f"✅ Obtenidos {len(df)} registros {timeframe} de {symbol}")
         return df
 
-    def create_balanced_labels(self, df: pd.DataFrame, features: pd.DataFrame, 
+    def create_balanced_labels(self, df: pd.DataFrame, features: pd.DataFrame,
                              symbol: str, timeframe: str) -> pd.DataFrame:
         """🎯 Crear etiquetas balanceadas específicas por timeframe"""
 
@@ -194,7 +194,7 @@ class TCNEnsembleTrainer:
 
         return df_labeled
 
-    def prepare_training_data(self, df: pd.DataFrame, features: pd.DataFrame, 
+    def prepare_training_data(self, df: pd.DataFrame, features: pd.DataFrame,
                             timeframe: str) -> tuple:
         """🔧 Preparar datos para entrenamiento por timeframe"""
 
@@ -207,7 +207,7 @@ class TCNEnsembleTrainer:
         features_aligned = features.iloc[:-prediction_horizon]
 
         # Seleccionar features numéricas
-        feature_columns = [col for col in features_aligned.columns 
+        feature_columns = [col for col in features_aligned.columns
                          if features_aligned[col].dtype in ['float64', 'int64']]
 
         # Normalizar features
@@ -239,7 +239,7 @@ class TCNEnsembleTrainer:
 
     def create_tcn_model(self, input_shape: tuple, timeframe: str):
         """🎯 Crear modelo TCN específico por timeframe"""
-        
+
         print(f"🎯 Creando modelo TCN para {timeframe}...")
 
         # Arquitectura ajustada por timeframe
@@ -260,7 +260,7 @@ class TCNEnsembleTrainer:
         # Bloques TCN
         for i, (f, d) in enumerate(zip(filters, dilations)):
             model.add(tf.keras.layers.Conv1D(
-                filters=f, kernel_size=3, dilation_rate=d, 
+                filters=f, kernel_size=3, dilation_rate=d,
                 padding='causal', activation='relu'
             ))
             model.add(tf.keras.layers.BatchNormalization())
@@ -268,7 +268,7 @@ class TCNEnsembleTrainer:
 
         # Capas finales
         model.add(tf.keras.layers.GlobalAveragePooling1D())
-        model.add(tf.keras.layers.Dense(256, activation='relu', 
+        model.add(tf.keras.layers.Dense(256, activation='relu',
                                       kernel_regularizer=tf.keras.regularizers.l2(0.001)))
         model.add(tf.keras.layers.BatchNormalization())
         model.add(tf.keras.layers.Dropout(0.4))
@@ -369,13 +369,13 @@ class TCNEnsembleTrainer:
 
                 # 11. Guardar componentes
                 model.save(f'{model_dir}/model.h5')
-                
+
                 with open(f'{model_dir}/scaler.pkl', 'wb') as f:
                     pickle.dump(scaler, f)
-                
+
                 with open(f'{model_dir}/feature_columns.pkl', 'wb') as f:
                     pickle.dump(feature_columns, f)
-                
+
                 with open(f'{model_dir}/class_weights.pkl', 'wb') as f:
                     pickle.dump(class_weights, f)
 
@@ -389,7 +389,7 @@ class TCNEnsembleTrainer:
                     'prediction_horizon': self.timeframes[timeframe]['prediction_horizon'],
                     'features_count': len(feature_columns)
                 }
-                
+
                 with open(f'{model_dir}/ensemble_metrics.pkl', 'wb') as f:
                     pickle.dump(ensemble_metrics, f)
 
@@ -409,7 +409,7 @@ class TCNEnsembleTrainer:
 
         successful = sum(results.values())
         print(f"\n🏆 Modelos exitosos: {successful}/2")
-        
+
         return successful == 2
 
 
@@ -427,9 +427,9 @@ async def main():
     # Entrenar un símbolo primero para prueba
     symbol = "BNBUSDT"
     print(f"\n🚀 Entrenando ensemble para {symbol}...")
-    
+
     success = await trainer.train_ensemble_models(symbol)
-    
+
     if success:
         print(f"\n✅ {symbol}: ENSEMBLE COMPLETADO EXITOSAMENTE")
         print(f"🎯 Modelos guardados en models/definitivo_v3_5m_{symbol.lower()}/")
@@ -438,11 +438,11 @@ async def main():
 
     # Entrenar todos los símbolos
     train_all = input("\n🤔 ¿Entrenar ensemble para todos los símbolos? (y/n): ").lower().strip()
-    
+
     if train_all == 'y':
         print("\n🚀 Entrenando ensemble completo...")
         results = {}
-        
+
         for symbol in trainer.pairs:
             if symbol != "BNBUSDT":  # Ya entrenado
                 print(f"\n🔄 Entrenando ensemble para {symbol}...")
@@ -461,4 +461,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())

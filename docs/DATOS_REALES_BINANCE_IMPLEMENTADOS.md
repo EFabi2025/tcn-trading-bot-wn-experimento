@@ -104,4 +104,4 @@ El predictor incluye verificaciones automáticas que:
 
 ---
 
-**✅ IMPLEMENTACIÓN COMPLETADA: El predictor usa ÚNICAMENTE datos reales de Binance** 
+**✅ IMPLEMENTACIÓN COMPLETADA: El predictor usa ÚNICAMENTE datos reales de Binance**

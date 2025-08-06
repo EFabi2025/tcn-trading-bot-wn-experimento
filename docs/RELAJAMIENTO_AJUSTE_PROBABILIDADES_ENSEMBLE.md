@@ -107,4 +107,4 @@ combined_probs = 0.7 * bayesian_probs + 0.3 * simple_probs
 
 ---
 *Fecha: 2025-01-10*
-*Motivo: Ajuste final de probabilidades muy brutal convirtiendo señales claras en HOLD* 
+*Motivo: Ajuste final de probabilidades muy brutal convirtiendo señales claras en HOLD*

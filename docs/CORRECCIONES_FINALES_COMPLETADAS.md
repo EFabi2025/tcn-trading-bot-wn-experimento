@@ -22,7 +22,7 @@ elif col in manual_features:
 elif col in manual_features:
     # ✅ Manuales: Sin data leakage
     df[col] = df[col].fillna(method='ffill')
-    
+
     # Valores por defecto específicos por tipo de feature
     if col.startswith('bb_'):
         df[col] = df[col].fillna(0.5)  # Posición neutral en Bollinger
@@ -122,7 +122,7 @@ def _calculate_manual_features(self, df: pd.DataFrame) -> pd.DataFrame:
         delta = df['close'].diff()
         gain = delta.where(delta > 0, 0).rolling(window=14).mean()
         loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
-        
+
         # ✅ División segura
         loss_safe = np.maximum(loss, 1e-8)  # Evitar división por cero
         rs = gain / loss_safe
@@ -130,9 +130,9 @@ def _calculate_manual_features(self, df: pd.DataFrame) -> pd.DataFrame:
         rs = rs.clip(0, 1000)  # Limitar RS a rango razonable
         df['rsi_14'] = 100 - (100 / (1 + rs))
         df['rsi_14'] = df['rsi_14'].clip(0, 100)  # Asegurar rango [0,100]
-        
+
         # ... resto de implementaciones seguras ...
-        
+
     except Exception as e:
         print(f"⚠️ Error en features manuales: {e}")
         # Fallback: valores neutros
@@ -169,7 +169,7 @@ for macd_col in macd_features:
         macd_q99 = df[macd_col].quantile(0.99)
         macd_q01 = df[macd_col].quantile(0.01)
         macd_iqr = df[macd_col].quantile(0.75) - df[macd_col].quantile(0.25)
-        
+
         # Verificar múltiples métricas de compresión
         if (macd_range < 0.001 or  # Rango muy pequeño
             abs(macd_q99 - macd_q01) < 0.001 or  # Percentiles muy juntos
@@ -192,7 +192,7 @@ for macd_col in macd_features:
 
 1. **RSI preservado en rango [0, 100]:**
    - rsi_14: [17.85, 74.37] ✅
-   - rsi_21: [25.43, 68.36] ✅  
+   - rsi_21: [25.43, 68.36] ✅
    - rsi_7: [6.95, 88.32] ✅
 
 2. **MACD mantiene valores extremos:**
@@ -269,4 +269,4 @@ Después de estas correcciones, el motor de features es:
 
 **✅ ESTADO: TODAS LAS CORRECCIONES COMPLETADAS Y VALIDADAS**
 **📅 FECHA: 10 de Junio 2025**
-**🔧 VERSIÓN: centralized_features_engine2.py CORREGIDO FINAL** 
+**🔧 VERSIÓN: centralized_features_engine2.py CORREGIDO FINAL**

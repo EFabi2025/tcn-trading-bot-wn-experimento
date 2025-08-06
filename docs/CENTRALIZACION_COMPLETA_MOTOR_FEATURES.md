@@ -136,4 +136,4 @@ dynamic_threshold = base_threshold * volatility_multiplier
 
 ---
 
-**Estado**: ✅ **COMPLETADO** - Todos los cálculos centralizados en motor de features 
+**Estado**: ✅ **COMPLETADO** - Todos los cálculos centralizados en motor de features

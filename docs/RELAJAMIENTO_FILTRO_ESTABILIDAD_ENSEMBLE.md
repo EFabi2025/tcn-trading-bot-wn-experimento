@@ -5,13 +5,13 @@
 El filtro de estabilidad estaba siendo un **lastre** con el ensemble de modelos, bloqueando señales válidas con confianzas bajas:
 
 ```
-🛡️ FILTRO DE ESTABILIDAD aplicado en BTCUSDT: SELL → HOLD 
+🛡️ FILTRO DE ESTABILIDAD aplicado en BTCUSDT: SELL → HOLD
 (Cambio de señal BUY→SELL requiere >80% confianza (actual: 22.5%) [NORMAL])
 
-🛡️ FILTRO DE ESTABILIDAD aplicado en BNBUSDT: SELL → HOLD 
+🛡️ FILTRO DE ESTABILIDAD aplicado en BNBUSDT: SELL → HOLD
 (Cambio de señal HOLD→SELL requiere >80% confianza (actual: 46.1%) [NORMAL])
 
-🛡️ FILTRO DE ESTABILIDAD aplicado en XRPUSDT: BUY → HOLD 
+🛡️ FILTRO DE ESTABILIDAD aplicado en XRPUSDT: BUY → HOLD
 (Cambio de señal HOLD→BUY requiere >80% confianza (actual: 52.1%) [NORMAL])
 ```
 
@@ -98,4 +98,4 @@ El ensemble de modelos ya proporciona:
 
 ---
 *Fecha: 2025-01-10*
-*Motivo: Filtro de estabilidad innecesario con ensemble de modelos* 
+*Motivo: Filtro de estabilidad innecesario con ensemble de modelos*

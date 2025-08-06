@@ -88,4 +88,4 @@ Las features `volatility_10` y `volatility_20` no se calculan porque:
 
 **El entrenador usa 86 features porque el motor calcula 86 features, no porque el motor tenga 66 features.**
 
-**El motor tiene 88 features, pero 2 no se calculan por razones técnicas.** 
+**El motor tiene 88 features, pero 2 no se calculan por razones técnicas.**

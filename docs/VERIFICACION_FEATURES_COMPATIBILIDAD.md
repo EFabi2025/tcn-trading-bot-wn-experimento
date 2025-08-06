@@ -155,4 +155,4 @@ X, y, scaler, feature_columns, class_weights = self.prepare_training_data(df_lab
 - ✅ Cálculo correcto: **SÍ**
 - ✅ Compatibilidad: **100%**
 
-**NO HAY PROBLEMAS DE COMPATIBILIDAD DETECTADOS** 
+**NO HAY PROBLEMAS DE COMPATIBILIDAD DETECTADOS**

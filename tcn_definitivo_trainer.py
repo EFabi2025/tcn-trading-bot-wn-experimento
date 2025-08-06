@@ -59,7 +59,7 @@ class DefinitiveTCNTrainer:
             '1h': {'lookback': 24, 'horizon': 6},    # 1 día historia, 6h horizonte
             '4h': {'lookback': 18, 'horizon': 4}     # 3 días historia, 16h horizonte
         }
-        
+
         # Aplicar configuración específica del timeframe si no se especificó manualmente
         if self.timeframe in timeframe_configs and not config.get('lookback_window'):
             self.lookback_window = timeframe_configs[self.timeframe]['lookback']
@@ -136,48 +136,48 @@ class DefinitiveTCNTrainer:
 
         # ✅ NUEVO: MANEJO ROBUSTO DE DATOS CORRUPTOS
         print(f"🔧 Validando integridad de datos...")
-        
+
         # Verificar datos antes de limpieza
         initial_count = len(df)
         nan_count_before = df[numeric_columns].isnull().sum().sum()
-        
+
         if nan_count_before > 0:
             print(f"⚠️ Encontrados {nan_count_before} valores NaN en datos de mercado")
-            
+
             # ✅ LIMPIEZA DE DATOS CORRUPTOS
             # Eliminar filas con valores NaN en columnas críticas
             df_clean = df.dropna(subset=numeric_columns)
-            
+
             # Verificar que no perdimos demasiados datos
             lost_data = initial_count - len(df_clean)
             lost_percentage = (lost_data / initial_count) * 100
-            
+
             if lost_percentage > 5:  # Si perdimos más del 5% de datos
                 print(f"⚠️ ADVERTENCIA: Se perdieron {lost_data} registros ({lost_percentage:.1f}%) por datos corruptos")
                 print("   Considerando usar menos días o verificar conectividad")
             else:
                 print(f"✅ Limpieza exitosa: {lost_data} registros corruptos eliminados ({lost_percentage:.1f}%)")
-            
+
             df = df_clean
-        
+
         # ✅ VALIDACIÓN ADICIONAL DE INTEGRIDAD
         if len(df) == 0:
             print("❌ ERROR: No quedaron datos válidos después de la limpieza")
             return pd.DataFrame()
-        
+
         # Verificar que los precios son lógicos
         invalid_prices = (df['high'] < df['low']) | (df['open'] < 0) | (df['close'] < 0)
         if invalid_prices.any():
             invalid_count = invalid_prices.sum()
             print(f"⚠️ Encontrados {invalid_count} registros con precios inválidos, eliminando...")
             df = df[~invalid_prices]
-        
+
         # Verificar que tenemos suficientes datos
         if len(df) < 100:  # Mínimo 100 registros para entrenamiento
             print(f"❌ ERROR: Insuficientes datos válidos ({len(df)} registros)")
             print("   Se requieren al menos 100 registros para entrenamiento")
             return pd.DataFrame()
-        
+
         # ✅ VERIFICACIÓN FINAL
         final_nan_count = df[numeric_columns].isnull().sum().sum()
         if final_nan_count > 0:
@@ -185,11 +185,11 @@ class DefinitiveTCNTrainer:
             # ✅ CORREGIDO: Usar sintaxis moderna de fillna
             df[numeric_columns] = df[numeric_columns].ffill()  # Forward fill
             df[numeric_columns] = df[numeric_columns].bfill()  # Backward fill para valores al inicio
-        
+
         print(f"✅ Obtenidos {len(df)} registros válidos de {symbol}")
         print(f"   📊 Rango temporal: {df.index.min()} a {df.index.max()}")
         print(f"   💰 Rango de precios: ${df['close'].min():.2f} - ${df['close'].max():.2f}")
-        
+
         return df
 
     def create_features_using_centralized_engine(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -200,11 +200,11 @@ class DefinitiveTCNTrainer:
         try:
             # ✅ USAR MOTOR CENTRALIZADO EN LUGAR DE CÁLCULO INTERNO
             features = self.features_engine.calculate_features(df, feature_set='tcn_definitivo')
-            
+
             if features is None or features.empty:
                 print("❌ Error: No se pudieron calcular features con el motor centralizado")
                 return pd.DataFrame()
-            
+
             print(f"✅ {len(features.columns)} features calculadas con motor centralizado")
             return features
 
@@ -291,7 +291,7 @@ class DefinitiveTCNTrainer:
                             if i < len(features):
                                 # Usar momentum calculado por el motor centralizado
                                 current_momentum = features['price_momentum_5'].iloc[i] if 'price_momentum_5' in features.columns else 0.0
-                                
+
                                 # ✅ NUEVO: Usar momentum normalizado si está disponible
                                 if 'price_momentum_normalized_5' in features.columns:
                                     current_momentum_normalized = features['price_momentum_normalized_5'].iloc[i]
@@ -300,29 +300,29 @@ class DefinitiveTCNTrainer:
                             else:
                                 current_momentum = 0.0
                                 current_momentum_normalized = 0.0
-                            
+
                             # ✅ CENTRALIZADO: Usar volatilidad del motor centralizado
                             # Obtener volatilidad de diferentes períodos para cálculo dinámico
                             volatility_5 = features['volatility_5'].iloc[i] if 'volatility_5' in features.columns and i < len(features) else 0.01
                             volatility_20 = features['volatility_20'].iloc[i] if 'volatility_20' in features.columns and i < len(features) else 0.01
-                            
+
                             # Usar volatilidad normalizada si está disponible
                             if 'volatility_normalized_20' in features.columns and i < len(features):
                                 volatility_normalized = features['volatility_normalized_20'].iloc[i]
                             else:
                                 volatility_normalized = 1.0  # Valor neutral
-                            
+
                             # ✅ CALCULO DINÁMICO CENTRALIZADO
                             # Umbral base ajustado por volatilidad normalizada
                             base_threshold = 0.008
                             volatility_multiplier = min(2.0, max(0.5, volatility_normalized * 1.5))
                             dynamic_threshold = base_threshold * volatility_multiplier
-                            
+
                             # ✅ LÓGICA DE ESCALADO MEJORADA
                             # BUY: Momentum positivo + RSI no sobrecomprado
                             if current_momentum > dynamic_threshold and current_rsi < 70:
                                 label = 2  # HOLD -> BUY por momentum alcista
-                            # SELL: Momentum negativo + RSI no sobrevendido  
+                            # SELL: Momentum negativo + RSI no sobrevendido
                             elif current_momentum < -dynamic_threshold and current_rsi > 30:
                                 label = 0  # HOLD -> SELL por momentum bajista
                             else:
@@ -700,7 +700,7 @@ class DefinitiveTCNTrainer:
                 'feature_set': 'tcn_definitivo',
                 'model_type': 'tcn_definitivo'
             }
-            
+
             config_path = f'models/definitivo_{self.timeframe}_{symbol.lower()}/config.pkl'
             with open(config_path, 'wb') as f:
                 pickle.dump(config, f)
@@ -762,7 +762,7 @@ class DefinitiveTCNTrainer:
 
 def get_intelligent_lookback_window(timeframe: str, symbol: str) -> int:
     """🎯 Selección inteligente de lookback window con múltiples opciones"""
-    
+
     # Configuraciones específicas por timeframe y tipo de trading
     lookback_configs = {
         '1m': {
@@ -793,7 +793,7 @@ def get_intelligent_lookback_window(timeframe: str, symbol: str) -> int:
             'quarterly': {'windows': [180, 240, 300, 360], 'description': 'Tendencias trimestrales (1-2 meses)'}
         }
     }
-    
+
     # Recomendaciones específicas por símbolo y timeframe
     symbol_recommendations = {
         '1m': {
@@ -817,41 +817,41 @@ def get_intelligent_lookback_window(timeframe: str, symbol: str) -> int:
             'XRPUSDT': 'weekly', 'DOTUSDT': 'weekly', 'ADAUSDT': 'monthly', 'SOLUSDT': 'weekly'
         }
     }
-    
+
     print(f"\n🔍 SELECCIÓN DE LOOKBACK WINDOW PARA {timeframe.upper()}")
     print("=" * 60)
-    
+
     # Obtener configuraciones para el timeframe
     configs = lookback_configs.get(timeframe, lookback_configs['5m'])
-    
+
     # Recomendar categoría basada en el símbolo y timeframe
     timeframe_recommendations = symbol_recommendations.get(timeframe, {})
     recommended_category = timeframe_recommendations.get(symbol, 'balanced')
-    
+
     # Validar que la categoría recomendada existe para este timeframe
     if recommended_category not in configs:
         # Usar la primera categoría disponible como fallback
         recommended_category = list(configs.keys())[0]
-    
+
     print(f"💡 Recomendación automática para {symbol}: {recommended_category.upper()}")
     print(f"   ({configs[recommended_category]['description']})")
     print()
-    
+
     # Mostrar todas las opciones
     print("📊 OPCIONES DISPONIBLES:")
     category_list = list(configs.keys())
-    
+
     for i, (category, config) in enumerate(configs.items(), 1):
         windows_str = ', '.join(map(str, config['windows']))
         marker = " 🎯 RECOMENDADO" if category == recommended_category else ""
         print(f"   {i}. {category.upper()}: [{windows_str}]{marker}")
         print(f"      {config['description']}")
         print()
-    
+
     # Agregar opción personalizada
     print(f"   {len(configs) + 1}. PERSONALIZADA: Ingresar valor manual")
     print()
-    
+
     # Seleccionar categoría
     while True:
         try:
@@ -861,7 +861,7 @@ def get_intelligent_lookback_window(timeframe: str, symbol: str) -> int:
             print(f"❌ Selecciona un número entre 1 y {len(configs) + 1}")
         except ValueError:
             print("❌ Ingresa un número válido")
-    
+
     if choice == len(configs) + 1:
         # Opción personalizada
         print(f"\n🛠️ CONFIGURACIÓN PERSONALIZADA:")
@@ -882,31 +882,31 @@ def get_intelligent_lookback_window(timeframe: str, symbol: str) -> int:
         selected_category = category_list[choice - 1]
         selected_config = configs[selected_category]
         windows = selected_config['windows']
-        
+
         print(f"\n📊 OPCIONES EN CATEGORÍA {selected_category.upper()}:")
         for i, window in enumerate(windows, 1):
             time_coverage = calculate_time_coverage(window, timeframe)
             marker = " 🎯" if i == 2 else ""  # Marcar el segundo como recomendado
             print(f"   {i}. {window} períodos ({time_coverage}){marker}")
-        
+
         while True:
             try:
                 window_choice = int(input(f"🔍 Selecciona ventana (1-{len(windows)}): "))
                 if 1 <= window_choice <= len(windows):
                     selected_window = windows[window_choice - 1]
                     time_coverage = calculate_time_coverage(selected_window, timeframe)
-                    
+
                     print(f"\n✅ LOOKBACK WINDOW SELECCIONADO:")
                     print(f"   📊 Ventana: {selected_window} períodos")
                     print(f"   ⏰ Cobertura temporal: {time_coverage}")
                     print(f"   🎯 Categoría: {selected_category}")
                     print(f"   📈 Apropiado para: {selected_config['description']}")
-                    
+
                     # Mostrar análisis de rendimiento
                     show_performance = input("\n📊 ¿Ver análisis detallado de rendimiento? (s/n): ").lower().strip()
                     if show_performance in ['s', 'si', 'yes', 'y']:
                         show_lookback_performance_implications(selected_window, timeframe, symbol)
-                    
+
                     return selected_window
                 print(f"❌ Selecciona un número entre 1 y {len(windows)}")
             except ValueError:
@@ -921,9 +921,9 @@ def calculate_time_coverage(window: int, timeframe: str) -> str:
         '1h': 60,
         '4h': 240
     }
-    
+
     total_minutes = window * timeframe_minutes.get(timeframe, 5)
-    
+
     if total_minutes < 60:
         return f"{total_minutes}min"
     elif total_minutes < 1440:  # menos de 24h
@@ -1045,17 +1045,17 @@ def get_user_configuration():
 
     # Calcular limit base
     suggested_limit = int(base_limit_1m * timeframe_multipliers[timeframe])
-    
+
     # Aplicar ajuste por símbolo
     symbol_multiplier = symbol_adjustments.get(symbol, 1.0)
     suggested_limit = int(suggested_limit * symbol_multiplier)
-    
+
     # ✅ NUEVO: Límites mínimos y máximos para crypto
     min_limit = 1000   # Mínimo para cualquier timeframe
     max_limit = 50000  # Máximo para evitar sobrecarga
-    
+
     suggested_limit = max(min_limit, min(suggested_limit, max_limit))
-    
+
     print(f"\n📊 LIMIT SUGERIDO para {symbol} en {timeframe}: {suggested_limit:,}")
     print(f"   💡 Ajustado por liquidez del par y timeframe")
     print(f"   📈 Base: {int(base_limit_1m * timeframe_multipliers[timeframe]):,}")
@@ -1138,7 +1138,7 @@ def get_optimized_configuration():
     print("2. 🎯 BALANCED OPTIMIZADA: Balance sensibilidad/estabilidad (recomendado para 5m)")
     print("3. 📊 TREND OPTIMIZADA: Seguimiento de tendencias (recomendado para 15m+)")
     print("4. 🛠️ PERSONALIZADA: Seleccionar lookback window específico")
-    
+
     while True:
         try:
             opt_level = int(input("🎯 Selecciona nivel (1-4): "))
@@ -1161,10 +1161,10 @@ def get_optimized_configuration():
         'ADAUSDT': {'timeframe': '5m', 'days': 45, 'limit': 8000, 'prediction_horizon': 9},
         'SOLUSDT': {'timeframe': '5m', 'days': 30, 'limit': 6000, 'prediction_horizon': 12}
     }
-    
+
     config = base_configs.get(symbol, base_configs['BTCUSDT']).copy()
     config['symbol'] = symbol
-    
+
     # Aplicar lookback window según nivel de optimización
     if opt_level == 4:
         # Personalizada: usar selector inteligente
@@ -1175,28 +1175,28 @@ def get_optimized_configuration():
         # Automática según nivel
         lookback_by_level = {
             1: {  # Ultra optimizada (máxima sensibilidad)
-                'BTCUSDT': 24, 'ETHUSDT': 24, 'BNBUSDT': 18, 
+                'BTCUSDT': 24, 'ETHUSDT': 24, 'BNBUSDT': 18,
                 'XRPUSDT': 18, 'DOTUSDT': 18, 'ADAUSDT': 24, 'SOLUSDT': 18
             },
             2: {  # Balanced optimizada
-                'BTCUSDT': 48, 'ETHUSDT': 48, 'BNBUSDT': 36, 
+                'BTCUSDT': 48, 'ETHUSDT': 48, 'BNBUSDT': 36,
                 'XRPUSDT': 30, 'DOTUSDT': 30, 'ADAUSDT': 36, 'SOLUSDT': 30
             },
             3: {  # Trend optimizada
-                'BTCUSDT': 96, 'ETHUSDT': 96, 'BNBUSDT': 72, 
+                'BTCUSDT': 96, 'ETHUSDT': 96, 'BNBUSDT': 72,
                 'XRPUSDT': 60, 'DOTUSDT': 60, 'ADAUSDT': 72, 'SOLUSDT': 60
             }
         }
-        
+
         config['lookback_window'] = lookback_by_level[opt_level].get(symbol, 48)
-        
+
         # Mostrar información del nivel seleccionado
         level_descriptions = {
             1: "ULTRA OPTIMIZADA - Máxima reactividad para scalping/day trading",
             2: "BALANCED OPTIMIZADA - Balance óptimo para trading general",
             3: "TREND OPTIMIZADA - Enfoque en tendencias de medio plazo"
         }
-        
+
         time_coverage = calculate_time_coverage(config['lookback_window'], config['timeframe'])
         print(f"   📊 Nivel seleccionado: {level_descriptions[opt_level]}")
         print(f"   🔍 Lookback window: {config['lookback_window']} períodos ({time_coverage})")
@@ -1234,12 +1234,12 @@ def get_optimized_configuration():
 
 def show_lookback_performance_implications(lookback_window: int, timeframe: str, symbol: str):
     """📊 Mostrar implicaciones de rendimiento del lookback window seleccionado"""
-    
+
     time_coverage = calculate_time_coverage(lookback_window, timeframe)
-    
+
     print(f"\n📊 ANÁLISIS DE RENDIMIENTO - LOOKBACK WINDOW {lookback_window}")
     print("=" * 60)
-    
+
     # Categorizar la ventana
     if timeframe == '1m':
         if lookback_window <= 24:
@@ -1254,7 +1254,7 @@ def show_lookback_performance_implications(lookback_window: int, timeframe: str,
             category = "CONTEXTO AMPLIO"
             pros = ["Muy estable", "Pocas señales falsas", "Tendencias claras"]
             cons = ["Reacción lenta", "Puede perder oportunidades"]
-    
+
     elif timeframe == '5m':
         if lookback_window <= 30:
             category = "ALTA SENSIBILIDAD"
@@ -1268,7 +1268,7 @@ def show_lookback_performance_implications(lookback_window: int, timeframe: str,
             category = "SEGUIMIENTO TENDENCIAS"
             pros = ["Muy estable", "Tendencias sólidas", "Pocas reversiones"]
             cons = ["Entrada tardía", "Pérdida de movimientos cortos"]
-    
+
     else:  # 15m, 1h, 4h
         if lookback_window <= 48:
             category = "SWING TRADING"
@@ -1278,31 +1278,31 @@ def show_lookback_performance_implications(lookback_window: int, timeframe: str,
             category = "POSICIÓN/INVERSIÓN"
             pros = ["Muy estable", "Tendencias sólidas", "Gestión sencilla"]
             cons = ["Pocas señales", "Movimientos grandes"]
-    
+
     print(f"🎯 CATEGORÍA: {category}")
     print(f"⏰ COBERTURA TEMPORAL: {time_coverage}")
     print()
-    
+
     print("✅ VENTAJAS:")
     for pro in pros:
         print(f"   • {pro}")
     print()
-    
+
     print("⚠️ DESVENTAJAS:")
     for con in cons:
         print(f"   • {con}")
     print()
-    
+
     # Recomendaciones específicas por símbolo
     volatility_map = {
         'BTCUSDT': 'BAJA', 'ETHUSDT': 'MEDIA', 'BNBUSDT': 'MEDIA',
         'XRPUSDT': 'ALTA', 'DOTUSDT': 'ALTA', 'ADAUSDT': 'MEDIA', 'SOLUSDT': 'ALTA'
     }
-    
+
     symbol_volatility = volatility_map.get(symbol, 'MEDIA')
-    
+
     print(f"💡 RECOMENDACIONES PARA {symbol} (VOLATILIDAD {symbol_volatility}):")
-    
+
     if symbol_volatility == 'ALTA' and lookback_window > 60:
         print("   ⚠️ Ventana puede ser demasiado larga para este símbolo volátil")
         print("   💡 Considera ventanas más cortas (24-48) para mejor sensibilidad")
@@ -1311,16 +1311,16 @@ def show_lookback_performance_implications(lookback_window: int, timeframe: str,
         print("   💡 Considera ventanas más largas (48-96) para mayor estabilidad")
     else:
         print("   ✅ Ventana apropiada para la volatilidad del símbolo")
-    
+
     # Estimación de señales por día
     signals_per_day = estimate_daily_signals(lookback_window, timeframe, symbol_volatility)
     print(f"   📊 Señales estimadas por día: {signals_per_day}")
-    
+
     print("=" * 60)
 
 def estimate_daily_signals(lookback_window: int, timeframe: str, volatility: str) -> str:
     """📊 Estimar número de señales por día basado en configuración"""
-    
+
     # Factores base por timeframe
     base_signals = {
         '1m': 20,
@@ -1329,9 +1329,9 @@ def estimate_daily_signals(lookback_window: int, timeframe: str, volatility: str
         '1h': 2,
         '4h': 0.5
     }
-    
+
     base = base_signals.get(timeframe, 4)
-    
+
     # Ajustar por lookback window (ventanas más largas = menos señales)
     if lookback_window <= 24:
         window_factor = 1.5
@@ -1341,18 +1341,18 @@ def estimate_daily_signals(lookback_window: int, timeframe: str, volatility: str
         window_factor = 0.7
     else:
         window_factor = 0.4
-    
+
     # Ajustar por volatilidad
     volatility_factors = {
         'BAJA': 0.7,
         'MEDIA': 1.0,
         'ALTA': 1.4
     }
-    
+
     vol_factor = volatility_factors.get(volatility, 1.0)
-    
+
     estimated = base * window_factor * vol_factor
-    
+
     if estimated >= 10:
         return f"{estimated:.0f}-{estimated*1.5:.0f}"
     elif estimated >= 1:

@@ -180,7 +180,7 @@ def _get_tcn_final_features(self) -> List[str]:
 
 1. **RSI preservado en rango [0, 100]:**
    - rsi_14: [17.85, 74.37] ✅
-   - rsi_21: [25.43, 68.36] ✅  
+   - rsi_21: [25.43, 68.36] ✅
    - rsi_7: [6.95, 88.32] ✅
 
 2. **MACD mantiene valores extremos:**
@@ -275,4 +275,4 @@ def _get_tcn_final_features(self) -> List[str]:
 
 **✅ ESTADO: TODOS LOS ERRORES CRÍTICOS Y MENORES CORREGIDOS**
 **📅 FECHA: 10 de Junio 2025**
-**🔧 VERSIÓN: centralized_features_engine2.py CORREGIDO FINAL** 
+**🔧 VERSIÓN: centralized_features_engine2.py CORREGIDO FINAL**

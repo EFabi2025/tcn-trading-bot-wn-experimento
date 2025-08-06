@@ -5,7 +5,7 @@
 El filtro de contexto de mercado estaba siendo **muy conservador** en condiciones bearish, bloqueando señales válidas:
 
 ```
-🛡️ FILTRO DE CONTEXTO aplicado en BTCUSDT: BUY → HOLD 
+🛡️ FILTRO DE CONTEXTO aplicado en BTCUSDT: BUY → HOLD
 (Mercado BEARISH MUY_FUERTE (score: -0.48) - BTCUSDT BUY requiere >88% confianza (actual: 67.9%))
 ```
 
@@ -85,4 +85,4 @@ El filtro de contexto de mercado estaba siendo **muy conservador** en condicione
 
 ---
 *Fecha: 2025-01-10*
-*Motivo: Filtro de contexto muy conservador bloqueando señales válidas* 
+*Motivo: Filtro de contexto muy conservador bloqueando señales válidas*

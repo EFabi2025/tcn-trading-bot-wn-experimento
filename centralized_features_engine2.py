@@ -103,13 +103,13 @@ class CentralizedFeaturesEngine:
         return [
             # === RETURNS Y MOMENTUM (5 features) ===
             'returns_1', 'returns_3', 'returns_5', 'returns_10', 'returns_20',
-            
+
             # === MOVING AVERAGES (3 features) ===
             'sma_5', 'sma_20', 'ema_12',
-            
+
             # === MOMENTUM INDICATORS (4 features) ===
             'rsi_14', 'macd', 'macd_signal', 'macd_histogram',
-            
+
             # === VOLATILITY & VOLUME (4 features) ===
             'bb_position', 'bb_width', 'volume_ratio', 'volatility'
         ]
@@ -125,11 +125,11 @@ class CentralizedFeaturesEngine:
     def calculate_features(self, df: pd.DataFrame, feature_set: str = 'tcn_definitivo') -> pd.DataFrame:
         """
         Calcular features técnicas usando TA-Lib
-        
+
         Args:
             df: DataFrame con columnas OHLCV
             feature_set: Conjunto de features a calcular ('tcn_definitivo', 'tcn_final', 'full_set')
-            
+
         Returns:
             DataFrame con features calculadas
         """
@@ -306,7 +306,7 @@ class CentralizedFeaturesEngine:
             delta = df['close'].diff()
             gain = delta.where(delta > 0, 0).rolling(window=14).mean()
             loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
-            
+
             # ✅ División segura
             loss_safe = loss.clip(lower=1e-8)  # Usar pandas en lugar de numpy
             rs = gain / loss_safe
@@ -315,25 +315,25 @@ class CentralizedFeaturesEngine:
             df['rsi_14'] = 100 - (100 / (1 + rs))
             # ✅ Eliminar clipping innecesario para TA-Lib
             # df['rsi_14'] = df['rsi_14'].clip(0, 100)  # Asegurar rango [0,100]
-            
+
             # SMA/EMA básicos
             df['sma_20'] = df['close'].rolling(20).mean()
             df['ema_12'] = df['close'].ewm(span=12).mean()
-            
+
             # MACD básico con protección
             ema12 = df['close'].ewm(span=12).mean()
             ema26 = df['close'].ewm(span=26).mean()
             df['macd'] = ema12 - ema26
             df['macd_signal'] = df['macd'].ewm(span=9).mean()
             df['macd_histogram'] = df['macd'] - df['macd_signal']
-            
+
             # Reemplazar valores problemáticos
             manual_cols = ['rsi_14', 'sma_20', 'ema_12', 'macd', 'macd_signal', 'macd_histogram']
             for col in manual_cols:
                 if col in df.columns:
                     df[col] = df[col].replace([np.inf, -np.inf], np.nan)
                     df[col] = df[col].ffill()
-            
+
         except Exception as e:
             print(f"⚠️ Error en features manuales: {e}")
             # Fallback: valores neutros
@@ -343,7 +343,7 @@ class CentralizedFeaturesEngine:
             df['macd'] = 0.0
             df['macd_signal'] = 0.0
             df['macd_histogram'] = 0.0
-        
+
         return df
 
     def _calculate_additional_features(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -364,10 +364,10 @@ class CentralizedFeaturesEngine:
                 bb_range_safe = bb_range.replace(0, np.nan)
                 bb_range_safe = bb_range_safe.fillna(bb_range_safe.mean())
                 bb_range_safe = bb_range_safe.replace(0, 1e-8)  # Último recurso
-                
+
                 df['bb_position'] = (df['close'] - df['bb_lower']) / bb_range_safe
                 df['bb_position'] = df['bb_position'].clip(0, 1)  # Normalizar a [0,1]
-                
+
                 if 'bb_middle' in df.columns:
                     bb_middle_safe = df['bb_middle'].replace(0, np.nan)
                     bb_middle_safe = bb_middle_safe.fillna(df['close'])
@@ -381,31 +381,31 @@ class CentralizedFeaturesEngine:
             volume_sma_safe = volume_sma_safe.fillna(df['volume'].mean())
             volume_sma_safe = volume_sma_safe.clip(lower=1e-8)  # Usar pandas en lugar de numpy
             df['volume_ratio'] = df['volume'] / volume_sma_safe
-                
+
             df['volume_price_trend'] = df['volume'] * df['close'].pct_change()
 
             # Volatilidad
             df['volatility'] = df['close'].pct_change().rolling(window=20, min_periods=1).std()
 
             # === NUEVAS FEATURES DEL TCN DEFINITIVO ===
-            
+
             # PRICE PATTERNS (8 features) - CORREGIDO
             hl_range = df['high'] - df['low']
             # ✅ CORRECCIÓN: Manejo robusto de división por cero
             hl_range_safe = hl_range.replace(0, np.nan)
             hl_range_safe = hl_range_safe.fillna(hl_range_safe.mean())
             hl_range_safe = hl_range_safe.replace(0, 1e-8)  # Último recurso
-            
+
             df['hl_ratio'] = hl_range_safe / df['close']
             df['oc_ratio'] = (df['close'] - df['open']) / df['close']
             df['price_position'] = (df['close'] - df['low']) / hl_range_safe
             df['price_position'] = df['price_position'].clip(0, 1)  # Normalizar a [0,1]
-            
+
             # Price changes
             df['price_change_1'] = df['close'].pct_change(1)
             df['price_change_5'] = df['close'].pct_change(5)
             df['price_change_10'] = df['close'].pct_change(10)
-            
+
             # Volatility windows - Corregido para consistencia
             returns = df['close'].pct_change()
             df['price_volatility_10'] = returns.rolling(10).std()
@@ -414,25 +414,25 @@ class CentralizedFeaturesEngine:
             # MARKET STRUCTURE (8 features) - CORREGIDO
             df['higher_high'] = (df['high'] > df['high'].shift(1)).astype(int)
             df['lower_low'] = (df['low'] < df['low'].shift(1)).astype(int)
-            
+
             df['uptrend_strength'] = (df['close'] > df['close'].shift(1)).rolling(10).sum() / 10
             df['downtrend_strength'] = (df['close'] < df['close'].shift(1)).rolling(10).sum() / 10
-            
+
             # ✅ CORRECCIÓN: Eliminar look-ahead bias en resistance/support
             # Usar rolling window con shift para evitar data leakage
             rolling_max = df['close'].rolling(20, min_periods=1).max().shift(1)
             rolling_min = df['close'].rolling(20, min_periods=1).min().shift(1)
-            
+
             df['resistance_touch'] = (df['close'] >= rolling_max * 0.99).astype(int)
             df['support_touch'] = (df['close'] <= rolling_min * 1.01).astype(int)
-            
+
             # Market efficiency - CORREGIDO
             close_diff_abs = pd.Series(np.abs(df['close'].diff()), index=df.index)
             efficiency_numerator = np.abs(df['close'] - df['close'].shift(10))
             efficiency_denominator = close_diff_abs.rolling(10, min_periods=1).sum()
             efficiency_denominator = efficiency_denominator.replace(0, 1e-8)
             df['efficiency_ratio'] = (efficiency_numerator / efficiency_denominator).fillna(0)
-            
+
             # Fractal dimension - Implementación básica
             # Calcula la dimensión fractal usando el método de box-counting simplificado
             if len(df) > 20:
@@ -450,7 +450,7 @@ class CentralizedFeaturesEngine:
                 df['macd_momentum'] = df['macd_histogram'].diff().fillna(0)
             if 'ad' in df.columns:
                 df['ad_momentum'] = df['ad'].diff().fillna(0)
-                
+
             df['volume_momentum'] = df['volume'].pct_change().fillna(0)
             df['price_acceleration'] = df['price_change_1'].diff().fillna(0)
 
@@ -460,20 +460,20 @@ class CentralizedFeaturesEngine:
                 # Calcular momentum para diferentes períodos
                 price_diff = df['close'] - df['close'].shift(period)
                 price_prev = df['close'].shift(period)
-                
+
                 # Protección contra división por cero
                 price_prev_safe = price_prev.replace(0, np.nan)
                 momentum = price_diff / price_prev_safe
-                
+
                 # Rellenar valores NaN con 0
                 df[f'price_momentum_{period}'] = momentum.fillna(0)
-                
+
                 # ✅ NUEVO: MOMENTUM NORMALIZADO (basado en volatilidad)
                 if period >= 5:
                     # Calcular volatilidad para normalizar momentum
                     returns = df['close'].pct_change().rolling(period*2).std()
                     volatility_safe = returns.replace(0, 0.01)  # Evitar división por cero
-                    
+
                     # Normalizar momentum por volatilidad
                     normalized_momentum = momentum / volatility_safe
                     df[f'price_momentum_normalized_{period}'] = normalized_momentum.fillna(0)
@@ -490,12 +490,12 @@ class CentralizedFeaturesEngine:
                     df[f'volatility_{period}'] = volatility.fillna(0.01)  # ✅ NUEVO: Para armonía
                 else:
                     df[f'volatility_{period}'] = volatility.fillna(0.01)
-                
+
                 # Volatilidad basada en high-low range
                 hl_range = (df['high'] - df['low']) / df['close']
                 hl_volatility = hl_range.rolling(period).mean()
                 df[f'hl_volatility_{period}'] = hl_volatility.fillna(0.01)
-                
+
                 # Volatilidad normalizada (para comparaciones)
                 if period >= 10:
                     # Normalizar por volatilidad histórica
@@ -534,7 +534,7 @@ class CentralizedFeaturesEngine:
 
     def _clean_features_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """Limpiar y validar datos de features - VERSIÓN CORREGIDA"""
-        
+
         # Definir features de TA-Lib que NO deben ser clipeadas
         talib_features = [
             'rsi_14', 'rsi_21', 'rsi_7', 'macd', 'macd_signal', 'macd_histogram',
@@ -545,7 +545,7 @@ class CentralizedFeaturesEngine:
             'natr_14', 'natr_20', 'ad', 'adosc', 'obv', 'volume_sma_10', 'volume_sma_20',
             'mfi_14', 'mfi_20'
         ]
-        
+
         # Definir features manuales problemáticas que necesitan limpieza agresiva
         manual_features = [
             'bb_width', 'bb_position', 'volume_ratio', 'hl_ratio', 'oc_ratio', 'price_position',
@@ -564,11 +564,11 @@ class CentralizedFeaturesEngine:
                 # ✅ TA-Lib: Solo manejar NaN suavemente - NO clipping
                 df[col] = df[col].ffill()
                 # Preservar rangos originales de TA-Lib
-                
+
             elif col in manual_features:
                 # ✅ Manuales: Sin data leakage
                 df[col] = df[col].ffill()
-                
+
                 # Valores por defecto específicos por tipo de feature
                 if col.startswith('bb_'):
                     df[col] = df[col].fillna(0.5)  # Posición neutral en Bollinger
@@ -582,14 +582,14 @@ class CentralizedFeaturesEngine:
                     df[col] = df[col].fillna(0.0)  # Sin momentum
                 else:
                     df[col] = df[col].fillna(0.0)  # Valor neutral genérico
-                
+
                 # Clipping moderado solo para features manuales problemáticas
                 if hasattr(df[col], 'dtype') and str(df[col].dtype) in ['float64', 'float32']:
                     q99 = df[col].quantile(0.99)
                     q01 = df[col].quantile(0.01)
                     if pd.notna(q99) and pd.notna(q01) and q99 != q01:
                         df[col] = df[col].clip(lower=q01, upper=q99)
-                        
+
             else:
                 # Features adicionales: limpieza estándar
                 df[col] = df[col].ffill().fillna(0)
@@ -599,11 +599,11 @@ class CentralizedFeaturesEngine:
     def validate_talib_features_integrity(self, df: pd.DataFrame, price_context: Dict = None) -> Dict:
         """
         Validar que las features de TA-Lib mantienen su integridad después de la limpieza
-        
+
         Args:
             df: DataFrame con features calculadas
             price_context: Dict con información del precio original (median_price, price_std)
-            
+
         Returns:
             Dict con resultados de validación
         """
@@ -614,7 +614,7 @@ class CentralizedFeaturesEngine:
             'bb_ranges_valid': True,
             'warnings': []
         }
-        
+
         # Validar RSI está en rango [0, 100]
         rsi_features = ['rsi_14', 'rsi_21', 'rsi_7']
         for rsi_col in rsi_features:
@@ -626,7 +626,7 @@ class CentralizedFeaturesEngine:
                     validation_results['warnings'].append(
                         f"RSI {rsi_col} fuera de rango [0,100]: [{rsi_min:.2f}, {rsi_max:.2f}]"
                     )
-        
+
         # Validar que MACD mantiene valores extremos - Mejorado con límites adaptativos
         macd_features = ['macd', 'macd_signal', 'macd_histogram']
         for macd_col in macd_features:
@@ -635,7 +635,7 @@ class CentralizedFeaturesEngine:
                 macd_q99 = df[macd_col].quantile(0.99)
                 macd_q01 = df[macd_col].quantile(0.01)
                 macd_iqr = df[macd_col].quantile(0.75) - df[macd_col].quantile(0.25)
-                
+
                 # 💡 Límites adaptativos basados en el precio del activo - CORREGIDO
                 if price_context and price_context.get('median_price') is not None:
                     price_level = price_context['median_price']
@@ -652,14 +652,14 @@ class CentralizedFeaturesEngine:
                         macd_threshold = price_level * 0.01     # 1% del precio (más permisivo)
                     else:  # Crypto de precio extremadamente bajo
                         macd_threshold = 0.001  # Threshold fijo ultra bajo para casos extremos
-                    
+
                     macd_range_threshold = max(0.00001, macd_threshold)  # Mínimo extremadamente bajo
                     macd_iqr_threshold = max(0.000001, macd_threshold * 0.001)  # IQR extremadamente permisivo
                 else:
                     # Fallback extremadamente permisivo cuando no hay precio disponible
                     macd_range_threshold = 0.00001  # Extremadamente permisivo
                     macd_iqr_threshold = 0.000001
-                
+
                 # Verificar múltiples métricas de compresión con límites adaptativos
                 if (macd_range < macd_range_threshold or  # Rango muy pequeño
                     abs(macd_q99 - macd_q01) < macd_range_threshold or  # Percentiles muy juntos
@@ -670,14 +670,14 @@ class CentralizedFeaturesEngine:
                         f"MACD {macd_col} comprimido - range:{macd_range:.6f}, iqr:{macd_iqr:.6f}, "
                         f"threshold:{macd_range_threshold:.6f} ({price_info})"
                     )
-        
+
         # Validar Bollinger Bands - Mejorado con thresholds adaptativos
         bb_features = ['bb_upper', 'bb_middle', 'bb_lower']
         if all(bb in df.columns for bb in bb_features):
             bb_width = df['bb_upper'] - df['bb_lower']
             bb_width_std = bb_width.std()
             bb_width_mean = bb_width.mean()
-            
+
             # Threshold adaptativo basado en el ancho promedio - CORREGIDO
             if price_context and price_context.get('median_price') is not None:
                 price_level = price_context['median_price']
@@ -696,20 +696,20 @@ class CentralizedFeaturesEngine:
                     bb_threshold = 0.001  # Threshold fijo ultra bajo para casos extremos
             else:
                 bb_threshold = 0.00001  # Fallback extremadamente permisivo
-                
+
             if bb_width_std < bb_threshold and bb_width_mean < bb_threshold * 10:
                 validation_results['bb_ranges_valid'] = False
                 validation_results['warnings'].append(
                     f"Bollinger Bands comprimidas - std:{bb_width_std:.6f}, mean:{bb_width_mean:.6f}, "
                     f"threshold:{bb_threshold:.6f}"
                 )
-        
+
         # Validación general
-        if not (validation_results['rsi_range_valid'] and 
-                validation_results['macd_extremes_preserved'] and 
+        if not (validation_results['rsi_range_valid'] and
+                validation_results['macd_extremes_preserved'] and
                 validation_results['bb_ranges_valid']):
             validation_results['talib_features_preserved'] = False
-        
+
         return validation_results
 
     def get_feature_info(self, feature_set: str = None) -> Dict:
@@ -736,75 +736,75 @@ class CentralizedFeaturesEngine:
     async def compute_features(self, symbol: str, klines_data: List, feature_set: str = 'tcn_definitivo') -> np.ndarray:
         """
         Computar features desde datos de klines de Binance
-        
+
         Args:
             symbol: Símbolo del par (ej: BTCUSDT)
             klines_data: Lista de klines de Binance
             feature_set: Conjunto de features a calcular
-            
+
         Returns:
             np.ndarray: Features calculadas o None si error
         """
         try:
             print(f"🔄 Calculando {len(self.feature_sets.get(feature_set, []))} features para {symbol}...")
-            
+
             # Convertir klines a DataFrame
             df = self._klines_to_dataframe(klines_data)
             if df is None or df.empty:
                 print(f"❌ Error: DataFrame vacío para {symbol}")
                 return None
-            
+
             # Calcular features
             df_features = self.calculate_features(df, feature_set)
-            
+
             if df_features is None or df_features.empty:
                 print(f"❌ Error: No se calcularon features para {symbol}")
                 return None
-            
+
             # Seleccionar solo las features del conjunto solicitado
             feature_columns = self.feature_sets.get(feature_set, [])
             available_columns = [col for col in feature_columns if col in df_features.columns]
-            
+
             if not available_columns:
                 print(f"❌ Error: No hay features disponibles para {symbol}")
                 return None
-            
+
             # Obtener datos como numpy array
             features_array = df_features[available_columns].values
-            
+
             print(f"✅ Features calculadas: {len(available_columns)} de {len(feature_columns)} solicitadas")
-            
+
             return features_array
-            
+
         except Exception as e:
             print(f"❌ Error calculando features para {symbol}: {e}")
             return None
-    
+
     def _klines_to_dataframe(self, klines_data: List) -> pd.DataFrame:
         """Convertir datos de klines de Binance a DataFrame"""
         try:
             if not klines_data:
                 return None
-            
+
             # Formato esperado de klines de Binance:
             # [timestamp, open, high, low, close, volume, close_time, quote_asset_volume, number_of_trades, taker_buy_base_asset_volume, taker_buy_quote_asset_volume, ignore]
-            
+
             df = pd.DataFrame(klines_data, columns=[
                 'timestamp', 'open', 'high', 'low', 'close', 'volume',
                 'close_time', 'quote_asset_volume', 'number_of_trades',
                 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
             ])
-            
+
             # Convertir a tipos correctos
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             for col in ['open', 'high', 'low', 'close', 'volume']:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
-            
+
             # Ordenar por timestamp
             df = df.sort_values('timestamp').reset_index(drop=True)
-            
+
             return df
-            
+
         except Exception as e:
             print(f"❌ Error convirtiendo klines a DataFrame: {e}")
             return None
@@ -876,23 +876,23 @@ def test_centralized_features():
         {'name': 'XRPUSDT', 'base_price': 3.60, 'volatility': 0.05},
         {'name': 'ADAUSDT', 'base_price': 0.45, 'volatility': 0.06}
     ]
-    
+
     engine = create_features_engine()
-    
+
     for test_case in test_cases:
         print(f"\n🧪 Probando {test_case['name']} (precio: ${test_case['base_price']})")
-        
+
         # Crear datos de prueba específicos para este crypto
         dates = pd.date_range(start='2024-01-01', periods=100, freq='1H')
         np.random.seed(42)
-        
+
         base_price = test_case['base_price']
         volatility = test_case['volatility']
-        
+
         # Simular datos OHLCV realistas
         returns = np.random.normal(0, volatility, 100)
         prices = base_price * np.exp(np.cumsum(returns))
-        
+
         test_data = pd.DataFrame({
             'open': prices * (1 + np.random.normal(0, volatility * 0.25, 100)),
             'high': prices * (1 + np.abs(np.random.normal(0, volatility * 0.5, 100))),
@@ -900,32 +900,32 @@ def test_centralized_features():
             'close': prices,
             'volume': np.random.lognormal(10, 0.5, 100)
         }, index=dates)
-        
+
         try:
             # Calcular features
             features = engine.calculate_features(test_data, feature_set='tcn_definitivo')
             print(f"   ✅ Features calculadas: {features.shape}")
-            
+
             # Verificar thresholds corregidos
             price_context = {
                 'median_price': test_data['close'].median(),
                 'price_std': test_data['close'].std()
             }
             validation = engine.validate_talib_features_integrity(features, price_context)
-            
+
             if validation['talib_features_preserved']:
                 print(f"   ✅ {test_case['name']}: Features de TA-Lib preservadas correctamente")
             else:
                 print(f"   ⚠️ {test_case['name']}: Advertencias detectadas:")
                 for warning in validation['warnings']:
                     print(f"      - {warning}")
-                    
+
         except Exception as e:
             print(f"   ❌ Error en test para {test_case['name']}: {e}")
-    
+
     print(f"\n🎯 Test completado - Thresholds corregidos para diferentes tipos de crypto")
     print("=" * 70)
 
 
 if __name__ == "__main__":
-    test_centralized_features() 
+    test_centralized_features()

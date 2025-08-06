@@ -2,7 +2,7 @@
 
 ## Sistema Profesional de Trading TCN Armonizado
 
-**Fecha**: 2 de Agosto, 2025  
+**Fecha**: 2 de Agosto, 2025
 **Versión**: v2.0 - Armonizado con Motor Centralizado de Features
 
 ---
@@ -13,7 +13,7 @@
 - ✅ **Importación automática** del `CentralizedFeaturesEngine`
 - ✅ **Uso completo** de los 3 conjuntos de features disponibles:
   - `tcn_definitivo`: 88 features técnicas completas
-  - `tcn_final`: 16 features técnicas simplificadas  
+  - `tcn_final`: 16 features técnicas simplificadas
   - `full_set`: 96 features combinadas
 - ✅ **Validación automática** de integridad de features TA-Lib
 - ✅ **Fallback robusto** a features básicos si falla el motor
@@ -25,7 +25,7 @@
 # Nuevas opciones disponibles:
 - timeframe: 15 opciones (1m, 3m, 5m, ..., 1w, 1M)
 - lookback_periods: Configurable
-- prediction_horizon: Configurable  
+- prediction_horizon: Configurable
 - model_type: 4 tipos (tcn_basic, tcn_advanced, lstm_tcn, transformer_tcn)
 - feature_set: 3 conjuntos disponibles
 - scaler_type: 3 opciones (robust, standard, minmax)
@@ -47,14 +47,14 @@
 - ~11,575 parámetros
 - Ideal para experimentos rápidos
 
-#### **tcn_advanced**: Modelo completo (original mejorado)  
+#### **tcn_advanced**: Modelo completo (original mejorado)
 - 64 → 128 → 256 → 128 filtros Conv1D
 - ~293,335 parámetros
 - Mejor rendimiento general
 
 #### **lstm_tcn**: Modelo híbrido
 - LSTM + TCN combinados
-- ~177,303 parámetros  
+- ~177,303 parámetros
 - Captura patrones temporales complejos
 
 #### **transformer_tcn**: Modelo con atención
@@ -66,7 +66,7 @@
 
 #### **3 Modos de Configuración:**
 1. **Días hacia atrás**: `training_days=90`
-2. **Fecha específica a ahora**: `start_date="2024-01-01"`  
+2. **Fecha específica a ahora**: `start_date="2024-01-01"`
 3. **Rango de fechas**: `start_date="2024-01-01", end_date="2024-06-01"`
 
 ### 5. **Split Temporal Tri-partito**
@@ -118,7 +118,7 @@ config = TradingConfig(
 ### **Trading Medium-Term (15 minutos)**
 ```python
 config = TradingConfig(
-    symbol="ETHUSDT", 
+    symbol="ETHUSDT",
     timeframe="15m",
     lookback_periods=48,
     model_type="tcn_advanced",
@@ -159,7 +159,7 @@ from tcn_hybrid_trainer import TradingConfig, ProfessionalCryptoTrader
 # Crear configuración personalizada
 config = TradingConfig(
     symbol="ADAUSDT",
-    timeframe="30m", 
+    timeframe="30m",
     model_type="transformer_tcn",
     feature_set="tcn_definitivo",
     training_days=120,
@@ -222,7 +222,7 @@ python test_armonizado.py
 
 ## 🎯 BENEFICIOS PRINCIPALES
 
-1. **🔧 Flexibilidad Total**: 
+1. **🔧 Flexibilidad Total**:
    - Cualquier timeframe, modelo y conjunto de features
    - Fechas específicas o períodos relativos
    - Escaladores y parámetros configurables

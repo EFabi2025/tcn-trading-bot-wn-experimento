@@ -54,7 +54,7 @@ class TCNEnsemblePredictor:
         self.historical_predictions_cache = {}  # {symbol: {timeframe: [predictions_history]}}
         self.historical_features_cache = {}     # {symbol: {timeframe: [features_history]}}
         self.max_history_length = 50  # Máximo 50 predicciones históricas por timeframe
-        
+
         # ✅ NUEVO: Historial de confianza para calibración isotónica
         self.confidence_history = {}  # {symbol: [{'raw_confidence': float, 'actual_outcome': int, 'timestamp': datetime}]}
         self.max_confidence_history = 1000  # Máximo 1000 entradas por símbolo
@@ -65,7 +65,7 @@ class TCNEnsemblePredictor:
             'beta': 0.45,   # 50% más peso al agreement
             'gamma': 0.3    # 50% más estabilidad temporal
         }
-        
+
         # 🎯 NUEVO: SISTEMA DE CALIBRACIÓN ADAPTATIVA POR CONTEXTO DE MERCADO
         self.market_context_calibration = {
             'volatility_regimes': {
@@ -90,7 +90,7 @@ class TCNEnsemblePredictor:
                     'gamma': 0.1     # Mínima estabilidad temporal
                 }
             },
-            
+
             'trend_regimes': {
                 'strong_bullish': {
                     'alpha': 0.4,    # Menos incertidumbre en tendencias claras
@@ -118,7 +118,7 @@ class TCNEnsemblePredictor:
                     'gamma': 0.2
                 }
             },
-            
+
             'liquidity_regimes': {
                 'high_liquidity': {
                     'alpha': 0.4,    # Menos incertidumbre con alta liquidez
@@ -141,7 +141,7 @@ class TCNEnsemblePredictor:
         # ✅ MEJORA: Thresholds más realistas
         self.min_confidence_threshold = 0.50
         self.high_confidence_threshold = 0.70
-        
+
         # 🎯 NUEVO: CACHE PARA CONTEXTO DE MERCADO
         self.market_context_cache = {}  # {symbol: {context_type: value, timestamp}}
         self.context_update_interval =120  # 5 minutos entre actualizaciones
@@ -200,7 +200,7 @@ class TCNEnsemblePredictor:
                     pending = asyncio.all_tasks(loop)
                     for task in pending:
                         task.cancel()
-                    
+
                     # Ejecutar hasta que todas las tareas se cancelen
                     if pending:
                         loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
@@ -256,12 +256,12 @@ class TCNEnsemblePredictor:
                     import asyncio
                     import aiohttp
                     from datetime import datetime, timedelta
-                    
+
                     # Obtener datos reales de Binance
                     base_url = "https://api.binance.com"
                     end_time = int(datetime.now().timestamp() * 1000)
                     start_time = int((datetime.now() - timedelta(hours=2)).timestamp() * 1000)
-                    
+
                     async def get_real_test_data():
                         async with aiohttp.ClientSession() as session:
                             url = f"{base_url}/api/v3/klines"
@@ -272,13 +272,13 @@ class TCNEnsemblePredictor:
                                 'endTime': end_time,
                                 'limit': test_window + 10
                             }
-                            
+
                             async with session.get(url, params=params) as response:
                                 if response.status == 200:
                                     data = await response.json()
                                     return data
                                 return None
-                    
+
                     # Obtener datos reales - CORRECCIÓN CRÍTICA DEL EVENT LOOP
                     try:
                         # Verificar si ya hay un event loop activo
@@ -300,51 +300,51 @@ class TCNEnsemblePredictor:
                     except Exception as e:
                         print(f"⚠️ Error obteniendo datos reales para {symbol}-{timeframe}: {e}")
                         real_data = None
-                    
+
                     if real_data and len(real_data) >= test_window:
                         # Convertir datos reales a formato de features
                         from centralized_features_engine2 import CentralizedFeaturesEngine
                         features_engine = CentralizedFeaturesEngine()
-                        
+
                         # Crear DataFrame con datos reales
                         import pandas as pd
                         columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume',
                                  'close_time', 'quote_volume', 'trades', 'taker_buy_base',
                                  'taker_buy_quote', 'ignore']
-                        
+
                         df = pd.DataFrame(real_data, columns=columns)
                         numeric_columns = ['open', 'high', 'low', 'close', 'volume']
                         for col in numeric_columns:
                             df[col] = pd.to_numeric(df[col], errors='coerce')
-                        
+
                         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
                         df = df.set_index('timestamp').sort_index()
-                        
+
                         # Calcular features reales
                         features = features_engine.calculate_features(df, feature_set='tcn_definitivo')
-                        
+
                         if not features.empty and len(features) >= test_window:
                             # Tomar la última secuencia con datos reales
                             features_selected = features.iloc[-test_window:].values
-                            
+
                             # ✅ CORRECCIÓN CRÍTICA: Usar el scaler real del modelo en lugar de crear uno sintético
                             # Verificar si tenemos el scaler real del modelo
-                            if (symbol in self.scalers and 
-                                timeframe in self.scalers[symbol] and 
-                                symbol in self.feature_columns and 
+                            if (symbol in self.scalers and
+                                timeframe in self.scalers[symbol] and
+                                symbol in self.feature_columns and
                                 timeframe in self.feature_columns[symbol]):
-                                
+
                                 # Usar el scaler real del modelo
                                 real_scaler = self.scalers[symbol][timeframe]
                                 real_feature_columns = self.feature_columns[symbol][timeframe]
-                                
+
                                 # Seleccionar solo las features que usa el modelo real
                                 available_features = [col for col in real_feature_columns if col in features.columns]
                                 if len(available_features) == len(real_feature_columns):
                                     # Usar el scaler real del modelo
                                     features_for_model = features[available_features].iloc[-test_window:].values
                                     features_scaled = real_scaler.transform(features_for_model)
-                                    
+
                                     # Crear tensor con datos reales y scaler real
                                     test_input = features_scaled.reshape(1, test_window, features_scaled.shape[1])
                                 else:
@@ -353,14 +353,14 @@ class TCNEnsemblePredictor:
                             else:
                                 print(f"⚠️ {symbol} - {timeframe}: No se encontró scaler real, saltando ventana {test_window}")
                                 continue
-                            
+
                             # Probar modelo con datos reales
                             prediction = model.predict(test_input, verbose=0)
-                            
+
                             if prediction is not None and len(prediction) > 0:
                                 print(f"🔍 {symbol} - {timeframe}: Ventana detectada (datos reales) = {test_window} ✅")
                                 return test_window
-                    
+
                 except Exception as e:
                     continue  # Probar siguiente ventana
 
@@ -377,7 +377,7 @@ class TCNEnsemblePredictor:
         try:
             # ✅ CORRECCIÓN CRÍTICA: Usar estimador de Kraskov para MI continua
             # Evitar discretización arbitraria que pierde información
-            
+
             # Preparar datos para estimación continua
             if X_tf.ndim > 1:
                 # Usar todas las features, no solo la media
@@ -385,7 +385,7 @@ class TCNEnsemblePredictor:
             else:
                 # Reshape para mantener dimensionalidad
                 X_continuous = X_tf.reshape(-1, 1)
-            
+
             # Asegurar que y sea entero y 1D
             if hasattr(y, 'astype'):
                 y_discrete = y.astype(int).flatten()
@@ -397,50 +397,50 @@ class TCNEnsemblePredictor:
             if min_samples < 5:  # Necesitamos al menos 5 muestras para estimación robusta
                 print(f"⚠️ Muy pocas muestras para estimación de MI: {min_samples}")
                 return 0.5
-            
+
             X_continuous = X_continuous[:min_samples]
             y_discrete = y_discrete[:min_samples]
-            
+
             # ✅ ESTIMADOR DE KRASKOV: Usar sklearn para estimación continua
             try:
                 from sklearn.feature_selection import mutual_info_classif
-                
+
                 # Estimación de MI usando método de Kraskov
                 # discrete_features=False: trata features como continuas
                 # n_neighbors=5: parámetro óptimo para estimación robusta
                 mi_scores = mutual_info_classif(
-                    X_continuous, 
-                    y_discrete, 
+                    X_continuous,
+                    y_discrete,
                     discrete_features=False,
-                    n_neighbors=5, 
+                    n_neighbors=5,
                     random_state=42
                 )
-                
+
                 # Promedio ponderado de MI para todas las features
                 mi_value = np.mean(mi_scores)
-                
+
                 # ✅ VALIDACIÓN: Verificar que el valor es razonable
                 if np.isnan(mi_value) or np.isinf(mi_value):
                     print(f"⚠️ MI inválido detectado: {mi_value}")
                     return 0.5
-                
+
                 # Clamp a rango seguro [0, 3]
                 mi_value = max(0.0, min(3.0, mi_value))
-                
+
                 print(f"✅ MI Kraskov calculado: {mi_value:.3f} (features: {X_continuous.shape[1]})")
                 return mi_value
-                
+
             except ImportError:
                 print("⚠️ sklearn no disponible, usando método fallback")
                 return self._calculate_mutual_information_fallback(X_continuous, y_discrete)
-                
+
         except Exception as e:
             print(f"⚠️ Error calculando MI con Kraskov: {e}")
             return 0.5  # Valor por defecto
 
     def _calculate_mutual_information_fallback(self, X_tf: np.ndarray, y: np.ndarray) -> float:
         """🔄 Método fallback para cuando sklearn no está disponible"""
-        
+
         try:
             # Método simplificado pero más robusto que el anterior
             if X_tf.ndim > 1:
@@ -450,7 +450,7 @@ class TCNEnsemblePredictor:
                     corr = np.corrcoef(X_tf[:, i], y)[0, 1]
                     if not np.isnan(corr):
                         correlations.append(abs(corr))
-                
+
                 if correlations:
                     # Convertir correlación a MI aproximado
                     mi_value = np.mean(correlations) * 0.5  # Factor de escala
@@ -465,14 +465,14 @@ class TCNEnsemblePredictor:
                     return max(0.0, min(3.0, mi_value))
                 else:
                     return 0.5
-                    
+
         except Exception as e:
             print(f"⚠️ Error en método fallback: {e}")
             return 0.5
 
     def detect_market_context(self, symbol: str, market_data: pd.DataFrame) -> Dict[str, str]:
         """🎯 DETECTAR CONTEXTO DE MERCADO PARA CALIBRACIÓN ADAPTATIVA"""
-        
+
         try:
             if market_data.empty or len(market_data) < 20:
                 return {
@@ -490,7 +490,7 @@ class TCNEnsemblePredictor:
             # 1. DETECTAR RÉGIMEN DE VOLATILIDAD
             returns = np.diff(np.log(close_prices))
             volatility = np.std(returns) * np.sqrt(252 * 24 * 60)  # Anualizada
-            
+
             if volatility < 0.3:
                 volatility_regime = 'low_volatility'
             elif volatility < 0.6:
@@ -504,11 +504,11 @@ class TCNEnsemblePredictor:
             # Calcular tendencia usando regresión lineal
             x = np.arange(len(close_prices))
             slope, intercept = np.polyfit(x, close_prices, 1)
-            
+
             # Normalizar slope por el precio promedio
             avg_price = np.mean(close_prices)
             normalized_slope = slope / avg_price
-            
+
             if normalized_slope > 0.001:
                 trend_regime = 'strong_bullish'
             elif normalized_slope > 0.0001:
@@ -524,7 +524,7 @@ class TCNEnsemblePredictor:
             avg_volume = np.mean(volumes)
             volume_std = np.std(volumes)
             volume_cv = volume_std / avg_volume if avg_volume > 0 else 0
-            
+
             if volume_cv < 0.5 and avg_volume > np.percentile(volumes, 75):
                 liquidity_regime = 'high_liquidity'
             elif volume_cv > 1.5 or avg_volume < np.percentile(volumes, 25):
@@ -559,12 +559,12 @@ class TCNEnsemblePredictor:
 
     def get_adaptive_calibration(self, symbol: str, market_data: pd.DataFrame) -> Dict[str, float]:
         """🎯 OBTENER CALIBRACIÓN ADAPTATIVA BASADA EN CONTEXTO DE MERCADO"""
-        
+
         try:
             # Verificar si necesitamos actualizar el contexto
             current_time = time.time()
             last_update = self.market_context_cache.get(symbol, {}).get('timestamp', 0)
-            
+
             if current_time - last_update > self.context_update_interval:
                 # Actualizar contexto
                 context = self.detect_market_context(symbol, market_data)
@@ -587,15 +587,15 @@ class TCNEnsemblePredictor:
 
             # Obtener configuraciones base
             volatility_config = self.market_context_calibration['volatility_regimes'].get(
-                context['volatility_regime'], 
+                context['volatility_regime'],
                 self.market_context_calibration['volatility_regimes']['normal_volatility']
             )
-            
+
             trend_config = self.market_context_calibration['trend_regimes'].get(
                 context['trend_regime'],
                 self.market_context_calibration['trend_regimes']['sideways']
             )
-            
+
             liquidity_config = self.market_context_calibration['liquidity_regimes'].get(
                 context['liquidity_regime'],
                 self.market_context_calibration['liquidity_regimes']['normal_liquidity']
@@ -603,16 +603,16 @@ class TCNEnsemblePredictor:
 
             # Combinar configuraciones con pesos
             # Volatilidad tiene mayor peso (40%), tendencia (35%), liquidez (25%)
-            alpha = (volatility_config['alpha'] * 0.4 + 
-                    trend_config['alpha'] * 0.35 + 
+            alpha = (volatility_config['alpha'] * 0.4 +
+                    trend_config['alpha'] * 0.35 +
                     liquidity_config['alpha'] * 0.25)
-            
-            beta = (volatility_config['beta'] * 0.4 + 
-                   trend_config['beta'] * 0.35 + 
+
+            beta = (volatility_config['beta'] * 0.4 +
+                   trend_config['beta'] * 0.35 +
                    liquidity_config['beta'] * 0.25)
-            
-            gamma = (volatility_config['gamma'] * 0.4 + 
-                    trend_config['gamma'] * 0.35 + 
+
+            gamma = (volatility_config['gamma'] * 0.4 +
+                    trend_config['gamma'] * 0.35 +
                     liquidity_config['gamma'] * 0.25)
 
             # Normalizar para que sumen 1.0
@@ -644,7 +644,7 @@ class TCNEnsemblePredictor:
             volatility_val = cache_data.get('volatility', 0.0)
             slope_val = cache_data.get('normalized_slope', 0.0)
             volume_cv_val = cache_data.get('volume_cv', 0.0)
-            
+
             print(f"🎯 {symbol}: Calibración adaptativa aplicada")
             print(f"   📊 Contexto detectado:")
             print(f"      📈 Volatilidad: {volatility_val:.3f} → {context['volatility_regime']}")
@@ -670,7 +670,7 @@ class TCNEnsemblePredictor:
 
     def diagnose_market_context(self, symbol: str) -> Dict:
         """🔍 DIAGNÓSTICO: Mostrar estado actual del contexto de mercado"""
-        
+
         try:
             if symbol not in self.market_context_cache:
                 return {
@@ -792,11 +792,11 @@ class TCNEnsemblePredictor:
                 # Encontrar el timeframe con mayor peso
                 max_tf = max(tf_weights, key=tf_weights.get)
                 max_weight = tf_weights[max_tf]
-                
+
                 # Calcular ratio promedio con otros timeframes
                 other_weights = [w for tf, w in tf_weights.items() if tf != max_tf]
                 avg_other_weight = np.mean(other_weights) if other_weights else 0.5
-                
+
                 weight_ratio = max_weight / avg_other_weight if avg_other_weight > 0 else 1.0
 
                 # Si el ratio es muy extremo (>2.0), aplicar corrección
@@ -806,7 +806,7 @@ class TCNEnsemblePredictor:
                     # Reducir el peso del timeframe dominante
                     correction_factor = 2.0 / weight_ratio
                     weights[max_tf] *= correction_factor
-                    
+
                     # Redistribuir el peso reducido entre otros timeframes
                     remaining_weight = 1.0 - weights[max_tf]
                     other_tfs = [tf for tf in tf_weights.keys() if tf != max_tf]
@@ -876,28 +876,28 @@ class TCNEnsemblePredictor:
     def bayesian_combination(self, predictions: Dict[str, Dict],
                            adaptive_weights: Dict[str, float]) -> np.ndarray:
         """🎯 VERDADERA COMBINACIÓN BAYESIANA: P(C|D1,D2,...,Dn) ∝ P(C) * ∏ P(Di|C)"""
-        
+
         try:
             # Log-space para estabilidad numérica
             log_posterior = np.zeros(3)
-            
+
             # Prior uniforme en log-space
             log_prior = np.log(1/3)
             log_posterior += log_prior
-            
+
             # Acumular log-likelihoods
             for tf, pred in predictions.items():
-                probs = np.array([pred['probabilities'][k] 
+                probs = np.array([pred['probabilities'][k]
                                  for k in ['SELL', 'HOLD', 'BUY']])
                 weight = adaptive_weights.get(tf, 1.0)
-                
+
                 # Log-likelihood ponderada
                 log_posterior += weight * np.log(np.clip(probs, 1e-10, 1.0))
-            
+
             # Normalizar en probability space
             posterior = np.exp(log_posterior - np.max(log_posterior))
             return posterior / posterior.sum()
-            
+
         except Exception as e:
             print(f"⚠️ Error en combinación bayesiana: {e}")
             return self.weighted_average_fallback(predictions, adaptive_weights)
@@ -928,7 +928,7 @@ class TCNEnsemblePredictor:
         return weighted_probs
 
     def calibrated_confidence(self, raw_confidence: float, agreement: float,
-                            uncertainty: float, stability: float, 
+                            uncertainty: float, stability: float,
                             market_data: pd.DataFrame = None, symbol: str = None) -> float:
         """🎯 CALIBRACIÓN ISOTÓNICA: Ajusta confianza usando datos históricos y regresión isotónica"""
 
@@ -936,28 +936,28 @@ class TCNEnsemblePredictor:
             # 🎯 NUEVO: CALIBRACIÓN ISOTÓNICA BASADA EN DATOS HISTÓRICOS
             if symbol is not None and hasattr(self, 'confidence_history') and symbol in self.confidence_history:
                 historical_data = self.confidence_history[symbol]
-                
+
                 if len(historical_data) > 100:  # Suficientes datos para entrenar
                     try:
                         from sklearn.isotonic import IsotonicRegression
-                        
+
                         # Preparar datos históricos para calibración
                         raw_confs = [entry['raw_confidence'] for entry in historical_data]
                         actual_outcomes = [entry['actual_outcome'] for entry in historical_data]
-                        
+
                         # Entrenar calibrador isotónico
                         ir = IsotonicRegression(out_of_bounds='clip')
                         ir.fit(raw_confs, actual_outcomes)
-                        
+
                         # Calibrar confianza actual
                         calibrated = ir.transform([raw_confidence])[0]
-                        
+
                         print(f"🎯 {symbol}: Calibración isotónica aplicada")
                         print(f"   📊 Datos históricos: {len(historical_data)} muestras")
                         print(f"   🔧 Raw: {raw_confidence:.3f} → Calibrated: {calibrated:.3f}")
-                        
+
                         return float(np.clip(calibrated, 0.1, 1.0))
-                        
+
                     except ImportError:
                         print(f"⚠️ sklearn no disponible para {symbol}, usando calibración adaptativa")
                         return self._calibrate_confidence_adaptive(raw_confidence, agreement, uncertainty, stability, market_data, symbol)
@@ -970,16 +970,16 @@ class TCNEnsemblePredictor:
             else:
                 # Fallback a calibración adaptativa
                 return self._calibrate_confidence_adaptive(raw_confidence, agreement, uncertainty, stability, market_data, symbol)
-                
+
         except Exception as e:
             print(f"⚠️ Error en calibración de confianza: {e}")
             return raw_confidence  # Fallback a confianza raw
 
     def _calibrate_confidence_adaptive(self, raw_confidence: float, agreement: float,
-                                     uncertainty: float, stability: float, 
+                                     uncertainty: float, stability: float,
                                      market_data: pd.DataFrame = None, symbol: str = None) -> float:
         """🔄 Calibración adaptativa como fallback cuando no hay datos históricos suficientes"""
-        
+
         # 🎯 CALIBRACIÓN ADAPTATIVA POR CONTEXTO DE MERCADO
         if market_data is not None and symbol is not None:
             try:
@@ -988,11 +988,11 @@ class TCNEnsemblePredictor:
                 beta = calibration['beta']
                 gamma = calibration['gamma']
                 context = calibration['context']
-                
+
                 print(f"🎯 {symbol}: Calibración adaptativa aplicada")
                 print(f"   ⚙️ Parámetros: α={alpha:.3f}, β={beta:.3f}, γ={gamma:.3f}")
                 print(f"   📊 Contexto: {context['volatility_regime']}, {context['trend_regime']}, {context['liquidity_regime']}")
-                
+
             except Exception as e:
                 print(f"⚠️ Error en calibración adaptativa para {symbol}: {e}")
                 # Fallback a valores estáticos
@@ -1179,66 +1179,66 @@ class TCNEnsemblePredictor:
 
     def _test_event_loop_safety(self) -> bool:
         """🧪 Probar que la corrección del event loop funciona correctamente"""
-        
+
         print("🧪 Probando seguridad del event loop...")
-        
+
         try:
             # Simular un event loop activo
             async def test_async_function():
                 await asyncio.sleep(0.1)
                 return "test_data"
-            
+
             # Probar en un thread separado
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(self._run_async_in_thread, test_async_function)
                 result = future.result(timeout=5)
-                
+
                 if result == "test_data":
                     print("✅ Event loop safety test: PASADO")
                     return True
                 else:
                     print("❌ Event loop safety test: FALLÓ")
                     return False
-                    
+
         except Exception as e:
             print(f"❌ Event loop safety test: ERROR - {e}")
             return False
 
     def _test_mutual_information_safety(self) -> bool:
         """🧪 Probar que el estimador de Kraskov funciona correctamente"""
-        
+
         print("🧪 Probando estimador de Kraskov...")
-        
+
         try:
             # Test 1: Datos normales con correlación
             X_normal = np.random.randn(100, 10)
             y_normal = np.random.randint(0, 3, 100)
             mi_normal = self.calculate_mutual_information(X_normal, y_normal)
-            
+
             # Test 2: Datos con correlación fuerte
             X_correlated = np.random.randn(50, 5)
             y_correlated = (X_correlated[:, 0] > 0).astype(int)  # Correlación fuerte
             mi_correlated = self.calculate_mutual_information(X_correlated, y_correlated)
-            
+
             # Test 3: Datos con ceros (caso problemático)
             X_zeros = np.zeros((30, 3))
             y_zeros = np.random.randint(0, 2, 30)
             mi_zeros = self.calculate_mutual_information(X_zeros, y_zeros)
-            
+
             # Test 4: Datos muy pequeños (caso edge)
             X_small = np.random.rand(20, 2) * 1e-15
             y_small = np.random.randint(0, 2, 20)
             mi_small = self.calculate_mutual_information(X_small, y_small)
-            
+
             # Verificar que no hay errores y los valores son razonables
             results = [mi_normal, mi_correlated, mi_zeros, mi_small]
-            
+
             if (all(isinstance(mi, (int, float)) for mi in results) and
                 all(0 <= mi <= 3.0 for mi in results) and
                 not any(np.isnan(mi) for mi in results) and
                 not any(np.isinf(mi) for mi in results)):
-                
+
                 print(f"✅ MI Kraskov test: PASADO")
                 print(f"   Normal: {mi_normal:.3f}, Correlated: {mi_correlated:.3f}")
                 print(f"   Zeros: {mi_zeros:.3f}, Small: {mi_small:.3f}")
@@ -1247,16 +1247,16 @@ class TCNEnsemblePredictor:
                 print(f"❌ MI Kraskov test: FALLÓ")
                 print(f"   Results: {results}")
                 return False
-                
+
         except Exception as e:
             print(f"❌ MI Kraskov test: ERROR - {e}")
             return False
 
     def _test_bayesian_combination(self) -> bool:
         """🧪 Probar que la combinación bayesiana es matemáticamente correcta"""
-        
+
         print("🧪 Probando combinación bayesiana...")
-        
+
         try:
             # Test 1: Caso simple con dos timeframes
             predictions = {
@@ -1267,18 +1267,18 @@ class TCNEnsemblePredictor:
                     'probabilities': {'SELL': 0.1, 'HOLD': 0.4, 'BUY': 0.5}
                 }
             }
-            
+
             weights = {'1m': 0.6, '5m': 0.4}
-            
+
             # Calcular combinación bayesiana
             posterior = self.bayesian_combination(predictions, weights)
-            
+
             # Verificar propiedades matemáticas
-            if (len(posterior) == 3 and 
+            if (len(posterior) == 3 and
                 abs(np.sum(posterior) - 1.0) < 0.01 and
                 np.all(posterior >= 0) and
                 np.all(posterior <= 1)):
-                
+
                 print(f"✅ Posterior bayesiano: {posterior}")
                 print("✅ Combinación bayesiana: PASADO")
                 return True
@@ -1286,65 +1286,65 @@ class TCNEnsemblePredictor:
                 print(f"❌ Posterior inválido: {posterior}")
                 print("❌ Combinación bayesiana: FALLÓ")
                 return False
-                
+
         except Exception as e:
             print(f"❌ Combinación bayesiana test: ERROR - {e}")
             return False
 
     def update_confidence_history(self, symbol: str, raw_confidence: float, actual_outcome: int):
         """📊 Actualizar historial de confianza para calibración isotónica"""
-        
+
         try:
             if symbol not in self.confidence_history:
                 self.confidence_history[symbol] = []
-            
+
             # Agregar nueva entrada
             entry = {
                 'raw_confidence': raw_confidence,
                 'actual_outcome': actual_outcome,
                 'timestamp': datetime.now()
             }
-            
+
             self.confidence_history[symbol].append(entry)
-            
+
             # Mantener solo las últimas entradas
             if len(self.confidence_history[symbol]) > self.max_confidence_history:
                 self.confidence_history[symbol] = self.confidence_history[symbol][-self.max_confidence_history:]
-            
+
             print(f"📊 Historial de confianza actualizado para {symbol}: {len(self.confidence_history[symbol])} entradas")
-            
+
         except Exception as e:
             print(f"⚠️ Error actualizando historial de confianza para {symbol}: {e}")
 
     def _test_isotonic_calibration(self) -> bool:
         """🧪 Probar que la calibración isotónica funciona correctamente"""
-        
+
         print("🧪 Probando calibración isotónica...")
-        
+
         try:
             # Simular datos históricos
             symbol = 'TEST'
             self.confidence_history[symbol] = []
-            
+
             # Generar datos de prueba
             for i in range(200):
                 raw_conf = np.random.uniform(0.3, 0.9)
                 # Simular que confianzas altas tienden a ser más precisas
                 actual_outcome = 1 if raw_conf > 0.7 and np.random.random() > 0.3 else 0
                 self.update_confidence_history(symbol, raw_conf, actual_outcome)
-            
+
             # Probar calibración
             test_confidence = 0.8
             calibrated = self.calibrated_confidence(
-                test_confidence, 0.7, 0.2, 0.8, 
+                test_confidence, 0.7, 0.2, 0.8,
                 market_data=None, symbol=symbol
             )
-            
+
             # Verificar que la calibración funciona
             if (isinstance(calibrated, (int, float)) and
                 0.1 <= calibrated <= 1.0 and
                 len(self.confidence_history[symbol]) > 100):
-                
+
                 print(f"✅ Calibración isotónica: PASADO")
                 print(f"   Raw: {test_confidence:.3f} → Calibrated: {calibrated:.3f}")
                 print(f"   Datos históricos: {len(self.confidence_history[symbol])}")
@@ -1352,7 +1352,7 @@ class TCNEnsemblePredictor:
             else:
                 print(f"❌ Calibración isotónica: FALLÓ")
                 return False
-                
+
         except Exception as e:
             print(f"❌ Calibración isotónica test: ERROR - {e}")
             return False
@@ -1361,19 +1361,19 @@ class TCNEnsemblePredictor:
         """🔍 Auto-diagnóstico usando ÚNICAMENTE datos reales de Binance"""
 
         print("\n🔍 EJECUTANDO AUTO-DIAGNÓSTICO CON DATOS REALES:")
-        
+
         # 🧪 NUEVO: Probar seguridad del event loop
         print("🧪 Probando seguridad del event loop...")
         event_loop_safe = self._test_event_loop_safety()
         if not event_loop_safe:
             print("🚨 ADVERTENCIA: Problemas detectados con event loop")
-        
+
         # 🧪 NUEVO: Probar seguridad de información mutua
         print("🧪 Probando estimador de Kraskov...")
         mi_safe = self._test_mutual_information_safety()
         if not mi_safe:
             print("🚨 ADVERTENCIA: Problemas detectados con estimador de Kraskov")
-        
+
         # 🧪 NUEVO: Verificar disponibilidad de sklearn
         print("🧪 Verificando disponibilidad de sklearn...")
         try:
@@ -1381,19 +1381,19 @@ class TCNEnsemblePredictor:
             print("✅ sklearn disponible para estimación de Kraskov")
         except ImportError:
             print("⚠️ sklearn no disponible, usando método fallback")
-        
+
         # 🧪 NUEVO: Probar combinación bayesiana
         print("🧪 Probando combinación bayesiana...")
         bayesian_safe = self._test_bayesian_combination()
         if not bayesian_safe:
             print("🚨 ADVERTENCIA: Problemas detectados con combinación bayesiana")
-        
+
         # 🧪 NUEVO: Probar corrección matemática de combinación bayesiana
         print("🧪 Probando corrección matemática de combinación bayesiana...")
         bayesian_correct = self.test_bayesian_combination_correctness()
         if not bayesian_correct:
             print("🚨 ADVERTENCIA: Problemas detectados con corrección matemática bayesiana")
-        
+
         # 🧪 NUEVO: Probar calibración isotónica
         print("🧪 Probando calibración isotónica...")
         isotonic_safe = self._test_isotonic_calibration()
@@ -1427,12 +1427,12 @@ class TCNEnsemblePredictor:
             import asyncio
             import aiohttp
             from datetime import datetime, timedelta
-            
+
             async def get_real_validation_data():
                 base_url = "https://api.binance.com"
                 end_time = int(datetime.now().timestamp() * 1000)
                 start_time = int((datetime.now() - timedelta(hours=4)).timestamp() * 1000)
-                
+
                 async with aiohttp.ClientSession() as session:
                     url = f"{base_url}/api/v3/klines"
                     params = {
@@ -1442,20 +1442,20 @@ class TCNEnsemblePredictor:
                         'endTime': end_time,
                         'limit': 100
                     }
-                    
+
                     async with session.get(url, params=params) as response:
                         if response.status == 200:
                             data = await response.json()
                             return data
                         return None
-            
+
             # Obtener datos reales de forma síncrona
             try:
                 import requests
                 base_url = "https://api.binance.com"
                 end_time = int(datetime.now().timestamp() * 1000)
                 start_time = int((datetime.now() - timedelta(hours=4)).timestamp() * 1000)
-                
+
                 url = f"{base_url}/api/v3/klines"
                 params = {
                     'symbol': 'BTCUSDT',
@@ -1464,7 +1464,7 @@ class TCNEnsemblePredictor:
                     'endTime': end_time,
                     'limit': 100
                 }
-                
+
                 response = requests.get(url, params=params, timeout=10)
                 if response.status_code == 200:
                     real_data = response.json()
@@ -1476,38 +1476,38 @@ class TCNEnsemblePredictor:
             except Exception as e:
                 print(f"   ⚠️ No se pudieron obtener datos reales: {e}")
                 real_data = None
-            
+
             if real_data and len(real_data) >= 50:
                 # Convertir datos reales a features
                 from centralized_features_engine2 import CentralizedFeaturesEngine
                 features_engine = CentralizedFeaturesEngine()
-                
+
                 import pandas as pd
                 columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume',
                          'close_time', 'quote_volume', 'trades', 'taker_buy_base',
                          'taker_buy_quote', 'ignore']
-                
+
                 df = pd.DataFrame(real_data, columns=columns)
                 numeric_columns = ['open', 'high', 'low', 'close', 'volume']
                 for col in numeric_columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce')
-                
+
                 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
                 df = df.set_index('timestamp').sort_index()
-                
+
                 # Calcular features reales
                 features = features_engine.calculate_features(df, feature_set='tcn_definitivo')
-                
+
                 if not features.empty and len(features) >= 50:
                     # Usar datos reales para validación
                     test_X = features.iloc[:50].values  # 50 muestras reales
-                    
+
                     # Crear labels reales basados en movimientos de precio reales
                     price_changes = df['close'].pct_change().dropna()
                     test_y = np.where(price_changes > 0.001, 2, np.where(price_changes < -0.001, 0, 1))[:50]
-                    
+
                     mi_result = self.calculate_mutual_information(test_X, test_y)
-                    
+
                     if 0.0 <= mi_result <= 2.0:
                         print("   ✅ Información Mutua: Funciona correctamente con datos reales de Binance")
                     else:
@@ -1527,11 +1527,11 @@ class TCNEnsemblePredictor:
                 # Calcular confidences reales basadas en volatilidad del mercado real
                 price_data = pd.DataFrame(real_data, columns=columns)
                 price_data['close'] = pd.to_numeric(price_data['close'], errors='coerce')
-                
+
                 # Calcular confidences basadas en estabilidad de precios reales
                 price_changes = price_data['close'].pct_change().dropna()
                 volatility = price_changes.rolling(5).std()
-                
+
                 # Confidences basadas en estabilidad real (menor volatilidad = mayor confianza)
                 test_confidences = []
                 for i in range(min(4, len(volatility))):
@@ -1539,10 +1539,10 @@ class TCNEnsemblePredictor:
                     # Confianza inversamente proporcional a volatilidad real
                     confidence = max(0.3, min(0.9, 0.8 - vol * 10))
                     test_confidences.append(confidence)
-                
+
                 if len(test_confidences) >= 2:
                     stability_result = self.calculate_corrected_stability(test_confidences)
-                    
+
                     if 0.0 <= stability_result <= 1.0:
                         print("   ✅ Estabilidad KL: Funciona correctamente con datos reales de Binance")
                     else:
@@ -1560,38 +1560,38 @@ class TCNEnsemblePredictor:
             # 🎯 CORRECCIÓN: Usar predicciones basadas en datos reales
             test_predictions = {}
             test_weights = {}
-            
+
             # Crear predicciones basadas en datos reales obtenidos anteriormente
             if real_data and len(real_data) >= 10:
                 price_data = pd.DataFrame(real_data, columns=columns)
                 price_data['close'] = pd.to_numeric(price_data['close'], errors='coerce')
-                
+
                 # Calcular tendencia real
                 recent_prices = price_data['close'].tail(10)
                 trend = (recent_prices.iloc[-1] - recent_prices.iloc[0]) / recent_prices.iloc[0]
-                
+
                 # 🎯 CORRECCIÓN: Usar predicciones basadas en análisis real de datos
                 # Calcular probabilidades basadas en movimientos reales de precio
                 price_changes = price_data['close'].pct_change().dropna()
                 recent_changes = price_changes.tail(5)
-                
+
                 # Calcular probabilidades reales basadas en distribución de cambios
                 positive_changes = (recent_changes > 0.001).sum()
                 negative_changes = (recent_changes < -0.001).sum()
                 neutral_changes = len(recent_changes) - positive_changes - negative_changes
-                
+
                 total_changes = len(recent_changes)
                 if total_changes > 0:
                     buy_prob = max(0.1, min(0.8, positive_changes / total_changes))
                     sell_prob = max(0.1, min(0.8, negative_changes / total_changes))
                     hold_prob = max(0.2, 1.0 - buy_prob - sell_prob)
-                    
+
                     # Normalizar para que sumen 1.0
                     total_prob = buy_prob + sell_prob + hold_prob
                     buy_prob /= total_prob
                     sell_prob /= total_prob
                     hold_prob /= total_prob
-                    
+
                     # Determinar señal basada en probabilidad más alta
                     if buy_prob > sell_prob and buy_prob > hold_prob:
                         signal = 'BUY'
@@ -1599,7 +1599,7 @@ class TCNEnsemblePredictor:
                         signal = 'SELL'
                     else:
                         signal = 'HOLD'
-                    
+
                     test_predictions = {
                         '5m': {
                             'probabilities': {'SELL': sell_prob, 'HOLD': hold_prob, 'BUY': buy_prob},
@@ -1622,7 +1622,7 @@ class TCNEnsemblePredictor:
                             'signal': 'HOLD'
                         }
                     }
-                
+
                 test_weights = {'5m': 0.4, '15m': 0.6}
 
             if test_predictions:
@@ -1768,9 +1768,9 @@ class TCNEnsemblePredictor:
 
     def initialize_mutual_information_cache(self):
         """🎯 Inicializar cache de información mutua con valores por defecto robustos"""
-        
+
         print("🎯 Inicializando cache de información mutua...")
-        
+
         # Valores por defecto basados en análisis empírico
         default_mi_values = {
             'BTCUSDT': {
@@ -1789,28 +1789,28 @@ class TCNEnsemblePredictor:
                 '1m': 0.57, '3m': 0.54, '5m': 0.51, '15m': 0.48, '1h': 0.45
             }
         }
-        
+
         # Inicializar cache con valores por defecto
         for symbol in self.symbols:
             if symbol not in self.mutual_information_cache:
                 self.mutual_information_cache[symbol] = {}
-            
+
             # Obtener timeframes disponibles para este símbolo
             available_timeframes = []
             if symbol in self.models:
                 available_timeframes = list(self.models[symbol].keys())
-            
+
             # Si no hay timeframes específicos, usar los por defecto
             if not available_timeframes:
                 available_timeframes = ['1m', '3m', '5m', '15m', '1h']
-            
+
             for timeframe in available_timeframes:
                 if timeframe not in self.mutual_information_cache[symbol]:
                     # Usar valor por defecto específico o fallback
                     default_value = default_mi_values.get(symbol, {}).get(timeframe, 0.5)
                     self.mutual_information_cache[symbol][timeframe] = default_value
                     print(f"   📊 {symbol}-{timeframe}: MI por defecto = {default_value:.3f}")
-        
+
         print("✅ Cache de información mutua inicializado")
 
     def load_definitivo_v3_models(self) -> bool:
@@ -1843,21 +1843,21 @@ class TCNEnsemblePredictor:
                 # 🎯 DETECTAR PATRÓN DE MODELO: NUEVO vs ANTIGUO
                 model_dir = None
                 model_type = None
-                
+
                 # ✅ PRIORIDAD 1: Buscar modelos nuevos (adaptive_*)
                 model_dirs_to_check = []
                 if os.path.exists('models/'):
                     for dir_name in os.listdir('models/'):
                         if dir_name.startswith(f'adaptive_{symbol.lower()}_{timeframe}_'):
                             model_dirs_to_check.append(f'models/{dir_name}')
-                
+
                 # ✅ PRIORIDAD 2: Buscar modelos antiguos (definitivo_v3_*)
                 if not model_dirs_to_check:
                     if timeframe == '1m':
                         legacy_dir = f'models/definitivo_v3_{symbol.lower()}'
                     else:
                         legacy_dir = f'models/definitivo_v3_{timeframe}_{symbol.lower()}'
-                    
+
                     if os.path.exists(legacy_dir):
                         model_dirs_to_check.append(legacy_dir)
 
@@ -1891,7 +1891,7 @@ class TCNEnsemblePredictor:
                     if os.path.exists(model_path):
                         model = tf.keras.models.load_model(model_path)
                         self.models[symbol][timeframe] = model
-                        
+
                         # ✅ MOSTRAR INFORMACIÓN SEGÚN TIPO DE MODELO
                         if model_type == 'adaptive_tcn':
                             horizon = model_config.get('prediction_horizon', '?')
@@ -1900,7 +1900,7 @@ class TCNEnsemblePredictor:
                             print(f"✅ Modelo NUEVO cargado: {symbol} - {timeframe} | H:{horizon}h W:{window}w | Acc:{accuracy:.3f}")
                         else:
                             print(f"✅ Modelo LEGACY cargado: {symbol} - {timeframe} (definitivo_v3)")
-                        
+
                         loaded_models += 1
 
                         # Detectar y guardar ventana específica para este modelo
@@ -1916,7 +1916,7 @@ class TCNEnsemblePredictor:
                         if os.path.exists(model_path):
                             model = tf.keras.models.load_model(model_path)
                             self.models[symbol][timeframe] = model
-                            
+
                             # ✅ MOSTRAR INFORMACIÓN SEGÚN TIPO DE MODELO
                             if model_type == 'adaptive_tcn':
                                 horizon = model_config.get('prediction_horizon', '?')
@@ -1925,7 +1925,7 @@ class TCNEnsemblePredictor:
                                 print(f"✅ Modelo NUEVO cargado: {symbol} - {timeframe} | H:{horizon}h W:{window}w | Acc:{accuracy:.3f} (fallback)")
                             else:
                                 print(f"✅ Modelo LEGACY cargado: {symbol} - {timeframe} (definitivo_v3 fallback)")
-                            
+
                             loaded_models += 1
 
                             # Detectar y guardar ventana específica para este modelo
@@ -1953,11 +1953,11 @@ class TCNEnsemblePredictor:
                         features_path = f'{model_dir}/features.pkl'
                     elif os.path.exists(f'{model_dir}/feature_columns.pkl'):
                         features_path = f'{model_dir}/feature_columns.pkl'
-                    
+
                     if features_path:
                         with open(features_path, 'rb') as f:
                             features_data = pickle.load(f)
-                        
+
                         # ✅ MANEJAR AMBOS FORMATOS
                         if isinstance(features_data, dict):
                             # Nuevo formato: features.pkl con diccionario
@@ -1978,23 +1978,23 @@ class TCNEnsemblePredictor:
 
                     # 🎯 CALCULAR INFORMACIÓN MUTUA REAL basada en métricas del modelo
                     # Usar accuracy real del modelo en lugar de valores sintéticos
-                    
+
                     # Obtener métricas reales del modelo
                     model_metrics = self.hybrid_metrics.get(symbol, {}).get(timeframe, {})
                     model_accuracy = model_metrics.get('final_accuracy', 0.5)
                     model_precision = model_metrics.get('test_precision', 0.5)
                     model_recall = model_metrics.get('test_recall', 0.5)
-                    
+
                     # 🎯 CÁLCULO DE MI REAL basado en performance del modelo
                     # MI = f(accuracy, precision, recall, timeframe_quality)
-                    
+
                     # Base MI basada en accuracy real
                     base_mi = model_accuracy * 0.8  # Escalar accuracy a rango MI
-                    
+
                     # Factor de calidad del modelo (precision + recall balance)
                     quality_factor = (model_precision + model_recall) / 2
                     quality_boost = (quality_factor - 0.5) * 0.3  # ±0.15 máximo
-                    
+
                     # Factor de timeframe basado en características reales
                     timeframe_quality_map = {
                         '1m': 0.85,   # Alta granularidad pero más ruido
@@ -2006,7 +2006,7 @@ class TCNEnsemblePredictor:
                         '1d': 0.80    # Muy estable pero menos información intradía
                     }
                     timeframe_quality = timeframe_quality_map.get(timeframe, 0.85)
-                    
+
                     # Factor de volatilidad del símbolo (basado en características reales)
                     volatility_quality_map = {
                         'BTCUSDT': 0.95,  # Muy estable, alta liquidez
@@ -2016,20 +2016,20 @@ class TCNEnsemblePredictor:
                         'DOTUSDT': 0.83   # Más volátil que otros alts
                     }
                     symbol_quality = volatility_quality_map.get(symbol, 0.85)
-                    
+
                     # Calcular MI real combinando factores
                     mi_value = base_mi + quality_boost + (timeframe_quality - 0.85) * 0.2 + (symbol_quality - 0.85) * 0.15
-                    
+
                     # Clamp a rango conservador [0.2, 0.9] para evitar extremos
                     mi_value = max(0.2, min(0.9, mi_value))
-                    
+
                     # Validar que MI sea razonable
                     if mi_value < 0.1 or mi_value > 0.95:
                         print(f"⚠️ MI fuera de rango para {symbol}-{timeframe}: {mi_value:.3f}")
                         mi_value = max(0.2, min(0.8, mi_value))  # Forzar rango seguro
-                    
+
                     self.mutual_information_cache[symbol][timeframe] = mi_value
-                    
+
                     print(f"📊 MI REAL para {symbol}-{timeframe}: {mi_value:.3f} "
                           f"(acc={model_accuracy:.3f}, qual={quality_factor:.3f}, "
                           f"tf_qual={timeframe_quality:.2f}, sym_qual={symbol_quality:.2f})")
@@ -2213,7 +2213,7 @@ class TCNEnsemblePredictor:
         # ✅ NUEVO: VALIDACIÓN EXHAUSTIVA DE DATOS OHLCV
         print(f"🔍 Validando calidad de datos OHLCV para {symbol} ({timeframe})...")
         is_valid, issues = self.validate_ohlcv_data(df)
-        
+
         if not is_valid:
             print(f"⚠️  PROBLEMAS DETECTADOS EN DATOS DE {symbol}:")
             for issue in issues:
@@ -2317,7 +2317,7 @@ class TCNEnsemblePredictor:
             # Realizar predicción
             model = self.models[symbol][timeframe]
             predictions = model.predict(sequence, verbose=0)
-            
+
             # ✅ CORRECCIÓN: Manejar múltiples outputs
             if isinstance(predictions, list):
                 # Modelo con múltiples outputs (prediction, uncertainty)
@@ -2332,7 +2332,7 @@ class TCNEnsemblePredictor:
 
             # 🎯 CALCULAR MI DINÁMICO con datos reales
             dynamic_mi = self.calculate_dynamic_mutual_information(symbol, timeframe, market_data, prediction)
-            
+
             # Actualizar cache con MI dinámico
             if symbol not in self.mutual_information_cache:
                 self.mutual_information_cache[symbol] = {}
@@ -2341,13 +2341,13 @@ class TCNEnsemblePredictor:
             # ✅ CORRECCIÓN: Manejar diferentes números de clases
             num_classes = len(prediction[0])  # Usar el primer elemento del batch
             print(f"🔍 Modelo {symbol}-{timeframe} devuelve {num_classes} clases")
-            
+
             # Mapear clases según el número disponible
             if num_classes == 3:
                 class_names = ['SELL', 'HOLD', 'BUY']
                 predicted_class = np.argmax(prediction[0])
                 confidence = prediction[0][predicted_class]
-                
+
                 probabilities = {
                     'SELL': float(prediction[0][0]),
                     'HOLD': float(prediction[0][1]),
@@ -2357,7 +2357,7 @@ class TCNEnsemblePredictor:
                 class_names = ['SELL', 'BUY']
                 predicted_class = np.argmax(prediction[0])
                 confidence = prediction[0][predicted_class]
-                
+
                 probabilities = {
                     'SELL': float(prediction[0][0]),
                     'BUY': float(prediction[0][1])
@@ -2472,11 +2472,11 @@ class TCNEnsemblePredictor:
         # ✅ MEJORA: Lógica de consenso inteligente
         signals = [pred['signal'] for pred in tf_predictions.values()]
         consensus = len(set(signals)) == 1
-        
+
         print(f"🎯 CONSENSO PARA {symbol}: {'✅ SÍ' if consensus else '❌ NO'} | Señales: {signals}")
-        
+
         bayesian_probs = self.robust_bayesian_combination(tf_predictions, adaptive_weights)
-        
+
         if consensus:
             # CON CONSENSO: 100% Bayesiano para preservar la fuerza de la señal
             combined_probs = bayesian_probs
@@ -2485,7 +2485,7 @@ class TCNEnsemblePredictor:
             # SIN CONSENSO: Híbrido balanceado para suavizar diferencias
             simple_probs = np.zeros(3)
             total_weight = 0
-            
+
             for timeframe, pred in tf_predictions.items():
                 weight = adaptive_weights.get(timeframe, 1.0 / len(tf_predictions))
                 tf_probs = np.array([
@@ -2495,10 +2495,10 @@ class TCNEnsemblePredictor:
                 ])
                 simple_probs += weight * tf_probs
                 total_weight += weight
-            
+
             if total_weight > 0:
                 simple_probs = simple_probs / total_weight
-            
+
             # 60% Bayesiano + 40% simple (menos conservador que antes)
             combined_probs = 0.6 * bayesian_probs + 0.4 * simple_probs
             print(f"   ➤ USANDO HÍBRIDO 60/40 (señales mixtas)")
@@ -2610,7 +2610,7 @@ class TCNEnsemblePredictor:
 
         # Usar solo timeframes disponibles para este símbolo
         available_timeframes = list(self.models.get(symbol, {}).keys())
-        
+
         for timeframe in available_timeframes:  # No self.timeframes
 
             # Obtener datos de mercado para este timeframe
@@ -2853,27 +2853,27 @@ class TCNEnsemblePredictor:
         tf_summary = "|".join(tf_info_compact)
         print(f"🎯 {symbol}: [{tf_summary}] → {signal} ({final_prob:.1f}%) {consensus} {coherence}")
 
-    def calculate_dynamic_mutual_information(self, symbol: str, timeframe: str, 
+    def calculate_dynamic_mutual_information(self, symbol: str, timeframe: str,
                                            market_data: pd.DataFrame, predictions: np.ndarray) -> float:
         """🎯 CALCULAR MI DINÁMICO con datos históricos acumulados"""
-        
+
         try:
             # ✅ NUEVO: Inicializar cache histórico si no existe
             if symbol not in self.historical_predictions_cache:
                 self.historical_predictions_cache[symbol] = {}
             if symbol not in self.historical_features_cache:
                 self.historical_features_cache[symbol] = {}
-            
+
             if timeframe not in self.historical_predictions_cache[symbol]:
                 self.historical_predictions_cache[symbol][timeframe] = []
             if timeframe not in self.historical_features_cache[symbol]:
                 self.historical_features_cache[symbol][timeframe] = []
-            
+
             # 🎯 PASO 1: Agregar predicción actual al cache histórico
             if len(predictions) > 0:
                 current_prediction = int(np.argmax(predictions[-1]))  # Clase predicha actual
                 self.historical_predictions_cache[symbol][timeframe].append(current_prediction)
-                
+
                 # Mantener solo las últimas predicciones (máximo 50) - OPTIMIZADO
                 if len(self.historical_predictions_cache[symbol][timeframe]) >= self.max_history_length:
                     # Usar deque para eficiencia O(1) en append/pop
@@ -2883,17 +2883,17 @@ class TCNEnsemblePredictor:
                     else:
                         # Si ya es deque, append automáticamente respeta maxlen
                         pass
-            
+
             # 🎯 PASO 2: Agregar features actuales al cache histórico
             if market_data is not None and len(market_data) > 0:
                 features_engine = CentralizedFeaturesEngine()
                 features = features_engine.calculate_features(market_data, feature_set='tcn_definitivo')
-                
+
                 if features is not None and len(features) > 0:
                     # Tomar la última fila de features (datos más recientes)
                     current_features = features.iloc[-1].values
                     self.historical_features_cache[symbol][timeframe].append(current_features)
-                    
+
                     # Mantener solo las últimas features (máximo 50) - OPTIMIZADO
                     if len(self.historical_features_cache[symbol][timeframe]) >= self.max_history_length:
                         # Usar deque para eficiencia O(1) en append/pop
@@ -2903,33 +2903,33 @@ class TCNEnsemblePredictor:
                         else:
                             # Si ya es deque, append automáticamente respeta maxlen
                             pass
-            
+
             # 🎯 PASO 3: Calcular MI con datos históricos acumulados
             historical_predictions = self.historical_predictions_cache[symbol][timeframe]
             historical_features = self.historical_features_cache[symbol][timeframe]
-            
+
             print(f"📊 MI DINÁMICO {symbol}-{timeframe}: {len(historical_predictions)} predicciones históricas, {len(historical_features)} features históricas")
-            
+
             # Verificar que tenemos suficientes datos históricos
             if len(historical_predictions) >= 10 and len(historical_features) >= 10:
                 # Convertir a arrays numpy
                 X_historical = np.array(historical_features)
                 y_historical = np.array(historical_predictions)
-                
+
                 # Calcular MI real con datos históricos
                 mi_value = self.calculate_mutual_information(X_historical, y_historical)
-                
+
                 # 🎯 NUEVO: Factor de estabilidad de datos actuales
                 if market_data is not None and len(market_data) > 10:
                     # Calcular volatilidad reciente
                     returns = market_data['close'].pct_change().dropna()
                     recent_volatility = returns.tail(20).std()
-                    
+
                     # Normalizar volatilidad (0.01 = 1% diario es normal)
                     volatility_factor = max(0.5, min(1.5, 0.01 / (recent_volatility + 1e-6)))
                 else:
                     volatility_factor = 1.0
-                
+
                 # 🎯 NUEVO: Factor de consistencia de predicciones históricas
                 if len(historical_predictions) > 1:
                     # Calcular varianza de predicciones históricas
@@ -2937,19 +2937,19 @@ class TCNEnsemblePredictor:
                     consistency_factor = max(0.7, min(1.3, 1.0 - pred_variance * 2))
                 else:
                     consistency_factor = 1.0
-                
+
                 # Aplicar factores de ajuste
                 mi_value = mi_value * volatility_factor * consistency_factor
-                
+
                 # Clamp a rango seguro
                 mi_value = max(0.2, min(0.9, mi_value))
-                
+
                 print(f"✅ MI DINÁMICO calculado: {mi_value:.3f} (vol_factor: {volatility_factor:.3f}, cons_factor: {consistency_factor:.3f})")
                 return mi_value
             else:
                 print(f"⚠️ Datos históricos insuficientes para MI dinámico en {symbol}-{timeframe} (predicciones: {len(historical_predictions)}, features: {len(historical_features)})")
                 return self.mutual_information_cache.get(symbol, {}).get(timeframe, 0.5)
-            
+
         except Exception as e:
             print(f"⚠️ Error calculando MI dinámico para {symbol}-{timeframe}: {e}")
             # Fallback a MI estático
@@ -2958,13 +2958,13 @@ class TCNEnsemblePredictor:
     def robust_bayesian_combination(self, predictions: Dict[str, Dict],
                                   adaptive_weights: Dict[str, float]) -> np.ndarray:
         """🎯 COMBINACIÓN BAYESIANA ROBUSTA con validación matemática completa"""
-        
+
         try:
             # 🎯 VALIDACIÓN 1: Verificar que tenemos predicciones válidas
             if not predictions:
                 print("⚠️ No hay predicciones para combinar")
                 return np.array([1/3, 1/3, 1/3])
-            
+
             # 🎯 VALIDACIÓN 2: Normalizar pesos correctamente
             total_weight = sum(adaptive_weights.values())
             if total_weight <= 0:
@@ -2972,17 +2972,17 @@ class TCNEnsemblePredictor:
                 normalized_weights = {tf: 1.0 / len(predictions) for tf in predictions.keys()}
             else:
                 normalized_weights = {tf: w / total_weight for tf, w in adaptive_weights.items()}
-            
+
             # 🎯 VALIDACIÓN 3: Verificar que todos los pesos son positivos
             if any(w <= 0 for w in normalized_weights.values()):
                 print("⚠️ Pesos no positivos detectados, usando pesos uniformes")
                 normalized_weights = {tf: 1.0 / len(predictions) for tf in predictions.keys()}
-            
+
             # 🎯 COMBINACIÓN BAYESIANA ROBUSTA
             # P(C|X1,X2,...,Xn) ∝ P(C|X1)^w1 * P(C|X2)^w2 * ... * P(C|Xn)^wn
-            
+
             log_combined = np.zeros(3)
-            
+
             for timeframe, pred in predictions.items():
                 # Extraer probabilidades
                 tf_probs = np.array([
@@ -2990,12 +2990,12 @@ class TCNEnsemblePredictor:
                     pred['probabilities']['HOLD'],
                     pred['probabilities']['BUY']
                 ])
-                
+
                 # ✅ MEJORA: Clipping menos agresivo
                 if np.any(tf_probs < 0) or np.any(tf_probs > 1):
                     print(f"⚠️ Probabilidades inválidas en {timeframe}: {tf_probs}")
                     tf_probs = np.clip(tf_probs, 0.01, 0.99)  # Menos agresivo
-                
+
                 # Normalizar probabilidades solo si es necesario
                 prob_sum = np.sum(tf_probs)
                 if prob_sum <= 0:
@@ -3003,100 +3003,100 @@ class TCNEnsemblePredictor:
                     tf_probs = np.array([1/3, 1/3, 1/3])
                 elif abs(prob_sum - 1.0) > 0.02:  # Solo normalizar si está muy desviado
                     tf_probs = tf_probs / prob_sum
-                
+
                 # ✅ MEJORA: Clipping menos agresivo para logaritmo
                 tf_probs = np.clip(tf_probs, 0.01, 0.99)
                 log_probs = np.log(tf_probs)
-                
+
                 # Obtener peso normalizado
                 weight = normalized_weights.get(timeframe, 1.0 / len(predictions))
-                
+
                 # Combinación bayesiana: log(P) = Σ w_i * log(P_i)
                 log_combined += weight * log_probs
-            
+
             # 🎯 VALIDACIÓN 5: Verificar que log_combined no tiene valores extremos
             if np.any(np.isnan(log_combined)) or np.any(np.isinf(log_combined)):
                 print(f"⚠️ Valores NaN o Inf en log_combined: {log_combined}")
                 return np.array([1/3, 1/3, 1/3])
-            
+
             # Exponenciación y normalización
             combined_probs = np.exp(log_combined)
-            
+
             # 🎯 VALIDACIÓN 6: Verificar exponenciación
             if np.any(combined_probs <= 0):
                 print(f"⚠️ Probabilidades no positivas después de exponenciación: {combined_probs}")
                 return np.array([1/3, 1/3, 1/3])
-            
+
             # Normalización final
             prob_sum = np.sum(combined_probs)
             if prob_sum <= 0:
                 print(f"⚠️ Suma de probabilidades combinadas <= 0: {prob_sum}")
                 return np.array([1/3, 1/3, 1/3])
-            
+
             combined_probs = combined_probs / prob_sum
-            
+
             # 🎯 VALIDACIÓN 7: Verificación final
             if abs(np.sum(combined_probs) - 1.0) > 0.01:
                 print(f"⚠️ Probabilidades no suman 1.0: {np.sum(combined_probs):.3f}")
                 combined_probs = combined_probs / np.sum(combined_probs)
-            
+
             # ✅ MEJORA: Clipping final menos agresivo
             if np.any(combined_probs < 0.01) or np.any(combined_probs > 0.99):
                 print(f"⚠️ Probabilidades extremas: {combined_probs}")
                 combined_probs = np.clip(combined_probs, 0.01, 0.99)
                 combined_probs = combined_probs / np.sum(combined_probs)
-            
+
             return combined_probs
-            
+
         except Exception as e:
             print(f"⚠️ Error en combinación bayesiana robusta: {e}")
             return np.array([1/3, 1/3, 1/3])
 
     def show_historical_cache_status(self) -> None:
         """📊 Mostrar estado del cache histórico para MI dinámico"""
-        
+
         print(f"\n📊 ESTADO DEL CACHE HISTÓRICO PARA MI DINÁMICO:")
         print("=" * 80)
-        
+
         total_memory_estimate = 0
-        
+
         for symbol in self.symbols:
             if symbol in self.historical_predictions_cache:
                 print(f"\n🎯 {symbol}:")
                 for timeframe in self.historical_predictions_cache[symbol]:
                     pred_count = len(self.historical_predictions_cache[symbol][timeframe])
                     feat_count = len(self.historical_features_cache[symbol].get(timeframe, []))
-                    
+
                     # Estimación de memoria (aproximada)
                     pred_memory = pred_count * 8  # bytes por predicción
                     feat_memory = feat_count * 88 * 8  # 88 features * 8 bytes por float
                     total_memory = pred_memory + feat_memory
                     total_memory_estimate += total_memory
-                    
+
                     status = "✅ SUFICIENTES" if pred_count >= 10 and feat_count >= 10 else "⚠️ INSUFICIENTES"
                     print(f"   {timeframe}: {pred_count} predicciones, {feat_count} features → {status} ({total_memory/1024:.1f} KB)")
             else:
                 print(f"\n❌ {symbol}: Sin cache histórico")
-        
+
         print(f"\n💾 MEMORIA TOTAL ESTIMADA: {total_memory_estimate/1024:.1f} KB")
-        
+
         # 🎯 NUEVO: Limpieza automática si el cache es muy grande
         if total_memory_estimate > 1024 * 1024:  # Más de 1MB
             print("⚠️ Cache muy grande, iniciando limpieza...")
             self._cleanup_historical_cache()
-        
+
         print("=" * 80)
-    
+
     def _cleanup_historical_cache(self) -> None:
         """🧹 Limpiar cache histórico para liberar memoria"""
-        
+
         print("🧹 LIMPIANDO CACHE HISTÓRICO...")
-        
+
         for symbol in list(self.historical_predictions_cache.keys()):
             for timeframe in list(self.historical_predictions_cache[symbol].keys()):
                 # Reducir a la mitad del tamaño máximo
                 max_len = self.max_history_length // 2
-                
+
                 if len(self.historical_predictions_cache[symbol][timeframe]) > max_len:
                     # Mantener solo las predicciones más recientes
                     if isinstance(self.historical_predictions_cache[symbol][timeframe], list):
@@ -3105,10 +3105,10 @@ class TCNEnsemblePredictor:
                         # Si es deque, crear uno nuevo con maxlen reducido
                         from collections import deque
                         self.historical_predictions_cache[symbol][timeframe] = deque(
-                            list(self.historical_predictions_cache[symbol][timeframe])[-max_len:], 
+                            list(self.historical_predictions_cache[symbol][timeframe])[-max_len:],
                             maxlen=max_len
                         )
-                
+
                 # Hacer lo mismo para features
                 if symbol in self.historical_features_cache and timeframe in self.historical_features_cache[symbol]:
                     if len(self.historical_features_cache[symbol][timeframe]) > max_len:
@@ -3117,15 +3117,15 @@ class TCNEnsemblePredictor:
                         else:
                             from collections import deque
                             self.historical_features_cache[symbol][timeframe] = deque(
-                                list(self.historical_features_cache[symbol][timeframe])[-max_len:], 
+                                list(self.historical_features_cache[symbol][timeframe])[-max_len:],
                                 maxlen=max_len
                             )
-        
+
         print("✅ Cache histórico limpiado")
 
     def document_real_data_usage(self) -> None:
         """📋 Documentar que el predictor usa ÚNICAMENTE datos reales de Binance"""
-        
+
         print("\n📋 DOCUMENTACIÓN: USO EXCLUSIVO DE DATOS REALES")
         print("=" * 60)
         print("🎯 OBJETIVO: Calcular probabilidad final para modelos ensamblados")
@@ -3133,7 +3133,7 @@ class TCNEnsemblePredictor:
         print("🔗 FUENTE: API oficial de Binance (https://api.binance.com)")
         print("❌ PROHIBIDO: Datos inventados, simulados o aleatorios")
         print()
-        
+
         print("✅ FUNCIONES QUE USAN DATOS REALES:")
         print("   📊 get_market_data() → API Binance")
         print("   🔧 prepare_prediction_data() → Datos reales procesados")
@@ -3144,7 +3144,7 @@ class TCNEnsemblePredictor:
         print("   🎯 predict_ensemble_v3() → Ensamble con datos reales")
         print("   🔍 validate_training_coherence() → Validación con métricas reales")
         print()
-        
+
         print("🔒 GARANTÍAS DE DATOS REALES:")
         print("   ✅ Conexión directa a API de Binance")
         print("   ✅ Verificación de autenticidad de datos")
@@ -3153,7 +3153,7 @@ class TCNEnsemblePredictor:
         print("   ✅ Verificación de lógica de precios")
         print("   ✅ Rechazo de datos corruptos o inválidos")
         print()
-        
+
         print("🎯 RESULTADO FINAL:")
         print("   📊 Probabilidad calculada con datos reales de mercado")
         print("   🎯 Input válido para cadena de decisión del bot")
@@ -3163,66 +3163,66 @@ class TCNEnsemblePredictor:
 
     async def verify_binance_data_authenticity(self, symbol: str, timeframe: str) -> bool:
         """🔍 Verificar que los datos obtenidos sean realmente de Binance"""
-        
+
         try:
             # Obtener datos de Binance
             market_data = await self.get_market_data(symbol, timeframe, hours=1)
-            
+
             if market_data.empty:
                 print(f"❌ No se pudieron obtener datos de Binance para {symbol}")
                 return False
-            
+
             # Verificar estructura de datos de Binance
             required_columns = ['open', 'high', 'low', 'close', 'volume']
             if not all(col in market_data.columns for col in required_columns):
                 print(f"❌ Estructura de datos incorrecta para {symbol}")
                 return False
-            
+
             # Verificar que los datos sean numéricos y válidos
             for col in required_columns:
                 if not pd.api.types.is_numeric_dtype(market_data[col]):
                     print(f"❌ Columna {col} no es numérica para {symbol}")
                     return False
-                
+
                 if market_data[col].isnull().all():
                     print(f"❌ Columna {col} está vacía para {symbol}")
                     return False
-            
+
             # Verificar que los precios sean razonables (no 0 o negativos)
             if (market_data[['open', 'high', 'low', 'close']] <= 0).any().any():
                 print(f"❌ Precios inválidos detectados para {symbol}")
                 return False
-            
+
             # Verificar que high >= low y high >= open, close
-            if not ((market_data['high'] >= market_data['low']).all() and 
+            if not ((market_data['high'] >= market_data['low']).all() and
                    (market_data['high'] >= market_data['open']).all() and
                    (market_data['high'] >= market_data['close']).all()):
                 print(f"❌ Lógica de precios OHLC inválida para {symbol}")
                 return False
-            
+
             # Verificar que los datos sean recientes (últimas 24 horas)
             latest_timestamp = market_data.index.max()
             current_time = pd.Timestamp.now()
             time_diff = current_time - latest_timestamp
-            
+
             if time_diff.total_seconds() > 86400:  # Más de 24 horas
                 print(f"⚠️ Datos no son recientes para {symbol}: {time_diff}")
                 return False
-            
+
             print(f"✅ Datos de Binance verificados para {symbol} - {timeframe}")
             print(f"   📊 Velas obtenidas: {len(market_data)}")
             print(f"   📅 Rango temporal: {market_data.index.min()} a {market_data.index.max()}")
             print(f"   💰 Precio actual: ${market_data['close'].iloc[-1]:.4f}")
-            
+
             return True
-            
+
         except Exception as e:
             print(f"❌ Error verificando datos de Binance para {symbol}: {e}")
             return False
 
     def verify_real_data_usage(self) -> Dict[str, bool]:
         """🔍 Verificar que TODAS las funciones usen ÚNICAMENTE datos reales de Binance"""
-        
+
         verification_results = {
             'get_market_data': True,  # ✅ Ya usa API real de Binance
             'prepare_prediction_data': True,  # ✅ Usa datos reales de get_market_data
@@ -3242,24 +3242,24 @@ class TCNEnsemblePredictor:
             'detect_model_input_shape': True,  # ✅ Usa datos reales de Binance
             'verify_binance_data_authenticity': True,  # ✅ Usa datos reales de Binance
         }
-        
+
         print("🔍 VERIFICACIÓN DE USO DE DATOS REALES:")
         print("=" * 50)
-        
+
         for function_name, uses_real_data in verification_results.items():
             status = "✅ DATOS REALES" if uses_real_data else "❌ DATOS SIMULADOS"
             print(f"   {function_name}: {status}")
-        
+
         all_real = all(verification_results.values())
         print(f"\n🎯 RESULTADO: {'✅ TODAS LAS FUNCIONES USAN DATOS REALES' if all_real else '❌ SE DETECTARON DATOS SIMULADOS'}")
-        
+
         return verification_results
 
     def test_bayesian_combination_correctness(self) -> bool:
         """🧪 Probar que la combinación bayesiana es matemáticamente correcta"""
-        
+
         print("🧪 Probando corrección matemática de combinación bayesiana...")
-        
+
         try:
             # Datos de prueba
             test_predictions = {
@@ -3270,61 +3270,61 @@ class TCNEnsemblePredictor:
                     'probabilities': {'SELL': 0.2, 'HOLD': 0.3, 'BUY': 0.5}
                 }
             }
-            
+
             test_weights = {'1m': 0.6, '5m': 0.4}
-            
+
             # Aplicar combinación bayesiana
             result = self.bayesian_combination(test_predictions, test_weights)
-            
+
             # ✅ VALIDACIONES MATEMÁTICAS
             print(f"📊 Resultado bayesiano: {result}")
             print(f"📊 Suma de probabilidades: {np.sum(result):.6f}")
-            
+
             # Verificar normalización
             if abs(np.sum(result) - 1.0) > 0.01:
                 print(f"❌ Error: Probabilidades no suman 1.0")
                 return False
-            
+
             # Verificar que todas las probabilidades son positivas
             if np.any(result <= 0):
                 print(f"❌ Error: Probabilidades negativas detectadas")
                 return False
-            
+
             # Verificar que el resultado es razonable
             # Con pesos [0.6, 0.4] y probs diferentes, debería haber diferencia
             if np.allclose(result, [1/3, 1/3, 1/3], atol=0.01):
                 print(f"❌ Error: Resultado demasiado uniforme")
                 return False
-            
+
             print(f"✅ Combinación bayesiana: CORRECTA")
             return True
-            
+
         except Exception as e:
             print(f"❌ Error en prueba bayesiana: {e}")
             return False
 
     def validate_ohlcv_data(self, df: pd.DataFrame) -> tuple[bool, list[str]]:
         """🎯 Validación exhaustiva de datos OHLCV"""
-        
+
         issues = []
-        
+
         # ✅ Verificar que el DataFrame no esté vacío
         if df.empty:
             issues.append("DataFrame vacío")
             return False, issues
-        
+
         # ✅ Verificar columnas requeridas
         required_columns = ['open', 'high', 'low', 'close', 'volume']
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
             issues.append(f"Columnas faltantes: {missing_columns}")
-        
+
         # ✅ Verificar tipos de datos
         for col in required_columns:
             if col in df.columns:
                 if not pd.api.types.is_numeric_dtype(df[col]):
                     issues.append(f"Columna {col} no es numérica")
-        
+
         # ✅ Verificar valores negativos en precios
         price_columns = ['open', 'high', 'low', 'close']
         for col in price_columns:
@@ -3332,7 +3332,7 @@ class TCNEnsemblePredictor:
                 negative_prices = df[df[col] <= 0]
                 if len(negative_prices) > 0:
                     issues.append(f"Precios negativos o cero en {col}: {len(negative_prices)} períodos")
-        
+
         # ✅ Verificar coherencia OHLC
         if all(col in df.columns for col in price_columns):
             invalid_ohlc = df[
@@ -3344,38 +3344,38 @@ class TCNEnsemblePredictor:
             ]
             if len(invalid_ohlc) > 0:
                 issues.append(f"Coherencia OHLC inválida en {len(invalid_ohlc)} períodos")
-        
+
         # ✅ Verificar gaps excesivos (>10%)
         if 'close' in df.columns:
             returns = df['close'].pct_change()
             extreme_moves = returns[returns.abs() > 0.10]
             if len(extreme_moves) > 0:
                 issues.append(f"Movimientos extremos detectados: {len(extreme_moves)} períodos")
-        
+
         # ✅ Verificar volumen cero
         if 'volume' in df.columns:
             zero_volume = df[df['volume'] == 0]
             if len(zero_volume) > 0:
                 issues.append(f"Volumen cero en {len(zero_volume)} períodos")
-        
+
         # ✅ Verificar valores NaN
         nan_counts = df[required_columns].isna().sum()
         for col, count in nan_counts.items():
             if count > 0:
                 issues.append(f"Valores NaN en {col}: {count}")
-        
+
         # ✅ Verificar valores infinitos
         inf_counts = np.isinf(df[required_columns]).sum()
         for col, count in inf_counts.items():
             if count > 0:
                 issues.append(f"Valores infinitos en {col}: {count}")
-        
+
         # ✅ Verificar duplicados en timestamp
         if 'timestamp' in df.columns:
             duplicates = df['timestamp'].duplicated().sum()
             if duplicates > 0:
                 issues.append(f"Timestamps duplicados: {duplicates}")
-        
+
         return len(issues) == 0, issues
 
     def weighted_average_fallback(self, predictions: Dict[str, Dict],
@@ -3440,17 +3440,17 @@ async def main():
 
     # 📋 DOCUMENTAR USO EXCLUSIVO DE DATOS REALES
     predictor.document_real_data_usage()
-    
+
     # 🔍 VERIFICAR QUE SOLO SE USEN DATOS REALES
     predictor.verify_real_data_usage()
 
     # 🔍 VERIFICAR AUTENTICIDAD DE DATOS DE BINANCE
     print("\n🔍 VERIFICANDO AUTENTICIDAD DE DATOS DE BINANCE:")
     print("=" * 50)
-    
+
     # Verificar datos para BTCUSDT como ejemplo
     binance_verified = await predictor.verify_binance_data_authenticity("BTCUSDT", "5m")
-    
+
     if not binance_verified:
         print("❌ ERROR: No se pudieron verificar datos de Binance")
         print("💡 Verifica tu conexión a internet y la API de Binance")
@@ -3504,14 +3504,14 @@ async def main():
     # Tabla detallada de probabilidades finales
     print(f"\n📊 TABLA DETALLADA DE PROBABILIDADES FINALES:")
     print("=" * 90)
-    
+
     # Crear encabezado dinámico basado en timeframes disponibles
     available_tfs = predictor.timeframes[:3]  # Tomar los primeros 3 timeframes más comunes
     header_parts = ['SÍMBOLO']
     for tf in available_tfs:
         header_parts.append(f'{tf} PRED')
     header_parts.extend(['FINAL', 'CONSENSO'])
-    
+
     header = " ".join(f"{part:<15}" for part in header_parts)
     print(header)
     print("-" * len(header))
@@ -3538,10 +3538,10 @@ async def main():
         row_parts = [symbol]
         for tf in available_tfs:
             row_parts.append(tf_predictions.get(tf, "N/A"))
-        
+
         final_result = f"{signal} ({final_prob:.1f}%)"
         row_parts.extend([final_result, consensus])
-        
+
         row = " ".join(f"{part:<15}" for part in row_parts)
         print(row)
 

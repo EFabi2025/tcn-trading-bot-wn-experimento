@@ -191,4 +191,4 @@ models/
 
 ---
 
-**🎯 Resultado**: Sistema completamente configurable para cualquier estrategia de trading desde alta frecuencia hasta análisis semanal. 
+**🎯 Resultado**: Sistema completamente configurable para cualquier estrategia de trading desde alta frecuencia hasta análisis semanal.

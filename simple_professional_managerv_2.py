@@ -145,43 +145,43 @@ class SimpleProfessionalTradingManager:
             'signal_confirmation_required': 1 # ✅ RELAJADO: Requiere solo 1 señal consecutiva para ETH (era 2)
         }
 
-        # ✅ NUEVO: Sistema de reversión de señal mejorado con señales consecutivas
+        # ✅ NUEVO: Sistema de reversión de señal mejorado con señales consecutivas - TIMEOUT REDUCIDO
         self.reversal_tracking = {}  # Tracking de señales de reversión por símbolo
         self.reversal_config = {
             'ETHUSDT': {
                 'required_consecutive_signals': 3,  # ETH requiere 3 señales consecutivas
-                'timeout_minutes': 30,  # 30 minutos entre señales para mantener tracking
+                'timeout_minutes': 5,  # ✅ REDUCIDO: 5 minutos para tracking más dinámico
                 'min_confidence_per_signal': 78.0,  # ✅ CORREGIDO: Realista (era 90%)
                 'cumulative_confidence_threshold': 82.0,  # ✅ CORREGIDO: Alcanzable (era 95%)
-                'min_interval_between_signals_minutes': 8  # ✅ NUEVO: Mínimo 8min entre señales válidas
+                'min_interval_between_signals_minutes': 2  # ✅ REDUCIDO: 2 minutos entre señales válidas
             },
             'BTCUSDT': {
                 'required_consecutive_signals': 2,  # BTC requiere 2 señales consecutivas
-                'timeout_minutes': 30,
+                'timeout_minutes': 4,  # ✅ REDUCIDO: 4 minutos para BTC
                 'min_confidence_per_signal': 75.0,  # ✅ CORREGIDO: Realista (era 88%)
                 'cumulative_confidence_threshold': 80.0,  # ✅ CORREGIDO: Alcanzable (era 95%)
-                'min_interval_between_signals_minutes': 10  # ✅ NUEVO: Mínimo 10min entre señales válidas
+                'min_interval_between_signals_minutes': 1.5  # ✅ REDUCIDO: 1.5 minutos entre señales válidas
             },
             'BNBUSDT': {
                 'required_consecutive_signals': 2,  # BNB requiere 2 señales consecutivas
-                'timeout_minutes': 30,
+                'timeout_minutes': 4,  # ✅ REDUCIDO: 4 minutos para BNB
                 'min_confidence_per_signal': 75.0,  # ✅ CORREGIDO: Realista (era 88%)
                 'cumulative_confidence_threshold': 80.0,  # ✅ CORREGIDO: Alcanzable (era 95%)
-                'min_interval_between_signals_minutes': 10  # ✅ NUEVO: Mínimo 10min entre señales válidas
+                'min_interval_between_signals_minutes': 1.5  # ✅ REDUCIDO: 1.5 minutos entre señales válidas
             },
             'XRPUSDT': {
                 'required_consecutive_signals': 2,  # XRP requiere 2 señales consecutivas
-                'timeout_minutes': 30,
+                'timeout_minutes': 3,  # ✅ REDUCIDO: 3 minutos para XRP (más volátil)
                 'min_confidence_per_signal': 75.0,  # ✅ CORREGIDO: Realista (era 88%)
                 'cumulative_confidence_threshold': 80.0,  # ✅ CORREGIDO: Alcanzable (era 95%)
-                'min_interval_between_signals_minutes': 10  # ✅ NUEVO: Mínimo 10min entre señales válidas
+                'min_interval_between_signals_minutes': 1  # ✅ REDUCIDO: 1 minuto entre señales válidas
             },
             'DOTUSDT': {
                 'required_consecutive_signals': 2,  # DOT requiere 2 señales consecutivas
-                'timeout_minutes': 30,
+                'timeout_minutes': 3,  # ✅ REDUCIDO: 3 minutos para DOT
                 'min_confidence_per_signal': 75.0,  # ✅ CORREGIDO: Realista (era 88%)
                 'cumulative_confidence_threshold': 80.0,  # ✅ CORREGIDO: Alcanzable (era 95%)
-                'min_interval_between_signals_minutes': 10  # ✅ NUEVO: Mínimo 10min entre señales válidas
+                'min_interval_between_signals_minutes': 1  # ✅ REDUCIDO: 1 minuto entre señales válidas
             }
         }
 
@@ -1693,7 +1693,7 @@ class SimpleProfessionalTradingManager:
         try:
             # ✅ CENTRALIZADO: Definir base_threshold al inicio para uso global
             base_threshold = float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.65')) * 100
-            
+
             # Extraer información del contexto
             regime = market_context.get('regime', 'NEUTRAL')
             market_confidence = market_context.get('confidence', 0.0)
@@ -1713,7 +1713,7 @@ class SimpleProfessionalTradingManager:
 
                 # ✅ CENTRALIZADO: AJUSTE BEARISH
                 bearish_threshold = base_threshold * 1.1  # ✅ BEARISH: +10% sobre base
-                
+
                 if market_confidence > 0.9:  # BEARISH MUY FUERTE
                     buy_thresholds = {
                         'BTCUSDT': bearish_threshold,   # ✅ BEARISH: +10% sobre base
@@ -1785,7 +1785,7 @@ class SimpleProfessionalTradingManager:
                 if signal == 'BUY':
                     # ✅ CENTRALIZADO: En bullish, usar umbral base del .env
                     min_buy_confidence = base_threshold * 0.9  # 90% del umbral base para bullish
-                    
+
                     if confidence < min_buy_confidence:
                         signal = 'HOLD'
                         filter_reason = f"BUY en BULLISH requiere >{min_buy_confidence:.1f}% confianza"
@@ -1795,7 +1795,7 @@ class SimpleProfessionalTradingManager:
                 elif signal == 'SELL':
                     # ✅ CENTRALIZADO: En bullish, usar umbral base del .env
                     min_sell_confidence = base_threshold + 5  # +5% sobre base para SELL
-                    
+
                     if confidence < min_sell_confidence:
                         signal = 'HOLD'
                         filter_reason = f"Mercado BULLISH (score: {market_score:.2f}) - SELL requiere >{min_sell_confidence:.1f}% confianza (actual: {confidence:.1f}%)"
@@ -3640,7 +3640,7 @@ class SimpleProfessionalTradingManager:
             # Obtener configuración para este símbolo
             config = self.reversal_config.get(symbol, {
                 'required_consecutive_signals': 3,
-                'timeout_minutes': 30,
+                'timeout_minutes': 5,  # ✅ REDUCIDO: 5 minutos por defecto
                 'min_confidence_per_signal': 80.0,
                 'cumulative_confidence_threshold': 85.0
             })
@@ -3877,8 +3877,8 @@ class SimpleProfessionalTradingManager:
                     continue
 
                 # Verificar timeout
-                config = self.reversal_config.get(symbol, {'timeout_minutes': 30})
-                timeout_minutes = config.get('timeout_minutes', 30)
+                config = self.reversal_config.get(symbol, {'timeout_minutes': 5})  # ✅ REDUCIDO: 5 minutos por defecto
+                timeout_minutes = config.get('timeout_minutes', 5)  # ✅ REDUCIDO: 5 minutos por defecto
 
                 time_since_last = (current_time - tracking['last_signal_time']).total_seconds() / 60
 

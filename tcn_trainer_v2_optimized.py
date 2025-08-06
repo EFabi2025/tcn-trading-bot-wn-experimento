@@ -27,7 +27,7 @@ class OptimizedTCNTrainer:
     def __init__(self, config=None):
         # ✅ CONFIGURACIÓN FLEXIBLE
         self.config = config or {}
-        
+
         # Configuración profesional por defecto
         self.pairs = self.config.get('pairs', ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "DOTUSDT"])
         self.timeframe = self.config.get('timeframe', '5m')  # Timeframe configurable
@@ -164,7 +164,7 @@ class OptimizedTCNTrainer:
         try:
             # ✅ USAR MOTOR CENTRALIZADO EN LUGAR DE CÁLCULO MANUAL
             features = self.features_engine.calculate_features(df, feature_set='tcn_definitivo')
-            
+
             if features.empty or 'atr_14' not in features.columns:
                 print(f"⚠️ No se pudo obtener ATR del motor centralizado, usando configuración fija")
                 return self.fixed_thresholds[symbol]
@@ -230,7 +230,7 @@ class OptimizedTCNTrainer:
             rsi_sell_threshold = config['rsi_sell_threshold']
             rsi_buy_threshold = config['rsi_buy_threshold']
             momentum_threshold = config['momentum_threshold']
-            
+
             print(f"🎯 Usando configuración PROFESIONAL específica para {symbol}")
             print(f"   📊 Percentiles: SELL {sell_percentile}%, BUY {buy_percentile}%")
             print(f"   💰 Mínimo rentable: {min_profitable_move*100:.1f}%")
@@ -244,12 +244,12 @@ class OptimizedTCNTrainer:
             rsi_sell_threshold = 65
             rsi_buy_threshold = 35
             momentum_threshold = 0.005
-            
+
             if self.config.get('mode') == 'flexible':
                 print(f"🎯 Usando configuración FLEXIBLE para {symbol}")
             else:
                 print(f"⚠️ Usando configuración por defecto (más permisiva) para {symbol}")
-            
+
             print(f"   📊 Percentiles: SELL {sell_percentile}%, BUY {buy_percentile}%")
             print(f"   💰 Mínimo rentable: {min_profitable_move*100:.1f}%")
             print(f"   📈 RSI thresholds: SELL > {rsi_sell_threshold}, BUY < {rsi_buy_threshold}")
@@ -283,7 +283,7 @@ class OptimizedTCNTrainer:
             print(f"💡 Thresholds FLEXIBLES calculados:")
         else:
             print(f"💡 Thresholds calculados:")
-            
+
         print(f"   📉 SELL threshold: {sell_threshold*100:.3f}% (percentil {sell_percentile})")
         print(f"   📈 BUY threshold: {buy_threshold*100:.3f}% (percentil {buy_percentile})")
         print(f"   💰 Mínimo rentable: {min_profitable_move*100:.1f}% (rentabilidad neta > 0.5%)")
@@ -358,22 +358,22 @@ class OptimizedTCNTrainer:
         # ✅ VERIFICAR DISTRIBUCIÓN MÍNIMA PARA ENTRENAMIENTO
         min_samples_per_class = 2
         classes_with_few_samples = []
-        
+
         for i in range(3):  # 0=SELL, 1=HOLD, 2=BUY
             count = label_counts.get(i, 0) or 0
             if count < min_samples_per_class:
                 classes_with_few_samples.append(i)
-        
+
         if classes_with_few_samples:
             print(f"⚠️ ADVERTENCIA: Clases con pocas muestras: {classes_with_few_samples}")
             print(f"🔧 Aplicando corrección de distribución...")
-            
+
             # Corregir distribución forzando más muestras en clases con pocos datos
             labels_corrected = []
             for i, return_val in enumerate(future_returns):
                 if i < len(labels):
                     label = labels[i]
-                    
+
                     # Si la clase tiene pocas muestras, ser más permisivo
                     if label in classes_with_few_samples:
                         if label == 0:  # SELL
@@ -394,9 +394,9 @@ class OptimizedTCNTrainer:
                         labels_corrected.append(label)
                 else:
                     labels_corrected.append(1)  # HOLD por defecto
-            
+
             labels = labels_corrected
-            
+
             # Verificar distribución corregida
             label_counts = pd.Series(labels).value_counts().sort_index()
             print("📊 Distribución CORREGIDA:")
@@ -411,7 +411,7 @@ class OptimizedTCNTrainer:
                 count = label_counts.get(i, 0) or 0
                 if count < min_samples_per_class:
                     classes_with_few_samples_after.append(i)
-            
+
             if classes_with_few_samples_after:
                 print(f"⚠️ ADVERTENCIA: Corrección insuficiente. Aplicando fallback...")
                 # Fallback: distribución más permisiva
@@ -423,7 +423,7 @@ class OptimizedTCNTrainer:
                         labels_fallback.append(2)  # BUY
                     else:
                         labels_fallback.append(1)  # HOLD
-                
+
                 labels = labels_fallback
                 label_counts = pd.Series(labels).value_counts().sort_index()
                 print("📊 Distribución FALLBACK:")
@@ -659,7 +659,7 @@ class OptimizedTCNTrainer:
 
         param_count = model.count_params()
         print(f"✅ Modelo LIGERO creado: {param_count:,} parámetros")
-        
+
         if param_count > 350000:
             print(f"⚠️ ADVERTENCIA: Modelo excede 350k parámetros ({param_count:,})")
         else:
@@ -678,7 +678,7 @@ class OptimizedTCNTrainer:
             self.lookback_window = config['lookback_window']
             self.prediction_horizon = config['prediction_horizon']
             self.days = config['days']
-            
+
             print(f"\n🎯 ENTRENANDO MODELO PROFESIONAL PARA {symbol}")
             print("=" * 70)
             print(f"🎯 Configuración PROFESIONAL específica:")
@@ -730,7 +730,7 @@ class OptimizedTCNTrainer:
             # 5. Verificar distribución antes del split
             unique_labels, counts = np.unique(y, return_counts=True)
             min_samples = min(counts)
-            
+
             if min_samples < 2:
                 print(f"❌ ERROR: Clase con menos de 2 muestras. Distribución: {dict(zip(unique_labels, counts))}")
                 print(f"🔧 Aplicando split sin stratify...")
@@ -808,7 +808,7 @@ class OptimizedTCNTrainer:
                 'force_signals': self.force_signals,
                 'use_adaptive_thresholds': self.use_adaptive_thresholds
             }
-            
+
             with open(f'{model_dir}/config.pkl', 'wb') as f:
                 pickle.dump(config_save, f)
 
@@ -877,11 +877,11 @@ def get_flexible_configuration():
         '3m': [12, 24, 32, 48, 60, 72],
         '5m': [12, 24, 32, 48, 60, 72]
     }
-    
+
     available_lookbacks = lookback_options[timeframe]
     print(f"\n📊 Lookback windows disponibles para {timeframe}: {', '.join(map(str, available_lookbacks))}")
     print(f"   💡 Recomendado: {available_lookbacks[2]} ({available_lookbacks[2] * int(timeframe[0])} minutos)")
-    
+
     try:
         lookback_window = int(input("📊 Lookback window: ").strip())
         if lookback_window not in available_lookbacks:
@@ -1117,14 +1117,14 @@ async def main():
     if config.get('mode') == 'professional_all':
         print(f"\n🔥 ENTRENANDO TODOS LOS PARES PROFESIONALES")
         print("=" * 60)
-        
+
         successful_pairs = []
         failed_pairs = []
-        
+
         for symbol in config['pairs']:
             print(f"\n🎯 Entrenando {symbol}...")
             success = await trainer.train_optimized_model(symbol)
-            
+
             if success:
                 successful_pairs.append(symbol)
                 print(f"✅ {symbol}: MODELO PROFESIONAL COMPLETADO")
@@ -1132,23 +1132,23 @@ async def main():
             else:
                 failed_pairs.append(symbol)
                 print(f"❌ {symbol}: ERROR EN ENTRENAMIENTO")
-        
+
         # Resumen final
         print(f"\n📊 RESUMEN FINAL:")
         print(f"✅ Exitosos: {len(successful_pairs)} - {', '.join(successful_pairs)}")
         print(f"❌ Fallidos: {len(failed_pairs)} - {', '.join(failed_pairs)}")
-        
+
         if successful_pairs:
             print(f"\n🎯 Modelos profesionales guardados en:")
             for symbol in successful_pairs:
                 print(f"   📁 models/professional_{symbol.lower()}/")
-        
+
         success = len(successful_pairs) > 0
-        
+
     else:
         # Entrenar un solo par
         symbol = config['pairs'][0]
-        
+
         if config.get('mode') == 'flexible':
             print(f"\n🚀 Entrenando modelo flexible para {symbol}...")
             print(f"📊 Configuración flexible activada")

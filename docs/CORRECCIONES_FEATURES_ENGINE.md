@@ -10,7 +10,7 @@
 def _clean_features_data(self, df: pd.DataFrame) -> pd.DataFrame:
     # Data leakage con bfill
     df = df.fillna(method='ffill').fillna(method='bfill').fillna(0)
-    
+
     # Clipping destructivo para TODAS las features
     for col in df.columns:
         q99 = df[col].quantile(0.99)
@@ -20,14 +20,14 @@ def _clean_features_data(self, df: pd.DataFrame) -> pd.DataFrame:
 
 **IMPACTO DEVASTADOR:**
 - **RSI clipeado [15,85]** en lugar de [0,100] → Señales extremas perdidas
-- **MACD clipeado** → Divergencias extremas perdidas  
+- **MACD clipeado** → Divergencias extremas perdidas
 - **BB clipeados** → Breakouts extremos perdidos
 
 **✅ SOLUCIÓN IMPLEMENTADA:**
 ```python
 def _clean_features_data(self, df: pd.DataFrame) -> pd.DataFrame:
     """Limpiar y validar datos de features - VERSIÓN CORREGIDA"""
-    
+
     # Definir features de TA-Lib que NO deben ser clipeadas
     talib_features = [
         'rsi_14', 'rsi_21', 'rsi_7', 'macd', 'macd_signal', 'macd_histogram',
@@ -38,7 +38,7 @@ def _clean_features_data(self, df: pd.DataFrame) -> pd.DataFrame:
         'natr_14', 'natr_20', 'ad', 'adosc', 'obv', 'volume_sma_10', 'volume_sma_20',
         'mfi_14', 'mfi_20'
     ]
-    
+
     # Definir features manuales problemáticas que necesitan limpieza agresiva
     manual_features = [
         'bb_width', 'bb_position', 'volume_ratio', 'hl_ratio', 'oc_ratio', 'price_position',
@@ -54,11 +54,11 @@ def _clean_features_data(self, df: pd.DataFrame) -> pd.DataFrame:
             # ✅ TA-Lib: Solo manejar NaN suavemente - NO clipping
             df[col] = df[col].fillna(method='ffill')
             # Preservar rangos originales de TA-Lib
-            
+
         elif col in manual_features:
             # ❌ Manuales: Limpieza más agresiva
             df[col] = df[col].fillna(method='ffill').fillna(method='bfill').fillna(0)
-            
+
             # Clipping moderado solo para features manuales problemáticas
             if df[col].dtype in ['float64', 'float32']:
                 q99 = df[col].quantile(0.99)
@@ -159,7 +159,7 @@ def validate_talib_features_integrity(self, df: pd.DataFrame) -> Dict:
         'bb_ranges_valid': True,
         'warnings': []
     }
-    
+
     # Validar RSI está en rango [0, 100]
     rsi_features = ['rsi_14', 'rsi_21', 'rsi_7']
     for rsi_col in rsi_features:
@@ -171,7 +171,7 @@ def validate_talib_features_integrity(self, df: pd.DataFrame) -> Dict:
                 validation_results['warnings'].append(
                     f"RSI {rsi_col} fuera de rango [0,100]: [{rsi_min:.2f}, {rsi_max:.2f}]"
                 )
-    
+
     # Validar que MACD mantiene valores extremos
     macd_features = ['macd', 'macd_signal', 'macd_histogram']
     for macd_col in macd_features:
@@ -182,7 +182,7 @@ def validate_talib_features_integrity(self, df: pd.DataFrame) -> Dict:
                 validation_results['warnings'].append(
                     f"MACD {macd_col} muy comprimido (std: {macd_std:.4f})"
                 )
-    
+
     # Validar Bollinger Bands
     bb_features = ['bb_upper', 'bb_middle', 'bb_lower']
     if all(bb in df.columns for bb in bb_features):
@@ -193,7 +193,7 @@ def validate_talib_features_integrity(self, df: pd.DataFrame) -> Dict:
             validation_results['warnings'].append(
                 f"Bollinger Bands muy comprimidas (std: {bb_width_std:.4f})"
             )
-    
+
     return validation_results
 ```
 
@@ -205,7 +205,7 @@ def validate_talib_features_integrity(self, df: pd.DataFrame) -> Dict:
 
 1. **RSI preservado en rango [0, 100]:**
    - rsi_14: [17.85, 74.37] ✅
-   - rsi_21: [25.43, 68.36] ✅  
+   - rsi_21: [25.43, 68.36] ✅
    - rsi_7: [6.95, 88.32] ✅
 
 2. **MACD mantiene valores extremos:**
@@ -266,4 +266,4 @@ def validate_talib_features_integrity(self, df: pd.DataFrame) -> Dict:
 
 **✅ ESTADO: CORRECCIONES COMPLETADAS Y VALIDADAS**
 **📅 FECHA: 10 de Junio 2025**
-**🔧 VERSIÓN: centralized_features_engine2.py CORREGIDO** 
+**🔧 VERSIÓN: centralized_features_engine2.py CORREGIDO**

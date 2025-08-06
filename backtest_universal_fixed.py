@@ -169,20 +169,20 @@ class UniversalBacktesterFixed:
 
     def _try_load_timeframe_from_metadata(self, dir_path: str) -> Tuple[Optional[str], str]:
         """🔧 MÉTODO 1: Intentar cargar timeframe desde metadatos guardados"""
-        
+
         # Buscar archivos de configuración/metadatos
         config_files = [
             'config_1m.pkl', 'config_3m.pkl', 'config_5m.pkl', 'config_15m.pkl', 'config_1h.pkl', 'config_4h.pkl',
             'config.pkl', 'model_config.pkl', 'training_config.pkl'
         ]
-        
+
         for config_file in config_files:
             config_path = os.path.join(dir_path, config_file)
             if os.path.exists(config_path):
                 try:
                     with open(config_path, 'rb') as f:
                         config = pickle.load(f)
-                    
+
                     # Buscar timeframe en diferentes keys
                     timeframe_keys = ['timeframe', 'interval', 'time_frame', 'tf']
                     for key in timeframe_keys:
@@ -190,21 +190,21 @@ class UniversalBacktesterFixed:
                             tf = config[key]
                             if tf in ['1m', '3m', '5m', '15m', '1h', '4h']:
                                 return tf, config_file
-                    
+
                     # Caso especial: config_1m.pkl indica 1m
                     if 'config_1m.pkl' in config_file:
                         return '1m', config_file
                     elif 'config_5m.pkl' in config_file:
                         return '5m', config_file
-                        
+
                 except Exception as e:
                     continue
-        
+
         return None, "none"
 
     def _extract_timeframe_from_name(self, dir_name: str) -> Optional[str]:
         """🔧 MÉTODO 2: Patrones regex mejorados para extraer timeframe"""
-        
+
         # Patrones regex mejorados
         timeframe_patterns = [
             r'_(\d+[mh])_',      # _5m_, _1h_
@@ -224,13 +224,13 @@ class UniversalBacktesterFixed:
                     tf_raw = tf_raw.replace('min', 'm')
                 elif 'hour' in tf_raw:
                     tf_raw = tf_raw.replace('hour', 'h')
-                
+
                 if tf_raw in ['1m', '3m', '5m', '15m', '1h', '4h']:
                     return tf_raw
 
         # Búsquedas fallback más específicas
         name_lower = dir_name.lower()
-        
+
         # Patrones específicos más probables primero
         if 'profitable_1m' in name_lower or 'definitivo_1m' in name_lower or '_1m_' in name_lower:
             return '1m'
@@ -242,28 +242,28 @@ class UniversalBacktesterFixed:
             return '1h'
         elif '4h' in name_lower or '_4hour' in name_lower:
             return '4h'
-        
+
         return None
 
     def _infer_timeframe_from_model(self, dir_path: str) -> Optional[str]:
         """🔧 MÉTODO 3: Inferir timeframe desde el input shape del modelo (heurística)"""
-        
+
         try:
             # Buscar modelo
             model_files = [f for f in os.listdir(dir_path) if f.endswith('.h5')]
             if not model_files:
                 return None
-            
+
             model_file = 'best_model.h5' if 'best_model.h5' in model_files else model_files[0]
             model_path = os.path.join(dir_path, model_file)
-            
+
             # Cargar modelo solo para obtener input shape
             model = tf.keras.models.load_model(model_path)
             input_shape = model.input_shape
-            
+
             if len(input_shape) >= 2:
                 lookback_window = input_shape[1]  # (None, timesteps, features)
-                
+
                 # Heurística basada en lookback window típico por timeframe
                 # Esto es una estimación basada en patrones comunes
                 if lookback_window <= 40:
@@ -274,10 +274,10 @@ class UniversalBacktesterFixed:
                     return '15m' # Lookback largo típico de 15m
                 else:
                     return '1h'  # Lookback muy largo típico de 1h+
-            
+
         except Exception as e:
             return None
-        
+
         return None
 
     def _count_model_parameters(self, model_path: str) -> int:
@@ -315,7 +315,7 @@ class UniversalBacktesterFixed:
             for model in by_symbol[symbol]:
                 model_index += 1
                 index_to_model[model_index] = model
-                
+
                 # Indicadores de calidad
                 params = model['parameters']
                 if params > 0:
@@ -335,7 +335,7 @@ class UniversalBacktesterFixed:
                 # ✅ MOSTRAR MÉTODO DE DETECCIÓN
                 detection_info = f"[{model['detection_method']}]"
                 timeframe_info = f"⏰ {model['timeframe']}"
-                
+
                 print(f"   {model_index:2d}. {model['name']:30s} {timeframe_info} {size_info} {detection_info}")
 
         # Selección
@@ -344,13 +344,13 @@ class UniversalBacktesterFixed:
                 choice = int(input(f"\n🎯 Selecciona modelo (1-{model_index}): "))
                 if 1 <= choice <= model_index:
                     selected = index_to_model[choice]
-                    
+
                     # ✅ VALIDACIÓN ADICIONAL DE TIMEFRAME
                     print(f"\n✅ Modelo seleccionado: {selected['name']}")
                     print(f"📊 Símbolo: {selected['symbol']}")
                     print(f"⏰ Timeframe: {selected['timeframe']} (detectado via {selected['detection_method']})")
                     print(f"🔢 Parámetros: {selected['parameters']:,}")
-                    
+
                     # Confirmar timeframe
                     confirm = input(f"¿Confirmar que este modelo fue entrenado en {selected['timeframe']}? (s/n): ").lower().strip()
                     if confirm in ['s', 'si', 'yes', 'y']:
@@ -575,11 +575,11 @@ class UniversalBacktesterFixed:
         position_crypto = 0.0              # Cantidad de crypto que tenemos
         position_entry_price = 0.0         # Precio al que compramos
         has_position = False               # Si tenemos crypto o no
-        
+
         # 🛑 STOP LOSS TRACKING
         stop_loss_price = 0.0             # Precio de stop loss
         stop_loss_triggered = False       # Si se activó stop loss
-        
+
         trades = []
         balance_history = []
 
@@ -597,25 +597,25 @@ class UniversalBacktesterFixed:
             if has_position and not stop_loss_triggered:
                 # Calcular pérdida actual
                 current_loss_percent = (current_price - position_entry_price) / position_entry_price
-                
+
                 # Verificar si se activó stop loss
                 if current_price <= stop_loss_price:
                     stop_loss_triggered = True
                     print(f"   🛑 STOP LOSS ACTIVADO: ${current_price:.2f} <= ${stop_loss_price:.2f}")
-                    
+
                     # Ejecutar stop loss
                     usd_gross = position_crypto * current_price
                     trading_fee_usd = usd_gross * self.trading_fee
                     usd_net = usd_gross - trading_fee_usd
-                    
+
                     # Calcular pérdida real
                     usd_invested = position_crypto * position_entry_price
                     loss_usd = usd_net - usd_invested
                     loss_percentage = loss_usd / usd_invested if usd_invested > 0 else 0.0
-                    
+
                     # Actualizar balance
                     balance_usd += usd_net
-                    
+
                     trades.append({
                         'type': 'STOP_LOSS',
                         'timestamp': timestamp,
@@ -630,9 +630,9 @@ class UniversalBacktesterFixed:
                         'confidence': confidence,
                         'stop_loss_price': stop_loss_price
                     })
-                    
+
                     print(f"   🛑 STOP_LOSS: {position_crypto:.6f} crypto @ ${current_price:.2f} → ${usd_net:.2f} (loss: {loss_percentage:.2%})")
-                    
+
                     # Reset posición
                     position_crypto = 0.0
                     position_entry_price = 0.0
@@ -662,18 +662,18 @@ class UniversalBacktesterFixed:
                         usd_to_spend = balance_usd * 0.95
                         trading_fee_usd = usd_to_spend * self.trading_fee
                         usd_after_fee = usd_to_spend - trading_fee_usd
-                        
+
                         # Cantidad de crypto que compramos
                         position_crypto = usd_after_fee / current_price
                         position_entry_price = current_price
                         has_position = True
-                        
+
                         # 🛑 CONFIGURAR STOP LOSS
                         stop_loss_price = current_price * stop_loss_multiplier
-                        
+
                         # Actualizar balance USD
                         balance_usd = balance_usd - usd_to_spend  # Quedan 5% + fracción
-                        
+
                         trades.append({
                             'type': 'BUY',
                             'timestamp': timestamp,
@@ -685,7 +685,7 @@ class UniversalBacktesterFixed:
                             'confidence': confidence,
                             'stop_loss_price': stop_loss_price
                         })
-                        
+
                         print(f"   💚 BUY: {position_crypto:.6f} crypto @ ${current_price:.2f} (gastado: ${usd_to_spend:.2f})")
                         print(f"   🛑 Stop Loss configurado: ${stop_loss_price:.2f} (-{stop_loss_percent:.1f}%)")
 
@@ -694,15 +694,15 @@ class UniversalBacktesterFixed:
                     usd_gross = position_crypto * current_price
                     trading_fee_usd = usd_gross * self.trading_fee
                     usd_net = usd_gross - trading_fee_usd
-                    
+
                     # Calcular ganancia/pérdida
                     usd_invested = position_crypto * position_entry_price
                     profit_usd = usd_net - usd_invested
                     profit_percentage = profit_usd / usd_invested if usd_invested > 0 else 0.0
-                    
+
                     # Actualizar balance
                     balance_usd += usd_net
-                    
+
                     trades.append({
                         'type': 'SELL',
                         'timestamp': timestamp,
@@ -717,9 +717,9 @@ class UniversalBacktesterFixed:
                         'confidence': confidence,
                         'stop_loss_price': stop_loss_price
                     })
-                    
+
                     print(f"   💛 SELL: {position_crypto:.6f} crypto @ ${current_price:.2f} → ${usd_net:.2f} (profit: {profit_percentage:.2%})")
-                    
+
                     # Reset posición
                     position_crypto = 0.0
                     position_entry_price = 0.0
@@ -731,19 +731,19 @@ class UniversalBacktesterFixed:
         # 🔚 CERRAR POSICIÓN FINAL SI EXISTE
         final_price = df['close'].iloc[-1]
         final_timestamp = df.index[-1]
-        
+
         if has_position:
             # Vender todo al final
             usd_gross = position_crypto * final_price
             trading_fee_usd = usd_gross * self.trading_fee
             usd_net = usd_gross - trading_fee_usd
-            
+
             usd_invested = position_crypto * position_entry_price
             profit_usd = usd_net - usd_invested
             profit_percentage = profit_usd / usd_invested if usd_invested > 0 else 0.0
-            
+
             balance_usd += usd_net
-            
+
             trades.append({
                 'type': 'SELL_FINAL',
                 'timestamp': final_timestamp,
@@ -758,9 +758,9 @@ class UniversalBacktesterFixed:
                 'confidence': 0.0,
                 'stop_loss_price': stop_loss_price
             })
-            
+
             print(f"   🔚 SELL_FINAL: {position_crypto:.6f} crypto @ ${final_price:.2f} → ${usd_net:.2f}")
-            
+
             # Reset posición
             position_crypto = 0.0
             has_position = False
@@ -783,7 +783,7 @@ class UniversalBacktesterFixed:
         stop_loss_trades = [t for t in trades if t['type'] == 'STOP_LOSS']
         total_stop_losses = len(stop_loss_trades)
         total_stop_loss_amount = sum(t.get('loss_usd', 0) for t in stop_loss_trades)
-        
+
         print(f"✅ Simulación completada: {len(trades)} trades ejecutados")
         print(f"💰 Balance final: ${final_total_balance:.2f} (inicial: ${self.initial_balance:.2f})")
         print(f"🛑 Stop Losses activados: {total_stop_losses} (pérdida total: ${total_stop_loss_amount:.2f})")
@@ -813,7 +813,7 @@ class UniversalBacktesterFixed:
 
         # Métricas básicas
         total_return = (final_balance - self.initial_balance) / self.initial_balance
-        
+
         # 🎯 ANÁLISIS DE TRADES CORREGIDO
         # Solo trades de SELL tienen profit (BUY son inversiones)
         sell_trades = [t for t in trades if t['type'] in ['SELL', 'SELL_FINAL']]
@@ -824,19 +824,19 @@ class UniversalBacktesterFixed:
             # Usar profit_percentage para análisis (más relevante que profit_usd)
             profit_percentages = [t['profit_percentage'] for t in sell_trades]
             profit_usd_amounts = [t['profit_usd'] for t in sell_trades]
-            
+
             # 🛑 ANÁLISIS DE STOP LOSS
             stop_loss_percentages = [t.get('loss_percentage', 0) for t in stop_loss_trades]
             stop_loss_usd_amounts = [t.get('loss_usd', 0) for t in stop_loss_trades]
-            
+
             # Combinar trades normales y stop losses para análisis completo
             all_trade_percentages = profit_percentages + stop_loss_percentages
             all_trade_usd_amounts = profit_usd_amounts + stop_loss_usd_amounts
-            
+
             winning_trades = len([p for p in profit_percentages if p > 0])
             losing_trades = len([p for p in profit_percentages if p <= 0])
             stop_loss_count = len(stop_loss_trades)
-            
+
             win_rate = winning_trades / total_trades if total_trades > 0 else 0
             avg_profit_pct = np.mean(all_trade_percentages) if all_trade_percentages else 0
             avg_profit_usd = np.mean(all_trade_usd_amounts) if all_trade_usd_amounts else 0
@@ -844,7 +844,7 @@ class UniversalBacktesterFixed:
             max_loss_pct = min(all_trade_percentages) if all_trade_percentages else 0
             max_profit_usd = max(all_trade_usd_amounts) if all_trade_usd_amounts else 0
             max_loss_usd = min(all_trade_usd_amounts) if all_trade_usd_amounts else 0
-            
+
             # Total de fees pagados
             total_fees = sum(t.get('fee_usd', 0) for t in trades)
         else:
@@ -857,15 +857,15 @@ class UniversalBacktesterFixed:
         peak_balance = self.initial_balance
         max_drawdown = 0
         max_drawdown_usd = 0
-        
+
         for record in balance_history:
             current_balance = record['total_balance']
             if current_balance > peak_balance:
                 peak_balance = current_balance
-            
+
             drawdown = (peak_balance - current_balance) / peak_balance
             drawdown_usd = peak_balance - current_balance
-            
+
             if drawdown > max_drawdown:
                 max_drawdown = drawdown
                 max_drawdown_usd = drawdown_usd
@@ -879,7 +879,7 @@ class UniversalBacktesterFixed:
                 if prev_balance > 0:
                     daily_return = (curr_balance - prev_balance) / prev_balance
                     daily_returns.append(daily_return)
-            
+
             if daily_returns and np.std(daily_returns) > 0:
                 avg_daily_return = np.mean(daily_returns)
                 std_daily_return = np.std(daily_returns)
@@ -894,7 +894,7 @@ class UniversalBacktesterFixed:
         # Número de transacciones (BUY + SELL + STOP_LOSS)
         total_transactions = len(trades)
         buy_transactions = len([t for t in trades if t['type'] == 'BUY'])
-        
+
         # Tiempo en mercado (porcentaje de tiempo con posición)
         periods_with_position = len([r for r in balance_history if r.get('has_position', False)])
         time_in_market = periods_with_position / len(balance_history) if balance_history else 0
@@ -903,7 +903,7 @@ class UniversalBacktesterFixed:
         total_stop_losses = stop_loss_stats.get('total_stop_losses', 0)
         total_stop_loss_amount = stop_loss_stats.get('total_stop_loss_amount', 0)
         stop_loss_percent = stop_loss_stats.get('stop_loss_percent', 1.0)
-        
+
         # Porcentaje de trades que terminaron en stop loss
         stop_loss_rate = total_stop_losses / total_trades if total_trades > 0 else 0
 
@@ -916,7 +916,7 @@ class UniversalBacktesterFixed:
             'final_position_crypto': results.get('final_position_crypto', 0),
             'total_return': total_return,
             'total_return_pct': total_return * 100,
-            
+
             # Trading metrics
             'total_transactions': total_transactions,
             'buy_transactions': buy_transactions,
@@ -927,7 +927,7 @@ class UniversalBacktesterFixed:
             'win_rate': win_rate,
             'stop_loss_rate': stop_loss_rate,
             'time_in_market': time_in_market,
-            
+
             # Profit metrics
             'avg_profit_pct': avg_profit_pct,
             'avg_profit_usd': avg_profit_usd,
@@ -936,12 +936,12 @@ class UniversalBacktesterFixed:
             'max_profit_usd': max_profit_usd,
             'max_loss_usd': max_loss_usd,
             'total_fees_usd': total_fees,
-            
+
             # Risk metrics
             'max_drawdown': max_drawdown,
             'max_drawdown_usd': max_drawdown_usd,
             'sharpe_ratio': sharpe_ratio,
-            
+
             # Stop Loss metrics
             'total_stop_losses': total_stop_losses,
             'total_stop_loss_amount': total_stop_loss_amount,
@@ -997,7 +997,7 @@ class UniversalBacktesterFixed:
 
         # Evaluación general mejorada
         print(f"\n🏆 EVALUACIÓN DETALLADA:")
-        
+
         # Evaluación de retorno
         if metrics['total_return'] > 0.20:  # +20%
             print("   🟢 RENDIMIENTO: EXCELENTE (>20%)")
@@ -1064,7 +1064,7 @@ class UniversalBacktesterFixed:
         elif profitability_score >= 2:
             print("   🟡 MODELO ACEPTABLE - Necesita ajustes")
         else:
-            print("   ❌ MODELO PROBLEMÁTICO - Requiere reentrenamiento") 
+            print("   ❌ MODELO PROBLEMÁTICO - Requiere reentrenamiento")
 
         print("=" * 80)
 
@@ -1122,7 +1122,7 @@ class UniversalBacktesterFixed:
 
 async def main():
     """🎯 Función principal"""
-    
+
     print("🚀 BACKTESTING UNIVERSAL CORREGIDO")
     print("=" * 80)
     print("✅ CORRIGIDO: Detección automática de timeframe")
@@ -1148,7 +1148,7 @@ async def main():
     # Configurar backtesting
     print(f"\n⚙️ CONFIGURACIÓN DEL BACKTESTING")
     print("=" * 50)
-    
+
     # Días de datos
     while True:
         try:
@@ -1181,7 +1181,7 @@ async def main():
 
     # Ejecutar backtesting
     results = await backtester.run_backtest(selected_model, days=days, confidence_threshold=confidence, stop_loss_percent=stop_loss)
-    
+
     if results:
         print(f"\n🎉 ¡BACKTESTING COMPLETADO EXITOSAMENTE!")
         print(f"✅ Timeframe verificado: {selected_model['timeframe']}")
@@ -1192,4 +1192,4 @@ async def main():
         print(f"\n❌ Error en el backtesting")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())

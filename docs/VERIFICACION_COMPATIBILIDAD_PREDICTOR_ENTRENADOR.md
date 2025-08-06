@@ -252,4 +252,4 @@ features = self.features_engine.calculate_features(df, feature_set='tcn_definiti
 2. **Verificar archivos auxiliares**: Para funcionalidad completa
 3. **Documentar formatos**: Para consistencia futura
 
-**EL SISTEMA ESTÁ LISTO PARA PRODUCCIÓN** 
+**EL SISTEMA ESTÁ LISTO PARA PRODUCCIÓN**

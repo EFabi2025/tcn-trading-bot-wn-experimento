@@ -155,4 +155,4 @@ python tcn_adaptative_trainer_v2.py
 
 ---
 
-**🎯 IMPACTO**: El sistema ahora es completamente portable y funciona en cualquier entorno Python, con o sin dependencias de visualización. Los usuarios pueden obtener métricas completas sin necesidad de instalar paquetes adicionales. 
+**🎯 IMPACTO**: El sistema ahora es completamente portable y funciona en cualquier entorno Python, con o sin dependencias de visualización. Los usuarios pueden obtener métricas completas sin necesidad de instalar paquetes adicionales.

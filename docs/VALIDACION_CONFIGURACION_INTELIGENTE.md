@@ -70,7 +70,7 @@ elif self.config.epochs > 200:
 if self.timeframe == '1m':
     if self.prediction_horizon > 30:
         self.prediction_horizon = 30  # Máximo 30 minutos
-    
+
     if self.lookback_window < 48:
         self.lookback_window = 48  # Mínimo 48 períodos
 ```
@@ -156,7 +156,7 @@ trainer.validate_configuration_consistency()  # ✅ NUEVO
 async def train_adaptive_model(self, symbol: str):
     # ✅ NUEVO: Validación antes del entrenamiento
     self.validate_configuration_consistency()
-    
+
     # Resto del entrenamiento...
 ```
 
@@ -164,10 +164,10 @@ async def train_adaptive_model(self, symbol: str):
 ```python
 def validate_training_requirements(self, symbol: str):
     # Validaciones básicas...
-    
+
     # ✅ NUEVO: Validación de configuración
     self.validate_configuration_consistency()
-    
+
     return True
 ```
 
@@ -219,4 +219,4 @@ def validate_training_requirements(self, symbol: str):
 
 ---
 
-**🎯 IMPACTO**: Los usuarios ahora pueden configurar parámetros libremente sin preocuparse por incompatibilidades, ya que el sistema los valida y ajusta automáticamente según las mejores prácticas para cada timeframe. 
+**🎯 IMPACTO**: Los usuarios ahora pueden configurar parámetros libremente sin preocuparse por incompatibilidades, ya que el sistema los valida y ajusta automáticamente según las mejores prácticas para cada timeframe.

@@ -8,10 +8,10 @@
 def _clean_features_data(self, df: pd.DataFrame) -> pd.DataFrame:
     # Reemplazar infinitos
     df = df.replace([np.inf, -np.inf], np.nan)
-    
+
     # ❌ PROBLEMA: Data leakage con bfill()
     df = df.fillna(method='ffill').fillna(method='bfill').fillna(0)
-    
+
     # ❌ PROBLEMA GRAVE: Clipping destructivo
     for col in df.columns:
         if df[col].dtype in ['float64', 'float32']:
@@ -54,7 +54,7 @@ def _clean_features_data_corrected(self, df: pd.DataFrame) -> pd.DataFrame:
     # 🎯 PASO 1: Separar features por tipo
     talib_cols = [col for col in df.columns if col in self.talib_features]
     manual_cols = [col for col in df.columns if col not in self.talib_features]
-    
+
     # 🎯 PASO 2: Limpiar features TA-Lib (PRESERVAR COMPLETAMENTE)
     for col in talib_cols:
         if col in df.columns:
@@ -62,16 +62,16 @@ def _clean_features_data_corrected(self, df: pd.DataFrame) -> pd.DataFrame:
             df[col] = df[col].fillna(method='ffill')
             # ✅ NO clipping - TA-Lib ya maneja rangos correctos
             # ✅ NO bfill() - Evitar data leakage
-    
+
     # 🎯 PASO 3: Limpiar features manuales (LIMPEZA MODERADA)
     for col in manual_cols:
         if col in df.columns:
             # ✅ Reemplazar infinitos
             df[col] = df[col].replace([np.inf, -np.inf], np.nan)
-            
+
             # ✅ Solo ffill() - NO bfill() para evitar data leakage
             df[col] = df[col].fillna(method='ffill').fillna(0)
-            
+
             # ✅ Clipping moderado solo para features manuales
             if df[col].dtype in ['float64', 'float32']:
                 q99 = df[col].quantile(0.99)
@@ -96,8 +96,8 @@ def safe_division(numerator, denominator, default=0.0):
 if 'bb_upper' in df.columns and 'bb_lower' in df.columns:
     bb_range = df['bb_upper'] - df['bb_lower']
     df['bb_position'] = safe_division(
-        df['close'] - df['bb_lower'], 
-        bb_range, 
+        df['close'] - df['bb_lower'],
+        bb_range,
         default=0.5
     )
 ```
@@ -203,4 +203,4 @@ python centralized_features_engine_optimized.py
 | **Look-ahead bias** | Información futura | Cálculos correctos | Entrenamiento limpio |
 | **Features manuales** | Errores matemáticos | Cálculos precisos | +10% accuracy |
 
-**🎯 ESTIMACIÓN TOTAL: +20-25% mejora en accuracy real** 
+**🎯 ESTIMACIÓN TOTAL: +20-25% mejora en accuracy real**

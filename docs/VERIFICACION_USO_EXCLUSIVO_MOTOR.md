@@ -54,8 +54,8 @@ Estos cálculos son **SOLO para etiquetado**, NO para features de entrenamiento:
 #### 🔧 Features Eliminadas
 ```python
 # Líneas 213-215 en tcn_hybrid_trainer.py
-return df_copy.drop(columns=['atr', 'upper_barrier', 'lower_barrier', 'future_max_price', 
-                           'future_min_price', 'future_close', 'future_return', 'rsi', 
+return df_copy.drop(columns=['atr', 'upper_barrier', 'lower_barrier', 'future_max_price',
+                           'future_min_price', 'future_close', 'future_return', 'rsi',
                            'macd', 'macd_signal', 'bb_upper', 'bb_middle', 'bb_lower'])
 ```
 
@@ -168,4 +168,4 @@ El entrenador mantiene una **separación clara** entre:
 1. **Features de entrenamiento**: Motor centralizado (88 features)
 2. **Features de etiquetado**: Cálculos temporales (4 features, eliminadas)
 
-**NO HAY PROBLEMAS DE DUPLICACIÓN O INCONSISTENCIA DETECTADOS** 
+**NO HAY PROBLEMAS DE DUPLICACIÓN O INCONSISTENCIA DETECTADOS**

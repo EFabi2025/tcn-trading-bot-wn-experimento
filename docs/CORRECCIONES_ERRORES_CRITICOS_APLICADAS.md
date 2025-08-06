@@ -193,4 +193,4 @@ suggested_limit = max(min_limit, min(suggested_limit, max_limit))
 
 ---
 
-**✅ TODOS LOS ERRORES CRÍTICOS CORREGIDOS: El sistema ahora es más estable, compatible y optimizado para crypto trading.** 
+**✅ TODOS LOS ERRORES CRÍTICOS CORREGIDOS: El sistema ahora es más estable, compatible y optimizado para crypto trading.**

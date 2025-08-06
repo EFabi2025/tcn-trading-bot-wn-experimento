@@ -214,4 +214,4 @@ success = await trainer.train_adaptive_model('BTCUSDT')
 
 ---
 
-**🎯 RESULTADO**: Sistema de métricas completamente renovado con análisis específico para trading, validaciones robustas y documentación automática. 
+**🎯 RESULTADO**: Sistema de métricas completamente renovado con análisis específico para trading, validaciones robustas y documentación automática.

@@ -50,29 +50,29 @@ if atr_percent <= 0 or atr_percent > 0.5:  # Máximo 50% de volatilidad
 ```python
 def validate_thresholds(self, thresholds: dict, symbol: str) -> bool:
     """🎯 Validar que los thresholds son razonables"""
-    
+
     # Verificar que todos los campos están presentes
     required_fields = ['strong_sell', 'weak_sell', 'weak_buy', 'strong_buy']
     for field in required_fields:
         if field not in thresholds:
             return False
-    
+
     # Verificar que los valores son números válidos
     for field, value in thresholds.items():
         if not isinstance(value, (int, float)) or np.isnan(value):
             return False
-    
+
     # Verificar orden lógico: strong_sell < weak_sell < weak_buy < strong_buy
-    if not (thresholds['strong_sell'] < thresholds['weak_sell'] < 
+    if not (thresholds['strong_sell'] < thresholds['weak_sell'] <
            thresholds['weak_buy'] < thresholds['strong_buy']):
         return False
-    
+
     # Verificar que los valores no son extremos
     max_threshold = 0.1  # Máximo 10%
     for field, value in thresholds.items():
         if abs(value) > max_threshold:
             return False
-    
+
     return True
 ```
 
@@ -80,17 +80,17 @@ def validate_thresholds(self, thresholds: dict, symbol: str) -> bool:
 ```python
 def get_default_thresholds(self, symbol: str) -> dict:
     """🎯 Obtener thresholds por defecto robustos para cualquier símbolo"""
-    
+
     default_thresholds = {
         'strong_sell': -0.003,  # -0.3%
         'weak_sell': -0.0015,   # -0.15%
         'weak_buy': 0.0015,     # 0.15%
         'strong_buy': 0.003     # 0.3%
     }
-    
+
     if symbol in self.fixed_thresholds:
         return self.fixed_thresholds[symbol]
-    
+
     return default_thresholds
 ```
 
@@ -114,7 +114,7 @@ features_aligned[feature_columns] = features_aligned[feature_columns].ffill().fi
 ```python
 def handle_missing_values_intelligently(self, df: pd.DataFrame, method='adaptive') -> pd.DataFrame:
     """🧠 Manejo inteligente de valores faltantes"""
-    
+
     if method == 'adaptive':
         return self._handle_missing_values_adaptive(df)
     elif method == 'interpolate':
@@ -129,39 +129,39 @@ def handle_missing_values_intelligently(self, df: pd.DataFrame, method='adaptive
 ```python
 def _handle_missing_values_adaptive(self, df: pd.DataFrame) -> pd.DataFrame:
     """🎯 Manejo adaptativo basado en el tipo de dato"""
-    
+
     # Clasificación de columnas por tipo
     price_columns = ['open', 'high', 'low', 'close', 'volume']
     technical_indicators = ['rsi', 'macd', 'bbands', 'stoch', 'cci', 'adx', 'atr']
     momentum_indicators = ['momentum', 'roc', 'williams_r', 'mfi']
     trend_indicators = ['sma', 'ema', 'macd_signal', 'macd_histogram']
-    
+
     for col in df.columns:
         if df[col].isna().any():
             if any(price_col in col.lower() for price_col in price_columns):
                 # Para precios: interpolación lineal
                 df[col] = df[col].interpolate(method='linear', limit_direction='both')
-                
+
             elif any(tech in col.lower() for tech in technical_indicators):
                 # Para indicadores técnicos: forward fill + backward fill
                 df[col] = df[col].ffill().bfill()
-                
+
             elif any(mom in col.lower() for mom in momentum_indicators):
                 # Para momentum: mediana de ventana móvil
                 window_size = min(20, len(df) // 4)
                 df[col] = df[col].fillna(df[col].rolling(window=window_size, min_periods=1).median())
-                
+
             elif any(trend in col.lower() for trend in trend_indicators):
                 # Para tendencias: interpolación cúbica
                 df[col] = df[col].interpolate(method='cubic', limit_direction='both')
-                
+
             else:
                 # Para otros: mediana de la columna
                 median_val = df[col].median()
                 if pd.isna(median_val):
                     median_val = 0
                 df[col] = df[col].fillna(median_val)
-    
+
     return df
 ```
 
@@ -169,7 +169,7 @@ def _handle_missing_values_adaptive(self, df: pd.DataFrame) -> pd.DataFrame:
 ```python
 def diagnose_missing_values(self, df: pd.DataFrame, symbol: str) -> Dict:
     """🔍 Diagnóstico detallado de valores faltantes"""
-    
+
     diagnosis = {
         'total_rows': len(df),
         'total_columns': len(df.columns),
@@ -178,15 +178,15 @@ def diagnose_missing_values(self, df: pd.DataFrame, symbol: str) -> Dict:
         'inf_summary': {},
         'recommendations': []
     }
-    
+
     for col in df.columns:
         nan_count = df[col].isna().sum()
         inf_count = np.isinf(df[col]).sum()
         nan_percent = (nan_count / len(df)) * 100
-        
+
         if nan_count > 0 or inf_count > 0:
             diagnosis['columns_with_nan'].append(col)
-            
+
             # Generar recomendaciones específicas
             if nan_percent > 50:
                 diagnosis['recommendations'].append(f"⚠️  {col}: >50% NaN - considerar eliminar columna")
@@ -196,7 +196,7 @@ def diagnose_missing_values(self, df: pd.DataFrame, symbol: str) -> Dict:
                 diagnosis['recommendations'].append(f"📊 {col}: 5-20% NaN - usar forward/backward fill")
             else:
                 diagnosis['recommendations'].append(f"✅ {col}: <5% NaN - usar mediana")
-    
+
     return diagnosis
 ```
 
@@ -205,10 +205,10 @@ def diagnose_missing_values(self, df: pd.DataFrame, symbol: str) -> Dict:
 # ✅ NUEVO: MANEJO INTELIGENTE DE VALORES FALTANTES
 if nan_count > 0:
     print(f"🧠 Aplicando manejo inteligente de {nan_count} valores NaN...")
-    
+
     # Usar manejo adaptativo por defecto
     features_aligned = self.handle_missing_values_intelligently(features_aligned, method='adaptive')
-    
+
     # Verificar resultado
     final_nan = features_aligned[feature_columns].isna().sum().sum()
     if final_nan > 0:
@@ -248,26 +248,26 @@ model.compile(
 ```python
 class TradingMetrics:
     """📊 Métricas específicas para trading con análisis detallado por clase"""
-    
+
     def calculate_trading_metrics(self, y_true, y_pred, y_pred_proba=None) -> Dict:
         """🎯 Calcular métricas específicas para trading"""
-        
+
         # Métricas básicas
         accuracy = np.mean(y_true == y_pred)
-        
+
         # Reporte de clasificación detallado
-        report = classification_report(y_true, y_pred, 
-                                    target_names=self.class_names, 
+        report = classification_report(y_true, y_pred,
+                                    target_names=self.class_names,
                                     output_dict=True)
-        
+
         # Matriz de confusión
         cm = confusion_matrix(y_true, y_pred)
-        
+
         # Métricas por clase
         precision, recall, f1, support = precision_recall_fscore_support(
             y_true, y_pred, average=None, zero_division=0
         )
-        
+
         trading_metrics = {
             'accuracy': accuracy,
             'precision_per_class': dict(zip(self.class_names, precision)),
@@ -278,7 +278,7 @@ class TradingMetrics:
             'classification_report': report,
             'total_samples': len(y_true)
         }
-        
+
         return trading_metrics
 ```
 
@@ -286,11 +286,11 @@ class TradingMetrics:
 ```python
 def calculate_confidence_metrics(self, y_true, y_pred, y_pred_proba) -> Dict:
     """🎯 Calcular métricas de confianza de las predicciones"""
-    
+
     # Confianza promedio por predicción correcta/incorrecta
     correct_mask = y_true == y_pred
     incorrect_mask = ~correct_mask
-    
+
     confidence_metrics = {
         'avg_confidence_correct': np.mean(np.max(y_pred_proba[correct_mask], axis=1)) if np.any(correct_mask) else 0,
         'avg_confidence_incorrect': np.mean(np.max(y_pred_proba[incorrect_mask], axis=1)) if np.any(incorrect_mask) else 0,
@@ -298,7 +298,7 @@ def calculate_confidence_metrics(self, y_true, y_pred, y_pred_proba) -> Dict:
         'confidence_threshold_90': np.mean(np.max(y_pred_proba, axis=1) > 0.9),
         'high_confidence_accuracy': self.calculate_high_confidence_accuracy(y_true, y_pred, y_pred_proba, threshold=0.8)
     }
-    
+
     return confidence_metrics
 ```
 
@@ -381,4 +381,4 @@ model.compile(
 
 ---
 
-**🎯 RESULTADO**: Sistema completamente robusto con manejo inteligente de errores, validaciones exhaustivas y diagnóstico automático de problemas. 
+**🎯 RESULTADO**: Sistema completamente robusto con manejo inteligente de errores, validaciones exhaustivas y diagnóstico automático de problemas.

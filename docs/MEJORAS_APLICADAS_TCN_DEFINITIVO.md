@@ -65,14 +65,14 @@ nan_count_before = df[numeric_columns].isnull().sum().sum()
 
 if nan_count_before > 0:
     print(f"⚠️ Encontrados {nan_count_before} valores NaN en datos de mercado")
-    
+
     # ✅ LIMPIEZA DE DATOS CORRUPTOS
     df_clean = df.dropna(subset=numeric_columns)
-    
+
     # Verificar que no perdimos demasiados datos
     lost_data = initial_count - len(df_clean)
     lost_percentage = (lost_data / initial_count) * 100
-    
+
     if lost_percentage > 5:
         print(f"⚠️ ADVERTENCIA: Se perdieron {lost_data} registros ({lost_percentage:.1f}%)")
     else:
@@ -113,24 +113,24 @@ La lógica de escalado de señales HOLD usaba umbrales fijos muy específicos (0
 if i >= 5:
     # Calcular momentum de precio
     momentum = (close_prices[i] - close_prices[i-5]) / close_prices[i-5]
-    
+
     # ✅ NUEVO: Calcular umbral dinámico basado en volatilidad
     if i >= 20:  # Necesitamos suficientes datos para calcular volatilidad
         recent_returns = np.diff(close_prices[i-20:i]) / close_prices[i-20:i-1]
         volatility = np.std(recent_returns)
-        
+
         # Umbral dinámico: más sensible en mercados volátiles
         base_threshold = 0.008
         volatility_multiplier = min(2.0, max(0.5, volatility * 100))
         dynamic_threshold = base_threshold * volatility_multiplier
     else:
         dynamic_threshold = 0.008  # Fallback
-    
+
     # ✅ LÓGICA DE ESCALADO MEJORADA
     # BUY: Momentum positivo + RSI no sobrecomprado
     if momentum > dynamic_threshold and current_rsi < 70:
         label = 2  # HOLD -> BUY por momentum alcista
-    # SELL: Momentum negativo + RSI no sobrevendido  
+    # SELL: Momentum negativo + RSI no sobrevendido
     elif momentum < -dynamic_threshold and current_rsi > 30:
         label = 0  # HOLD -> SELL por momentum bajista
     else:
@@ -183,4 +183,4 @@ if i >= 5:
 
 ---
 
-**✅ TODAS LAS SUGERENCIAS APLICADAS: El entrenador TCN definitivo ahora tiene lógica coherente, manejo robusto de datos y escalado dinámico de señales.** 
+**✅ TODAS LAS SUGERENCIAS APLICADAS: El entrenador TCN definitivo ahora tiene lógica coherente, manejo robusto de datos y escalado dinámico de señales.**

@@ -51,10 +51,10 @@ volatility_quality_map = {
 
 #### **3. 🚀 MI DINÁMICO DURANTE PREDICCIÓN:**
 ```python
-def calculate_dynamic_mutual_information(self, symbol: str, timeframe: str, 
+def calculate_dynamic_mutual_information(self, symbol: str, timeframe: str,
                                        market_data: pd.DataFrame, predictions: np.ndarray) -> float:
     """🎯 CALCULAR MI DINÁMICO con datos reales durante predicción"""
-    
+
     # 🎯 NUEVO: Factor de estabilidad de datos actuales
     if len(market_data) > 10:
         returns = market_data['close'].pct_change().dropna()
@@ -62,17 +62,17 @@ def calculate_dynamic_mutual_information(self, symbol: str, timeframe: str,
         volatility_factor = max(0.5, min(1.5, 0.01 / (recent_volatility + 1e-6)))
     else:
         volatility_factor = 1.0
-    
+
     # 🎯 NUEVO: Factor de consistencia de predicciones
     if len(predictions) > 1:
         pred_variance = np.var(predictions)
         consistency_factor = max(0.7, min(1.3, 1.0 - pred_variance * 2))
     else:
         consistency_factor = 1.0
-    
+
     # Calcular MI dinámico
-    mi_value = (base_mi + quality_boost + 
-               (timeframe_quality - 0.85) * 0.2 + 
+    mi_value = (base_mi + quality_boost +
+               (timeframe_quality - 0.85) * 0.2 +
                (symbol_quality - 0.85) * 0.15) * volatility_factor * consistency_factor
 ```
 
@@ -128,8 +128,8 @@ mi_value = base_mi + volatility_adj + timeframe_factor + accuracy_factor + rando
 
 ### **✅ DESPUÉS (MI Real):**
 ```python
-mi_value = (base_mi + quality_boost + 
-           (timeframe_quality - 0.85) * 0.2 + 
+mi_value = (base_mi + quality_boost +
+           (timeframe_quality - 0.85) * 0.2 +
            (symbol_quality - 0.85) * 0.15) * volatility_factor * consistency_factor
 # ✅ Basado en métricas reales y datos actuales
 ```
@@ -144,4 +144,4 @@ mi_value = (base_mi + quality_boost +
 - ✅ **Adaptación dinámica** a condiciones de mercado
 - ✅ **Balance intertemporal mejorado** con datos reales
 
-**🚀 El sistema ahora usa información mutua real en lugar de valores sintéticos!** 
+**🚀 El sistema ahora usa información mutua real en lugar de valores sintéticos!**

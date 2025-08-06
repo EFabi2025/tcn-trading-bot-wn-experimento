@@ -99,4 +99,4 @@ El sistema ahora tiene:
 - ✅ Auto-detección de configuraciones específicas
 - ✅ Mejoras significativas en rendimiento esperado
 
-**🚀 El sistema está listo para entrenar modelos con configuraciones óptimas!** 
+**🚀 El sistema está listo para entrenar modelos con configuraciones óptimas!**

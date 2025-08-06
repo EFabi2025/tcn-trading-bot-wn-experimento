@@ -129,4 +129,4 @@ El manager ahora:
 
 ---
 
-**✅ VERIFICACIÓN COMPLETADA: El manager está usando correctamente el predictor con datos reales de Binance** 
+**✅ VERIFICACIÓN COMPLETADA: El manager está usando correctamente el predictor con datos reales de Binance**
