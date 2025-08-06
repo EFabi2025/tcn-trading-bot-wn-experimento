@@ -20,6 +20,7 @@ from decimal import Decimal, ROUND_DOWN
 import pandas as pd
 from dotenv import load_dotenv
 from pathlib import Path
+from config.trading_config import get_risk_params
 
 load_dotenv()
 
@@ -45,7 +46,7 @@ class Position:
     trailing_stop_percent: float = 1.4  # Default 1.4% - Configurado desde .env
     highest_price_since_entry: Optional[float] = None  # Para tracking del máximo
     lowest_price_since_entry: Optional[float] = None   # Para shorts
-    trailing_activation_threshold: float = 1.0 # Activar trailing después de +1% ganancia
+    trailing_activation_threshold: float = 0.4 # Activar trailing después de +0.4% ganancia
     last_trailing_update: Optional[datetime] = None
     trailing_movements: int = 0  # Contador de movimientos del trailing
 
@@ -714,7 +715,7 @@ class ProfessionalPortfolioManager:
             stop_loss_percent = float(os.getenv('STOP_LOSS_PERCENT', '1.4'))
             take_profit_percent = float(os.getenv('TAKE_PROFIT_PERCENT', '4.0'))
             trailing_stop_percent = float(os.getenv('TRAILING_STOP_PERCENT', '1.4'))
-            trailing_activation_threshold = float(os.getenv('TRAILING_ACTIVATION_THRESHOLD', '1.0'))
+            trailing_activation_threshold = float(os.getenv('TRAILING_ACTIVATION_THRESHOLD', '0.4'))
 
             # Actualizar los valores de la posición con la configuración
             position.stop_loss_percent = stop_loss_percent
@@ -791,8 +792,9 @@ class ProfessionalPortfolioManager:
                     else:
                         current_price = max(current_price, position.current_price)
 
-            # Usar valores fijos de la posición para predictibilidad
-            activation_pnl_percent = position.trailing_activation_threshold
+            # ✅ CONFIGURACIÓN DESDE .ENV
+            risk_params = get_risk_params()
+            activation_pnl_percent = risk_params.trailing_activation_threshold
             trailing_percent = position.trailing_stop_percent
 
             if position.side == 'BUY':
@@ -816,12 +818,13 @@ class ProfessionalPortfolioManager:
                     current_gain_percent = ((position.highest_price_since_entry - position.entry_price) / position.entry_price) * 100
 
                     # ✅ PROTECCIÓN PROPORCIONAL INTELIGENTE (80% de la ganancia actual)
-                    if current_gain_percent >= 1.4:
+                    if current_gain_percent >= 0.6:
                         # Proteger el 80% de la ganancia actual
                         min_profit_protection = current_gain_percent * 0.9
                     else:
-                        # Protección mínima base del 0.75% para ganancias menores a 2%
-                        min_profit_protection = 0.85
+                        # Protección mínima base configurable desde .env
+                        risk_params = get_risk_params()
+                        min_profit_protection = risk_params.min_profit_protection
 
                     min_trailing_price = position.entry_price * (1 + min_profit_protection / 100)
 
@@ -848,12 +851,13 @@ class ProfessionalPortfolioManager:
                     current_gain_percent = ((position.highest_price_since_entry - position.entry_price) / position.entry_price) * 100
 
                     # ✅ PROTECCIÓN PROPORCIONAL INTELIGENTE (80% de la ganancia actual)
-                    if current_gain_percent >= 1.4:
+                    if current_gain_percent >= 0.6:
                         # Proteger el 80% de la ganancia actual
                         min_profit_protection = current_gain_percent * 0.90
                     else:
-                        # Protección mínima base del 0.75% para ganancias menores a 2%
-                        min_profit_protection = 0.85
+                        # Protección mínima base configurable desde .env
+                        risk_params = get_risk_params()
+                        min_profit_protection = risk_params.min_profit_protection
 
                     min_trailing_price = position.entry_price * (1 + min_profit_protection / 100)
 
@@ -901,38 +905,109 @@ class ProfessionalPortfolioManager:
                         del self.trailing_cache[position.order_id]
 
             elif position.side == 'SELL':
-                # --- LÓGICA PARA POSICIONES SHORT (similar pero invertida) ---
+                # --- LÓGICA PARA POSICIONES SHORT (MEJORADA) ---
 
-                # 1. Actualizar el precio más bajo desde la entrada
+                # 1. ✅ CRÍTICO: Actualizar el precio más bajo desde la entrada SIEMPRE
                 if position.lowest_price_since_entry is None or current_price < position.lowest_price_since_entry:
+                    old_lowest = position.lowest_price_since_entry
                     position.lowest_price_since_entry = current_price
+                    old_lowest_str = f"${old_lowest:.4f}" if old_lowest is not None else "N/A"
+                    print(f"📉 NUEVO MÍNIMO {position.symbol}: {old_lowest_str} → ${current_price:.4f}")
 
                 # 2. Calcular PnL actual
                 current_pnl_percent = ((position.entry_price - current_price) / position.entry_price) * 100
 
-                # 3. Activar trailing
+                # 3. Activar el trailing stop si se alcanza el umbral de ganancia
                 if not position.trailing_stop_active and current_pnl_percent >= activation_pnl_percent:
                     position.trailing_stop_active = True
-                    new_trailing_price = position.lowest_price_since_entry * (1 + trailing_percent / 100)
-                    position.trailing_stop_price = min(new_trailing_price, position.entry_price)
+
+                    # ✅ CÁLCULO INTELIGENTE MEJORADO: Protección proporcional para SHORTS
+                    current_gain_percent = ((position.entry_price - position.lowest_price_since_entry) / position.entry_price) * 100
+
+                    # ✅ PROTECCIÓN PROPORCIONAL INTELIGENTE (80% de la ganancia actual)
+                    if current_gain_percent >= 0.6:
+                        # Proteger el 80% de la ganancia actual
+                        min_profit_protection = current_gain_percent * 0.9
+                    else:
+                        # Protección mínima base configurable desde .env
+                        risk_params = get_risk_params()
+                        min_profit_protection = risk_params.min_profit_protection
+
+                    min_trailing_price = position.entry_price * (1 - min_profit_protection / 100)
+
+                    # Calcular trailing stop desde el mínimo histórico
+                    trailing_from_peak = position.lowest_price_since_entry * (1 + trailing_percent / 100)
+
+                    # Usar el menor entre: protección progresiva o trailing desde pico
+                    position.trailing_stop_price = min(trailing_from_peak, min_trailing_price)
+
                     position.last_trailing_update = datetime.now()
                     self._save_trailing_state(position)
-                    print(f"📈 TRAILING STOP (SHORT) ACTIVADO para {position.symbol}")
 
-                # 4. Actualizar trailing
+                    protection_percent = ((position.entry_price - position.trailing_stop_price) / position.entry_price) * 100
+                    print(f"📈 TRAILING STOP (SHORT) ACTIVADO para {position.symbol} Pos #{position.order_id}:")
+                    print(f"   📍 Precio entrada: ${position.entry_price:.4f}")
+                    print(f"   💰 Precio actual: ${current_price:.4f}")
+                    print(f"   📉 Precio mínimo: ${position.lowest_price_since_entry:.4f}")
+                    print(f"   🎯 Ganancia actual: +{current_pnl_percent:.2f}% (Umbral: {activation_pnl_percent}%)")
+                    print(f"   🚀 Stop inicial en: ${position.trailing_stop_price:.4f} (+{protection_percent:.2f}%)")
+
+                # 4. ✅ CORREGIDO: Actualizar el trailing stop si ya está activo
                 elif position.trailing_stop_active:
-                    new_trailing_price = position.lowest_price_since_entry * (1 + trailing_percent / 100)
-                    if position.trailing_stop_price is not None and new_trailing_price < position.trailing_stop_price:
+                    # ✅ CÁLCULO INTELIGENTE MEJORADO: Protección proporcional para SHORTS
+                    current_gain_percent = ((position.entry_price - position.lowest_price_since_entry) / position.entry_price) * 100
+
+                    # ✅ PROTECCIÓN PROPORCIONAL INTELIGENTE (80% de la ganancia actual)
+                    if current_gain_percent >= 0.6:
+                        # Proteger el 80% de la ganancia actual
+                        min_profit_protection = current_gain_percent * 0.90
+                    else:
+                        # Protección mínima base configurable desde .env
+                        risk_params = get_risk_params()
+                        min_profit_protection = risk_params.min_profit_protection
+
+                    min_trailing_price = position.entry_price * (1 - min_profit_protection / 100)
+
+                    # Calcular trailing stop desde el mínimo histórico
+                    trailing_from_peak = position.lowest_price_since_entry * (1 + trailing_percent / 100)
+
+                    # Usar el menor entre: protección progresiva o trailing desde pico
+                    new_trailing_price = min(trailing_from_peak, min_trailing_price)
+
+                    # ✅ MOVER el stop solo si el nuevo precio es más bajo que el anterior
+                    if position.trailing_stop_price is None or new_trailing_price < position.trailing_stop_price:
+                        old_price = position.trailing_stop_price
                         position.trailing_stop_price = new_trailing_price
                         position.last_trailing_update = datetime.now()
+                        position.trailing_movements += 1
                         self._save_trailing_state(position)
-                        print(f"📈 TRAILING STOP (SHORT) MOVIDO para {position.symbol} a ${new_trailing_price:.4f}")
 
-                # 5. Verificar disparo del stop
+                        profit_protection_percent = ((position.entry_price - position.trailing_stop_price) / position.entry_price) * 100
+                        print(f"📈 TRAILING STOP (SHORT) MOVIDO para {position.symbol} Pos #{position.order_id}:")
+                        print(f"   📍 Precio entrada: ${position.entry_price:.4f}")
+                        print(f"   💰 Precio actual: ${current_price:.4f}")
+                        print(f"   📉 Precio mínimo: ${position.lowest_price_since_entry:.4f}")
+                        print(f"   🔄 Stop: ${old_price:.4f} → ${new_trailing_price:.4f}")
+                        print(f"   🛡️ Protegiendo ganancia de: +{profit_protection_percent:.2f}%")
+                        print(f"   📊 Protección proporcional: +{min_profit_protection:.1f}% (80% de +{current_gain_percent:.2f}%)")
+                    else:
+                        # ✅ NUEVO: Log detallado cuando el trailing no se mueve
+                        if position.trailing_stop_price is not None:
+                            current_protection = ((position.entry_price - position.trailing_stop_price) / position.entry_price) * 100
+                            print(f"📊 TRAILING STOP (SHORT) MANTIENE {position.symbol}: ${position.trailing_stop_price:.4f} (+{current_protection:.2f}%)")
+                            print(f"   💡 Calculado: ${new_trailing_price:.4f} | Desde pico: ${trailing_from_peak:.4f} | Mín: ${min_trailing_price:.4f}")
+
+                # 5. Verificar si el precio actual ha subido por encima del trailing stop
                 if position.trailing_stop_active and position.trailing_stop_price is not None and current_price >= position.trailing_stop_price:
                     stop_triggered = True
                     trigger_reason = "TRAILING_STOP"
-                    print(f"🛑 TRAILING STOP (SHORT) EJECUTADO para {position.symbol}")
+                    final_pnl = ((position.entry_price - current_price) / position.entry_price) * 100
+
+                    print(f"🛑 TRAILING STOP (SHORT) EJECUTADO para {position.symbol} Pos #{position.order_id}:")
+                    print(f"   📈 Precio actual: ${current_price:.4f} >= Stop: ${position.trailing_stop_price:.4f}")
+                    print(f"   💰 PnL final estimado: {final_pnl:.2f}%")
+
+                    # Limpiar estado del cache
                     if position.order_id in self.trailing_cache:
                         del self.trailing_cache[position.order_id]
 

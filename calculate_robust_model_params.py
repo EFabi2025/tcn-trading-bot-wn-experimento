@@ -9,9 +9,9 @@ import numpy as np
 
 def create_robust_tcn_model(input_shape: tuple, timeframe: str):
     """🎯 Crear modelo TCN robusto para calcular parámetros"""
-    
+
     print(f"🎯 Calculando parámetros robustos para {timeframe} - input_shape: {input_shape}")
-    
+
     # ✅ ARQUITECTURA MÁS ROBUSTA - EVITA OVERFITTING
     if timeframe == '1m':
         # Modelo para alta frecuencia - más capas pero con regularización
@@ -58,46 +58,46 @@ def create_robust_tcn_model(input_shape: tuple, timeframe: str):
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.SpatialDropout1D(0.1 + i * 0.01)
         ])
-        
+
         model.add(conv_block)
-        
+
         # ✅ RESIDUAL CONNECTION (si las dimensiones coinciden)
         if i > 0 and filters[i] == filters[i-1]:
             model.add(tf.keras.layers.Add())
 
     # ✅ CAPAS FINALES MEJORADAS CON MÁS REGULARIZACIÓN
     model.add(tf.keras.layers.GlobalAveragePooling1D())
-    
+
     # Dense layers con regularización fuerte
     model.add(tf.keras.layers.Dense(256, activation='relu',
                                   kernel_regularizer=tf.keras.regularizers.l2(0.01)))
     model.add(tf.keras.layers.BatchNormalization())
     model.add(tf.keras.layers.Dropout(0.4))
-    
+
     model.add(tf.keras.layers.Dense(128, activation='relu',
                                   kernel_regularizer=tf.keras.regularizers.l2(0.01)))
     model.add(tf.keras.layers.BatchNormalization())
     model.add(tf.keras.layers.Dropout(0.3))
-    
+
     model.add(tf.keras.layers.Dense(64, activation='relu',
                                   kernel_regularizer=tf.keras.regularizers.l2(0.01)))
     model.add(tf.keras.layers.BatchNormalization())
     model.add(tf.keras.layers.Dropout(0.2))
-    
+
     model.add(tf.keras.layers.Dense(32, activation='relu'))
     model.add(tf.keras.layers.Dropout(0.1))
-    
+
     # Capa final con activación softmax
     model.add(tf.keras.layers.Dense(3, activation='softmax'))
-    
+
     return model
 
 def calculate_robust_parameters():
     """🧮 Calcular parámetros de la versión robusta"""
-    
+
     print("🧮 CALCULADOR DE PARÁMETROS DEL MODELO TCN ROBUSTO")
     print("=" * 70)
-    
+
     # Configuraciones típicas
     configs = [
         {'timeframe': '1m', 'lookback': 60, 'features': 66},
@@ -106,21 +106,21 @@ def calculate_robust_parameters():
         {'timeframe': '1h', 'lookback': 12, 'features': 66},
         {'timeframe': '4h', 'lookback': 8, 'features': 66}
     ]
-    
+
     for config in configs:
         input_shape = (config['lookback'], config['features'])
         model = create_robust_tcn_model(input_shape, config['timeframe'])
-        
+
         total_params = model.count_params()
         trainable_params = sum([tf.keras.backend.count_params(w) for w in model.trainable_weights])
         non_trainable_params = total_params - trainable_params
-        
+
         print(f"\n📊 CONFIGURACIÓN ROBUSTA: {config['timeframe']}")
         print(f"   - Input shape: {input_shape}")
         print(f"   - Total parámetros: {total_params:,}")
         print(f"   - Trainable: {trainable_params:,}")
         print(f"   - Non-trainable: {non_trainable_params:,}")
-        
+
         # Clasificar por tamaño
         if total_params > 1000000:
             size_category = "🚀 MUY GRANDE (>1M)"
@@ -132,13 +132,13 @@ def calculate_robust_parameters():
             size_category = "📉 PEQUEÑO (50K-100K)"
         else:
             size_category = "🔍 MUY PEQUEÑO (<50K)"
-            
+
         print(f"   - Categoría: {size_category}")
-        
+
         # Calcular eficiencia
         efficiency = total_params / (config['lookback'] * config['features'])
         print(f"   - Eficiencia: {efficiency:.1f} params por feature temporal")
-        
+
         # Comparar con modelo simple
         simple_model_params = 23943  # Del modelo simple
         increase = ((total_params - simple_model_params) / simple_model_params) * 100
@@ -147,7 +147,7 @@ def calculate_robust_parameters():
 def main():
     """🎯 Función principal"""
     calculate_robust_parameters()
-    
+
     print(f"\n🎯 RESUMEN:")
     print(f"   ✅ El modelo robusto es MÁS GRANDE que el simple")
     print(f"   ✅ Debería estar en el rango 100K-500K parámetros")
@@ -155,4 +155,4 @@ def main():
     print(f"   ✅ Mejor para capturar patrones complejos")
 
 if __name__ == "__main__":
-    main() 
+    main()

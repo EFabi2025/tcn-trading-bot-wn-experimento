@@ -99,9 +99,9 @@ if final_pnl >= 0.9:  # Solo ejecutar si cubre comisiones
 
 ### **Parámetros por Defecto:**
 ```python
-trailing_activation_threshold: float = 1.0    # Activar en +1%
+trailing_activation_threshold: float = 0.4    # Activar en +0.4%
 trailing_stop_percent: float = 2.0           # Distancia 2%
-min_protection_percent: float = 0.9          # Protección mínima 0.9%
+min_protection_percent: float = 0.4          # Protección mínima 0.4%
 estimated_commissions: float = 0.2           # Estimado comisiones
 ```
 

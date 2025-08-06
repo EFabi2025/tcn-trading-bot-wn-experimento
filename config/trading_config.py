@@ -22,6 +22,8 @@ class RiskParameters:
     stop_loss_percent: float
     take_profit_percent: float
     trailing_stop_percent: float
+    min_profit_protection: float  # ✅ NUEVO: Protección mínima de ganancia para trailing stop
+    trailing_activation_threshold: float  # ✅ NUEVO: Umbral de activación del trailing stop
 
     # Límites de posiciones
     max_concurrent_positions: int
@@ -192,6 +194,8 @@ class ConfigManager:
             stop_loss_percent=float(os.getenv('STOP_LOSS_PERCENT', '1.4')),
             take_profit_percent=float(os.getenv('TAKE_PROFIT_PERCENT', '4.0')),
             trailing_stop_percent=float(os.getenv('TRAILING_STOP_PERCENT', '1.4')),
+            min_profit_protection=float(os.getenv('MIN_PROFIT_PROTECTION', '0.9')),  # ✅ NUEVO: Protección mínima de ganancia
+            trailing_activation_threshold=float(os.getenv('TRAILING_ACTIVATION_THRESHOLD', '0.6')),  # ✅ NUEVO: Umbral de activación
 
             max_concurrent_positions=int(os.getenv('MAX_CONCURRENT_POSITIONS', '3')),
             correlation_limit=float(os.getenv('CORRELATION_LIMIT', '0.7')),
@@ -276,6 +280,8 @@ class ConfigManager:
         print(f"   🛑 Stop Loss: {config.risk_params.stop_loss_percent}%")
         print(f"   🎯 Take Profit: {config.risk_params.take_profit_percent}%")
         print(f"   📈 Trailing Stop: {config.risk_params.trailing_stop_percent}%")
+        print(f"   🛡️ Min Profit Protection: {config.risk_params.min_profit_protection}%")
+        print(f"   🎯 Trailing Activation: {config.risk_params.trailing_activation_threshold}%")
         print(f"   🔢 Max posiciones: {config.risk_params.max_concurrent_positions}")
         print(f"   🎯 Min confianza: {config.risk_params.min_confidence_threshold:.1%}")
         print(f"   🔄 Umbral reversión: {config.risk_params.signal_reversal_threshold:.1%}")

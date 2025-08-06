@@ -134,7 +134,7 @@ class TCNDefinitivoPredictor:
             # 🎯 ACTUALIZADO: Buscar modelos con formato balanceado primero
             model_dir_new = f"models/definitivo_5m_{symbol.lower()}"  # Formato nuevo balanceado
             model_dir_old = f"models/definitivo_{symbol.lower()}"    # Formato antiguo fallback
-            
+
             # Priorizar modelo nuevo balanceado
             if os.path.exists(model_dir_new):
                 model_dir = model_dir_new
@@ -142,7 +142,7 @@ class TCNDefinitivoPredictor:
             else:
                 model_dir = model_dir_old
                 logger.info(f"  ⚠️ Usando modelo ANTIGUO: {model_dir}")
-                
+
             model_path = os.path.join(model_dir, "best_model.h5")
             scaler_path = os.path.join(model_dir, "scaler.pkl")
 
@@ -465,7 +465,7 @@ class TCNDefinitivoPredictor:
             # 🎯 LÓGICA BALANCEADA - Compatible con entrenamiento percentil
             # Reducir thresholds para ser más activo (menos holdero)
             min_confidence = 0.35  # Reducido de 0.4 para más señales
-            
+
             if buy_prob > max(sell_prob, hold_prob):
                 if buy_prob >= min_confidence:
                     action = 'BUY'

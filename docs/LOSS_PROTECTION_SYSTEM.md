@@ -15,7 +15,7 @@ El Sistema de Protección Post-Pérdidas es un mecanismo avanzado de gestión de
 
 ### 1. Protección por Magnitud de Pérdida
 - **Pérdida Pequeña (< 2%)**: Cooldown de 15 minutos
-- **Pérdida Media (2-5%)**: Cooldown de 30 minutos  
+- **Pérdida Media (2-5%)**: Cooldown de 30 minutos
 - **Pérdida Grande (> 5%)**: Cooldown de 60 minutos
 
 ### 2. Protección por Pérdidas Consecutivas
@@ -109,7 +109,7 @@ loss_protection.register_position_close(
 ```python
 # Antes de abrir posición
 can_trade, reason = loss_protection.can_open_position(
-    symbol="BTCUSDT", 
+    symbol="BTCUSDT",
     signal_confidence=85.0
 )
 
@@ -182,7 +182,7 @@ async def _consider_new_position(self, symbol: str, signal_data: Dict):
     can_trade, protection_reason = self.loss_protection.can_open_position(
         symbol, signal_data['confidence']
     )
-    
+
     if not can_trade:
         await self._send_discord_notification(
             f"🛡️ PROTECCIÓN POST-PÉRDIDAS: {symbol} - {protection_reason}"
@@ -194,7 +194,7 @@ async def _consider_new_position(self, symbol: str, signal_data: Dict):
 ```python
 async def _close_position(self, order_id: str, reason: str):
     # ... lógica de cierre ...
-    
+
     # Registrar para protección
     self.loss_protection.register_position_close(
         symbol=symbol,
@@ -320,7 +320,7 @@ elif market_context['regime'] == 'BULLISH':
 ### Casos de Prueba
 
 1. **Pérdida Pequeña**: Verificar cooldown de 15 minutos
-2. **Pérdida Media**: Verificar cooldown de 30 minutos  
+2. **Pérdida Media**: Verificar cooldown de 30 minutos
 3. **Pérdida Grande**: Verificar cooldown de 60 minutos
 4. **Pérdidas Consecutivas**: Verificar penalización adicional
 5. **Pérdida Diaria**: Verificar protección global
@@ -358,4 +358,4 @@ python simple_professional_manager2.py --test-mode
 
 ---
 
-**🛡️ El Sistema de Protección Post-Pérdidas es una herramienta esencial para cualquier trader serio que busque proteger su capital y mantener la disciplina en el trading automatizado.** 
+**🛡️ El Sistema de Protección Post-Pérdidas es una herramienta esencial para cualquier trader serio que busque proteger su capital y mantener la disciplina en el trading automatizado.**

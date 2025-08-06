@@ -29,8 +29,8 @@ class AdaptiveTCNTrainer:
 
     def __init__(self):
         self.pairs = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
-        self.lookback_window = 24
-        self.prediction_horizon = 6
+        self.lookback_window = 32
+        self.prediction_horizon = 8
         self.features_engine = CentralizedFeaturesEngine()
 
         # ✅ NUEVO: Thresholds adaptativos habilitados por configuración
@@ -201,7 +201,7 @@ class AdaptiveTCNTrainer:
         return df_labeled
 
     # ✅ RESTO DE MÉTODOS: Copiados exactamente del trainer original
-    async def get_real_market_data(self, symbol: str, days: int =10) -> pd.DataFrame:
+    async def get_real_market_data(self, symbol: str, days: int =30) -> pd.DataFrame:
         """📊 Obtener datos reales de mercado - SIN CAMBIOS"""
         print(f"📊 Obteniendo {days} días de datos reales para {symbol}...")
 
@@ -213,7 +213,7 @@ class AdaptiveTCNTrainer:
             url = f"{base_url}/api/v3/klines"
             params = {
                 'symbol': symbol,
-                'interval': '1m',
+                'interval': '3m',
                 'startTime': start_time,
                 'endTime': end_time,
                 'limit': 1000

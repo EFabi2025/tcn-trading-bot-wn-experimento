@@ -53,7 +53,7 @@ class Position:
     trailing_stop_price: Optional[float] = None
     trailing_stop_percent: float = 2.0
     highest_price_since_entry: Optional[float] = None
-    trailing_activation_threshold: float = 1.0
+    trailing_activation_threshold: float = 0.4
     trailing_movements: int = 0
 
     # Stops tradicionales
@@ -82,7 +82,7 @@ class Position:
     ↓
 🎯 Configurar Take Profit (+6%)
     ↓
-📈 Trailing Stop = INACTIVO (hasta +1% ganancia)
+📈 Trailing Stop = INACTIVO (hasta +0.4% ganancia)
     ↓
 ✅ Posición monitoreada cada 30 segundos
 ```
@@ -91,7 +91,7 @@ class Position:
 ```
 📊 Verificar PnL actual
     ↓
-🎯 ¿Ganancia >= +1%?
+🎯 ¿Ganancia >= +0.4%?
     ↓ SÍ
 📈 ACTIVAR Trailing Stop
     ↓
@@ -138,8 +138,8 @@ class Position:
 
 ─── MOVIMIENTOS DE PRECIO ───
 
-💰 $50,200 (+0.4%) → Trailing INACTIVO
-💰 $50,500 (+1.0%) → 📈 TRAILING ACTIVADO: $49,490
+💰 $50,200 (+0.4%) → 📈 TRAILING ACTIVADO: $49,490
+💰 $50,500 (+1.0%) → 📈 TRAILING MOVIDO: $49,490
 💰 $51,000 (+2.0%) → 📈 TRAILING MOVIDO: $49,980
 💰 $51,500 (+3.0%) → 📈 TRAILING MOVIDO: $50,470
 💰 $52,000 (+4.0%) → 📈 TRAILING MOVIDO: $50,960
@@ -186,7 +186,7 @@ Cada posición tiene:
 trailing_stop_percent: float = 2.0  # 2% default
 
 # Umbral de activación
-trailing_activation_threshold: float = 1.0  # +1% ganancia
+trailing_activation_threshold: float = 0.4  # +0.4% ganancia
 
 # Stops tradicionales
 stop_loss_percent: float = 3.0      # -3% pérdida
@@ -256,7 +256,7 @@ async def _position_monitor(self):
 ### **Logging Detallado**
 ```
 📈 TRAILING ACTIVADO BTCUSDT Pos #test_001:
-   🎯 Ganancia: +1.00% (umbral: +1.0%)
+   🎯 Ganancia: +0.40% (umbral: +0.4%)
    📈 Trailing Stop inicial: $49,490.00
 
 📈 TRAILING MOVIDO BTCUSDT Pos #test_001:

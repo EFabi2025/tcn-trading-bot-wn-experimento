@@ -18,7 +18,7 @@ TAKE_PROFIT_PERCENT=4.0         # Take profit automático (4.0%)
 
 # Trailing Stop
 TRAILING_STOP_PERCENT=1.4       # Trailing stop (1.4%)
-TRAILING_ACTIVATION_THRESHOLD=1.0  # Activar trailing en +1% ganancia
+TRAILING_ACTIVATION_THRESHOLD=0.4  # Activar trailing en +0.4% ganancia
 ENABLE_TRAILING_STOPS=true      # Habilitar trailing stops
 
 # Límites de pérdida

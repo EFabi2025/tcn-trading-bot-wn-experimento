@@ -3,6 +3,7 @@
 🎯 TCN DEFINITIVO TRAINER
 Entrenador profesional que corrige todos los sesgos identificados
 Implementa técnicas anti-sesgo y distribución balanceada
+USA MOTOR DE FEATURES CENTRALIZADO
 """
 
 import asyncio
@@ -14,21 +15,23 @@ from datetime import datetime, timedelta
 from sklearn.preprocessing import RobustScaler
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
-import talib
 import warnings
 import pickle
 import os
 from collections import Counter
 warnings.filterwarnings('ignore')
 
+# Importar motor de features centralizado
+from centralized_features_engine2 import CentralizedFeaturesEngine
+
 class DefinitiveTCNTrainer:
-    """🎯 Entrenador definitivo del TCN con técnicas anti-sesgo"""
+    """🎯 Entrenador definitivo del TCN con técnicas anti-sesgo y motor centralizado"""
 
     def __init__(self, config=None):
         # Configuración por defecto RENTABLE Y OPTIMIZADA
         self.pairs = ["BNBUSDT"]
-        self.lookback_window = 24
-        self.prediction_horizon = 12  # ✅ OPTIMIZADO: Reducido de 24 a 12 (1 hora vs 2 horas)
+        self.lookback_window = 48  # Optimizado para 5m
+        self.prediction_horizon = 12  # Optimizado para 5m
         self.timeframe = "5m"
         self.days = 60  # ✅ OPTIMIZADO: Reducido de 90 a 60 días para menos ruido
         self.limit = 1000
@@ -36,43 +39,36 @@ class DefinitiveTCNTrainer:
         # Aplicar configuración personalizada si se proporciona
         if config:
             self.pairs = [config.get('symbol', 'BNBUSDT')]
-            self.lookback_window = config.get('lookback_window', 24)
-            self.prediction_horizon = config.get('prediction_horizon', 6)
+            self.lookback_window = config.get('lookback_window', 48)  # Optimizado para 5m
+            self.prediction_horizon = config.get('prediction_horizon', 12)  # Optimizado para 5m
             self.timeframe = config.get('timeframe', '5m')
             self.days = config.get('days', 60)
             self.limit = config.get('limit', 1000)
             self.start_time = config.get('start_time')
             self.end_time = config.get('end_time')
 
-        # 🎯 THRESHOLDS RENTABLES - CONSIDERAN COSTOS DE TRADING
-        # Costos totales: ~0.3% (comisiones 0.2% + spread 0.05% + slippage 0.05%)
-        # Mínimo rentable: Costos + Margen = 0.3% + 0.5% = 0.8%
-        self.thresholds = {
-            'BTCUSDT': {
-                'strong_sell': -0.012,   # -1.2% para SELL fuerte (2 horas)
-                'weak_sell': -0.006,     # -0.6% para SELL débil
-                'weak_buy': 0.008,       # +0.6% para BUY débil
-                'strong_buy': 0.012      # +1.2% para BUY fuerte (2 horas)
-            },
-            'ETHUSDT': {
-                'strong_sell': -0.018,   # -1.5% (ETH más volátil)
-                'weak_sell': -0.008,     # -0.8%
-                'weak_buy': 0.008,       # +0.8%
-                'strong_buy': 0.015      # +1.5%
-            },
-            'BNBUSDT': {
-                'strong_sell': -0.018,   # -1.2%
-                'weak_sell': -0.009,     # -0.6%
-                'weak_buy': 0.009,       # +0.6%
-                'strong_buy': 0.018      # +1.2%
-            },
-            'XRPUSDT': {
-                'strong_sell': -0.018,   # -1.8% (XRP más volátil)
-                'weak_sell': -0.009,     # -0.9%
-                'weak_buy': 0.009,       # +0.9%
-                'strong_buy': 0.018      # +1.8%
-            }
+        # ✅ ELIMINADO: Diccionario self.thresholds que no se usa
+        # (Reemplazado por lógica de percentiles dinámicos en create_balanced_labels)
+
+        # Configuraciones específicas por timeframe
+        timeframe_configs = {
+            '1m': {'lookback': 60, 'horizon': 15},   # 1 hora historia, 15min horizonte
+            '3m': {'lookback': 40, 'horizon': 10},   # 2 horas historia, 30min horizonte
+            '5m': {'lookback': 48, 'horizon': 12},   # 4 horas historia, 1h horizonte
+            '15m': {'lookback': 32, 'horizon': 8},   # 8 horas historia, 2h horizonte
+            '1h': {'lookback': 24, 'horizon': 6},    # 1 día historia, 6h horizonte
+            '4h': {'lookback': 18, 'horizon': 4}     # 3 días historia, 16h horizonte
         }
+        
+        # Aplicar configuración específica del timeframe si no se especificó manualmente
+        if self.timeframe in timeframe_configs and not config.get('lookback_window'):
+            self.lookback_window = timeframe_configs[self.timeframe]['lookback']
+        if self.timeframe in timeframe_configs and not config.get('prediction_horizon'):
+            self.prediction_horizon = timeframe_configs[self.timeframe]['horizon']
+
+        # ✅ NUEVO: Inicializar motor de features centralizado
+        self.features_engine = CentralizedFeaturesEngine()
+        print("🎯 Motor de features centralizado inicializado")
 
     async def get_real_market_data(self, symbol: str, days: int = None) -> pd.DataFrame:
         """📊 Obtener datos reales de mercado de Binance (versión configurable)"""
@@ -138,206 +134,83 @@ class DefinitiveTCNTrainer:
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df = df.set_index('timestamp').sort_index()
 
-        print(f"✅ Obtenidos {len(df)} registros de {symbol}")
+        # ✅ NUEVO: MANEJO ROBUSTO DE DATOS CORRUPTOS
+        print(f"🔧 Validando integridad de datos...")
+        
+        # Verificar datos antes de limpieza
+        initial_count = len(df)
+        nan_count_before = df[numeric_columns].isnull().sum().sum()
+        
+        if nan_count_before > 0:
+            print(f"⚠️ Encontrados {nan_count_before} valores NaN en datos de mercado")
+            
+            # ✅ LIMPIEZA DE DATOS CORRUPTOS
+            # Eliminar filas con valores NaN en columnas críticas
+            df_clean = df.dropna(subset=numeric_columns)
+            
+            # Verificar que no perdimos demasiados datos
+            lost_data = initial_count - len(df_clean)
+            lost_percentage = (lost_data / initial_count) * 100
+            
+            if lost_percentage > 5:  # Si perdimos más del 5% de datos
+                print(f"⚠️ ADVERTENCIA: Se perdieron {lost_data} registros ({lost_percentage:.1f}%) por datos corruptos")
+                print("   Considerando usar menos días o verificar conectividad")
+            else:
+                print(f"✅ Limpieza exitosa: {lost_data} registros corruptos eliminados ({lost_percentage:.1f}%)")
+            
+            df = df_clean
+        
+        # ✅ VALIDACIÓN ADICIONAL DE INTEGRIDAD
+        if len(df) == 0:
+            print("❌ ERROR: No quedaron datos válidos después de la limpieza")
+            return pd.DataFrame()
+        
+        # Verificar que los precios son lógicos
+        invalid_prices = (df['high'] < df['low']) | (df['open'] < 0) | (df['close'] < 0)
+        if invalid_prices.any():
+            invalid_count = invalid_prices.sum()
+            print(f"⚠️ Encontrados {invalid_count} registros con precios inválidos, eliminando...")
+            df = df[~invalid_prices]
+        
+        # Verificar que tenemos suficientes datos
+        if len(df) < 100:  # Mínimo 100 registros para entrenamiento
+            print(f"❌ ERROR: Insuficientes datos válidos ({len(df)} registros)")
+            print("   Se requieren al menos 100 registros para entrenamiento")
+            return pd.DataFrame()
+        
+        # ✅ VERIFICACIÓN FINAL
+        final_nan_count = df[numeric_columns].isnull().sum().sum()
+        if final_nan_count > 0:
+            print(f"⚠️ ADVERTENCIA: {final_nan_count} valores NaN restantes")
+            # ✅ CORREGIDO: Usar sintaxis moderna de fillna
+            df[numeric_columns] = df[numeric_columns].ffill()  # Forward fill
+            df[numeric_columns] = df[numeric_columns].bfill()  # Backward fill para valores al inicio
+        
+        print(f"✅ Obtenidos {len(df)} registros válidos de {symbol}")
+        print(f"   📊 Rango temporal: {df.index.min()} a {df.index.max()}")
+        print(f"   💰 Rango de precios: ${df['close'].min():.2f} - ${df['close'].max():.2f}")
+        
         return df
 
-    def create_66_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """🔧 Crear 66 features técnicos optimizados"""
+    def create_features_using_centralized_engine(self, df: pd.DataFrame) -> pd.DataFrame:
+        """🔧 Crear features usando el motor centralizado"""
 
-        print("🔧 Creando 66 features técnicos...")
-
-        close = df['close'].values
-        high = df['high'].values
-        low = df['low'].values
-        volume = df['volume'].values
-
-        features = pd.DataFrame(index=df.index)
+        print("🔧 Creando features usando motor centralizado...")
 
         try:
-            # === MOMENTUM INDICATORS (15 features) ===
-            features['rsi_14'] = talib.RSI(close, timeperiod=14)
-            features['rsi_21'] = talib.RSI(close, timeperiod=21)
-            features['rsi_7'] = talib.RSI(close, timeperiod=7)
-
-            # MACD family
-            macd, macd_signal, macd_hist = talib.MACD(close)
-            features['macd'] = macd
-            features['macd_signal'] = macd_signal
-            features['macd_histogram'] = macd_hist
-
-            # Stochastic
-            slowk, slowd = talib.STOCH(high, low, close)
-            features['stoch_k'] = slowk
-            features['stoch_d'] = slowd
-
-            # Williams %R
-            features['williams_r'] = talib.WILLR(high, low, close)
-
-            # Rate of Change
-            features['roc_10'] = talib.ROC(close, timeperiod=10)
-            features['roc_20'] = talib.ROC(close, timeperiod=20)
-
-            # Momentum
-            features['momentum_10'] = talib.MOM(close, timeperiod=10)
-            features['momentum_20'] = talib.MOM(close, timeperiod=20)
-
-            # CCI
-            features['cci_14'] = talib.CCI(high, low, close, timeperiod=14)
-            features['cci_20'] = talib.CCI(high, low, close, timeperiod=20)
-
-            # === TREND INDICATORS (12 features) ===
-            # Moving Averages
-            features['sma_10'] = talib.SMA(close, timeperiod=10)
-            features['sma_20'] = talib.SMA(close, timeperiod=20)
-            features['sma_50'] = talib.SMA(close, timeperiod=50)
-            features['ema_10'] = talib.EMA(close, timeperiod=10)
-            features['ema_20'] = talib.EMA(close, timeperiod=20)
-            features['ema_50'] = talib.EMA(close, timeperiod=50)
-
-            # ADX family
-            features['adx_14'] = talib.ADX(high, low, close, timeperiod=14)
-            features['plus_di'] = talib.PLUS_DI(high, low, close, timeperiod=14)
-            features['minus_di'] = talib.MINUS_DI(high, low, close, timeperiod=14)
-
-            # PSAR
-            features['psar'] = talib.SAR(high, low)
-
-            # Aroon
-            aroon_down, aroon_up = talib.AROON(high, low, timeperiod=14)
-            features['aroon_up'] = aroon_up
-            features['aroon_down'] = aroon_down
-
-            # === VOLATILITY INDICATORS (10 features) ===
-            # Bollinger Bands
-            bb_upper, bb_middle, bb_lower = talib.BBANDS(close)
-            features['bb_upper'] = bb_upper
-            features['bb_middle'] = bb_middle
-            features['bb_lower'] = bb_lower
-            features['bb_width'] = (bb_upper - bb_lower) / bb_middle
-            features['bb_position'] = (close - bb_lower) / (bb_upper - bb_lower)
-
-            # ATR
-            features['atr_14'] = talib.ATR(high, low, close, timeperiod=14)
-            features['atr_20'] = talib.ATR(high, low, close, timeperiod=20)
-
-            # True Range
-            features['true_range'] = talib.TRANGE(high, low, close)
-
-            # Normalized ATR
-            features['natr_14'] = talib.NATR(high, low, close, timeperiod=14)
-            features['natr_20'] = talib.NATR(high, low, close, timeperiod=20)
-
-            # === VOLUME INDICATORS (8 features) ===
-            features['ad'] = talib.AD(high, low, close, volume)
-            features['adosc'] = talib.ADOSC(high, low, close, volume)
-            features['obv'] = talib.OBV(close, volume)
-
-            # Volume SMA
-            features['volume_sma_10'] = talib.SMA(volume, timeperiod=10)
-            features['volume_sma_20'] = talib.SMA(volume, timeperiod=20)
-            features['volume_ratio'] = volume / features['volume_sma_20']
-
-            # Money Flow Index
-            features['mfi_14'] = talib.MFI(high, low, close, volume, timeperiod=14)
-            features['mfi_20'] = talib.MFI(high, low, close, volume, timeperiod=20)
-
-            # === PRICE PATTERNS (8 features) ===
-            # Price ratios
-            features['hl_ratio'] = (high - low) / close
-            features['oc_ratio'] = (close - df['open'].values) / close
-            features['price_position'] = (close - low) / (high - low)
-
-            # Price momentum
-            close_series = pd.Series(close, index=features.index)
-            features['price_change_1'] = close_series.pct_change(1)
-            features['price_change_5'] = close_series.pct_change(5)
-            features['price_change_10'] = close_series.pct_change(10)
-
-            # Volatility
-            returns = np.log(close_series / close_series.shift(1))
-            features['volatility_10'] = returns.rolling(10).std()
-            features['volatility_20'] = returns.rolling(20).std()
-
-            # === MARKET STRUCTURE (8 features) ===
-            # Higher highs, lower lows
-            features['higher_high'] = (pd.Series(high, index=features.index) > pd.Series(high, index=features.index).shift(1)).astype(int)
-            features['lower_low'] = (pd.Series(low, index=features.index) < pd.Series(low, index=features.index).shift(1)).astype(int)
-
-            # Trend strength
-            features['uptrend_strength'] = (close_series > close_series.shift(1)).rolling(10).sum() / 10
-            features['downtrend_strength'] = (close_series < close_series.shift(1)).rolling(10).sum() / 10
-
-            # Support/Resistance
-            features['resistance_touch'] = (close_series >= close_series.rolling(20).max() * 0.99).astype(int)
-            features['support_touch'] = (close_series <= close_series.rolling(20).min() * 1.01).astype(int)
-
-            # Market efficiency
-            features['efficiency_ratio'] = (np.abs(close_series - close_series.shift(10)) /
-                                          (np.abs(close_series.diff()).rolling(10).sum())).fillna(0)
-
-            # Fractal dimension (simplificado)
-            features['fractal_dimension'] = 0.5  # Valor constante por ahora
-
-            # === MOMENTUM DERIVATIVES (5 features) ===
-            features['rsi_momentum'] = features['rsi_14'].diff().fillna(0)
-            features['macd_momentum'] = pd.Series(macd_hist, index=features.index).diff().fillna(0)
-            features['ad_momentum'] = features['ad'].diff().fillna(0)
-            features['volume_momentum'] = pd.Series(volume, index=features.index).pct_change().fillna(0)
-            features['price_acceleration'] = features['price_change_1'].diff().fillna(0)
-
-            # Limpiar datos
-            features = features.fillna(method='ffill').fillna(0)
-            features = features.replace([np.inf, -np.inf], 0)
-
-            # Clip valores extremos
-            for col in features.columns:
-                if features[col].dtype in ['float64', 'int64']:
-                    q99 = features[col].quantile(0.99)
-                    q01 = features[col].quantile(0.01)
-                    features[col] = features[col].clip(q01, q99)
-
-            # Verificar que tenemos exactamente 66 features
-            if len(features.columns) != 66:
-                print(f"⚠️ Features creados: {len(features.columns)}, esperados: 66")
-                # Ajustar si es necesario
-                while len(features.columns) < 66:
-                    features[f'padding_{len(features.columns)}'] = 0
-                features = features.iloc[:, :66]  # Tomar solo las primeras 66
-
-            print(f"✅ {len(features.columns)} features técnicos creados")
+            # ✅ USAR MOTOR CENTRALIZADO EN LUGAR DE CÁLCULO INTERNO
+            features = self.features_engine.calculate_features(df, feature_set='tcn_definitivo')
+            
+            if features is None or features.empty:
+                print("❌ Error: No se pudieron calcular features con el motor centralizado")
+                return pd.DataFrame()
+            
+            print(f"✅ {len(features.columns)} features calculadas con motor centralizado")
             return features
 
         except Exception as e:
-            print(f"❌ Error creando features: {e}")
+            print(f"❌ Error usando motor centralizado: {e}")
             return pd.DataFrame()
-
-    def _calculate_fractal_dimension(self, series: pd.Series, window: int = 20) -> pd.Series:
-        """Calcular dimensión fractal para medir complejidad del precio"""
-        def hurst_exponent(ts):
-            try:
-                ts = np.array(ts)
-                if len(ts) < 4:
-                    return 0.5
-                lags = range(2, min(len(ts)//2, 10))
-                if len(lags) < 2:
-                    return 0.5
-                tau = []
-                for lag in lags:
-                    if lag < len(ts):
-                        diff = ts[lag:] - ts[:-lag]
-                        tau.append(np.sqrt(np.std(diff)))
-                if len(tau) < 2:
-                    return 0.5
-                tau = np.array(tau)
-                tau = tau[tau > 0]  # Evitar log(0)
-                if len(tau) < 2:
-                    return 0.5
-                poly = np.polyfit(np.log(list(lags)[:len(tau)]), np.log(tau), 1)
-                return max(0.1, min(0.9, poly[0] * 2.0))
-            except:
-                return 0.5
-
-        return series.rolling(window).apply(hurst_exponent, raw=True).fillna(0.5)
 
     def create_balanced_labels(self, df: pd.DataFrame, features: pd.DataFrame, symbol: str) -> pd.DataFrame:
         """🎯 Crear etiquetas BALANCEADAS DINÁMICAS usando percentiles (corrige distribución desbalanceada)"""
@@ -400,29 +273,62 @@ class DefinitiveTCNTrainer:
 
                 # Filtros de confirmación técnica
                 if candidate_label == 0:  # SELL candidato
-                    # Confirmar con indicadores bajistas
-                    if current_rsi > 65 or current_macd > 0:
+                    # Confirmar con indicadores bajistas (RSI < 45 o MACD negativo)
+                    if current_rsi < 45 or current_macd < 0:
                         label = 0  # SELL confirmado
                     else:
-                        label = 1  # HOLD (falta confirmación)
+                        label = 1  # HOLD (falta confirmación bajista)
                 elif candidate_label == 2:  # BUY candidato
-                    # Confirmar con indicadores alcistas
-                    if current_rsi < 35 or current_macd < 0:
+                    # Confirmar con indicadores alcistas (RSI > 55 o MACD positivo)
+                    if current_rsi > 55 or current_macd > 0:
                         label = 2  # BUY confirmado
                     else:
-                        label = 1  # HOLD (falta confirmación)
+                        label = 1  # HOLD (falta confirmación alcista)
                 else:
-                    # HOLD con posible escalado por momentum
-                    if i >= 5:
-                        momentum = (close_prices[i] - close_prices[i-5]) / close_prices[i-5]
-                        if momentum > 0.008 and current_rsi < 50:
-                            label = 2  # HOLD -> BUY por momentum
-                        elif momentum < -0.008 and current_rsi > 50:
-                            label = 0  # HOLD -> SELL por momentum
+                                            # ✅ MEJORADO: HOLD con escalado dinámico basado en volatilidad
+                        if i >= 5:
+                            # ✅ CORREGIDO: Usar momentum del motor centralizado
+                            if i < len(features):
+                                # Usar momentum calculado por el motor centralizado
+                                current_momentum = features['price_momentum_5'].iloc[i] if 'price_momentum_5' in features.columns else 0.0
+                                
+                                # ✅ NUEVO: Usar momentum normalizado si está disponible
+                                if 'price_momentum_normalized_5' in features.columns:
+                                    current_momentum_normalized = features['price_momentum_normalized_5'].iloc[i]
+                                else:
+                                    current_momentum_normalized = current_momentum
+                            else:
+                                current_momentum = 0.0
+                                current_momentum_normalized = 0.0
+                            
+                            # ✅ CENTRALIZADO: Usar volatilidad del motor centralizado
+                            # Obtener volatilidad de diferentes períodos para cálculo dinámico
+                            volatility_5 = features['volatility_5'].iloc[i] if 'volatility_5' in features.columns and i < len(features) else 0.01
+                            volatility_20 = features['volatility_20'].iloc[i] if 'volatility_20' in features.columns and i < len(features) else 0.01
+                            
+                            # Usar volatilidad normalizada si está disponible
+                            if 'volatility_normalized_20' in features.columns and i < len(features):
+                                volatility_normalized = features['volatility_normalized_20'].iloc[i]
+                            else:
+                                volatility_normalized = 1.0  # Valor neutral
+                            
+                            # ✅ CALCULO DINÁMICO CENTRALIZADO
+                            # Umbral base ajustado por volatilidad normalizada
+                            base_threshold = 0.008
+                            volatility_multiplier = min(2.0, max(0.5, volatility_normalized * 1.5))
+                            dynamic_threshold = base_threshold * volatility_multiplier
+                            
+                            # ✅ LÓGICA DE ESCALADO MEJORADA
+                            # BUY: Momentum positivo + RSI no sobrecomprado
+                            if current_momentum > dynamic_threshold and current_rsi < 70:
+                                label = 2  # HOLD -> BUY por momentum alcista
+                            # SELL: Momentum negativo + RSI no sobrevendido  
+                            elif current_momentum < -dynamic_threshold and current_rsi > 30:
+                                label = 0  # HOLD -> SELL por momentum bajista
+                            else:
+                                label = 1  # HOLD mantenido (momentum insuficiente o RSI extremo)
                         else:
-                            label = 1  # HOLD mantenido
-                    else:
-                        label = 1  # HOLD
+                            label = 1  # HOLD (insuficientes datos para momentum)
 
             except:
                 # En caso de error, usar clasificación base
@@ -544,8 +450,29 @@ class DefinitiveTCNTrainer:
 
         print("🔧 Preparando datos para entrenamiento...")
 
-        # Alinear features con labels
+        # ✅ CORREGIDO: Alineación segura de features con labels
+        # Verificar que features y df tienen la misma longitud
+        if len(features) != len(df):
+            print(f"⚠️ ADVERTENCIA: Inconsistencia en dimensiones - features: {len(features)}, df: {len(df)}")
+            # Usar la longitud más corta para evitar errores
+            min_length = min(len(features), len(df))
+            features = features.iloc[:min_length]
+            df = df.iloc[:min_length]
+            print(f"✅ Ajustado a longitud común: {min_length}")
+
+        # ✅ CORREGIDO: Alineación segura considerando prediction_horizon
+        # Asegurar que features y df_labeled tengan la misma longitud
+        df_labeled = df.iloc[:-self.prediction_horizon].copy()
         features_aligned = features.iloc[:-self.prediction_horizon]
+
+        # Verificar alineación final
+        if len(features_aligned) != len(df_labeled):
+            print(f"❌ ERROR: Desalineación después de ajuste - features: {len(features_aligned)}, df: {len(df_labeled)}")
+            # Usar la longitud más corta
+            min_length = min(len(features_aligned), len(df_labeled))
+            features_aligned = features_aligned.iloc[:min_length]
+            df_labeled = df_labeled.iloc[:min_length]
+            print(f"✅ Ajustado a longitud común: {min_length}")
 
         # Seleccionar features numéricas
         feature_columns = [col for col in features_aligned.columns if features_aligned[col].dtype in ['float64', 'int64']]
@@ -564,7 +491,7 @@ class DefinitiveTCNTrainer:
             X.append(sequence)
 
             # Label correspondiente
-            y.append(df['label'].iloc[i])
+            y.append(df_labeled['label'].iloc[i])
 
         X = np.array(X)
         y = np.array(y)
@@ -650,8 +577,12 @@ class DefinitiveTCNTrainer:
             # 1. Obtener datos reales (usar configuración)
             df = await self.get_real_market_data(symbol)
 
-            # 2. Crear 66 features
-            features = self.create_66_features(df)
+            # 2. ✅ USAR MOTOR CENTRALIZADO PARA FEATURES
+            features = self.create_features_using_centralized_engine(df)
+
+            if features.empty:
+                print("❌ Error: No se pudieron calcular features")
+                return False
 
             # 3. Crear etiquetas balanceadas
             print("🎯 Creando etiquetas balanceadas...")
@@ -757,6 +688,23 @@ class DefinitiveTCNTrainer:
             with open(features_path, 'wb') as f:
                 pickle.dump(feature_columns, f)
             print(f"💾 Feature columns guardados: {features_path}")
+
+            # ✅ NUEVO: Guardar configuración del modelo
+            config = {
+                'symbol': symbol,
+                'timeframe': self.timeframe,
+                'lookback_window': self.lookback_window,
+                'prediction_horizon': self.prediction_horizon,
+                'days': self.days,
+                'limit': self.limit,
+                'feature_set': 'tcn_definitivo',
+                'model_type': 'tcn_definitivo'
+            }
+            
+            config_path = f'models/definitivo_{self.timeframe}_{symbol.lower()}/config.pkl'
+            with open(config_path, 'wb') as f:
+                pickle.dump(config, f)
+            print(f"💾 Configuración guardada: {config_path}")
 
             # 11. Verificar distribución de predicciones
             y_pred = model.predict(X_test)
@@ -1072,19 +1020,46 @@ def get_user_configuration():
 
         days = None
 
-    # 6. Calcular limit ajustado según timeframe
-    base_limit_1m = 50000  # Limit base para 1m
+    # 6. ✅ CORREGIDO: Calcular limit ajustado según timeframe para crypto trading
+    # Valores optimizados para crypto trading (más datos que forex tradicional)
+    base_limit_1m = 100000  # ✅ AUMENTADO: Más datos para crypto
     timeframe_multipliers = {
-        "1m": 1,
-        "5m": 0.2,    # 5x menos datos (1440/288 velas por día)
-        "15m": 0.067, # 15x menos datos
-        "1h": 0.017,  # 60x menos datos
-        "4h": 0.004   # 240x menos datos
+        "1m": 1,           # 1440 velas por día
+        "3m": 0.333,       # 480 velas por día (1440/3)
+        "5m": 0.2,         # 288 velas por día (1440/5)
+        "15m": 0.067,      # 96 velas por día (1440/15)
+        "1h": 0.017,       # 24 velas por día (1440/60)
+        "4h": 0.004        # 6 velas por día (1440/240)
     }
 
+    # ✅ NUEVO: Ajustes específicos por símbolo para crypto
+    symbol_adjustments = {
+        'BTCUSDT': 1.5,    # Bitcoin: más datos por alta liquidez
+        'ETHUSDT': 1.3,    # Ethereum: alta liquidez
+        'BNBUSDT': 1.2,    # BNB: buena liquidez
+        'XRPUSDT': 1.0,    # XRP: liquidez estándar
+        'ADAUSDT': 0.8,    # ADA: menor liquidez
+        'DOTUSDT': 0.8,    # DOT: menor liquidez
+        'SOLUSDT': 0.9     # SOL: liquidez media
+    }
+
+    # Calcular limit base
     suggested_limit = int(base_limit_1m * timeframe_multipliers[timeframe])
-    print(f"\n📊 LIMIT SUGERIDO para {timeframe}: {suggested_limit}")
-    print(f"   (Basado en equivalencia de datos vs 1m)")
+    
+    # Aplicar ajuste por símbolo
+    symbol_multiplier = symbol_adjustments.get(symbol, 1.0)
+    suggested_limit = int(suggested_limit * symbol_multiplier)
+    
+    # ✅ NUEVO: Límites mínimos y máximos para crypto
+    min_limit = 1000   # Mínimo para cualquier timeframe
+    max_limit = 50000  # Máximo para evitar sobrecarga
+    
+    suggested_limit = max(min_limit, min(suggested_limit, max_limit))
+    
+    print(f"\n📊 LIMIT SUGERIDO para {symbol} en {timeframe}: {suggested_limit:,}")
+    print(f"   💡 Ajustado por liquidez del par y timeframe")
+    print(f"   📈 Base: {int(base_limit_1m * timeframe_multipliers[timeframe]):,}")
+    print(f"   🎯 Multiplicador {symbol}: {symbol_multiplier:.1f}x")
 
     while True:
         try:

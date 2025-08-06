@@ -47,8 +47,8 @@ from professional_portfolio_manager import ProfessionalPortfolioManager, Positio
 # ✅ NUEVO: Importar Portfolio Diversification Manager
 from portfolio_diversification_manager import PortfolioDiversificationManager, PortfolioPosition
 
-# ✅ NUEVO: Importar Real Market Data Provider
-from real_market_data_provider import RealMarketDataProvider
+# ✅ ELIMINADO: Real Market Data Provider no se usa - el TCN Ensemble Predictor ya usa el motor centralizado
+# from real_market_data_provider import RealMarketDataProvider
 
 # ✅ NUEVO: Importar Loss Protection Manager
 from loss_protection import LossProtectionManager
@@ -132,8 +132,8 @@ class SimpleProfessionalTradingManager:
         self.signal_history = {}  # Historial de señales por símbolo
         self.last_position_action = {}  # Última acción de posición por símbolo
         self.signal_cooldown = {  # Tiempos de enfriamiento por símbolo (en minutos) - RELAJADOS
-            'ETHUSDT': 2,  # ETH: Sin cooldown (era 15 minutos)
-            'BTCUSDT': 2,  # BTC: Sin cooldown (era 10 minutos)
+            'ETHUSDT': 3,  # ETH: Sin cooldown (era 15 minutos)
+            'BTCUSDT': 3,  # BTC: Sin cooldown (era 10 minutos)
             'BNBUSDT': 2,  # BNB: Sin cooldown (era 12 minutos)
             'XRPUSDT': 0,  # XRP: Sin cooldown (era 12 minutos)
             'DOTUSDT': 0,  # DOT: Sin cooldown (era 12 minutos)
@@ -678,7 +678,7 @@ class SimpleProfessionalTradingManager:
         ✅ ALTA FRECUENCIA TCN: Actualizaciones frecuentes para trading en tiempo real
         - Bucle principal: cada 60 segundos (genera señales TCN, updates balance)
         - Monitor de posiciones: cada 30 segundos (máxima frecuencia TCN)
-        - Reporte TCN: cada 3 minutos (completo)
+        - Reporte TCN: cada 1 minuto y 30 segundos (completo)
         - PRIORIDAD: Datos frescos > logs limpios
         """
         print("🎯 Iniciando loop principal de trading...")
@@ -706,7 +706,7 @@ class SimpleProfessionalTradingManager:
                         consecutive_errors = 0
                         print(f"🔄 Reset automático de errores después de {error_reset_time/60:.1f} minutos")
 
-                # ✅ NUEVO: Generar reporte TCN cada 3 minutos
+                # ✅ NUEVO: Generar reporte TCN cada 1 minuto y 30 segundos
                 await self._generate_tcn_report_if_needed()
 
                 # ✅ NUEVO: Limpiar tracking de reversión colgado (cada 5 minutos)
@@ -808,22 +808,22 @@ class SimpleProfessionalTradingManager:
         }
 
     async def _generate_tcn_report_if_needed(self):
-        """📊 Generar reporte TCN cada 3 minutos"""
+        """📊 Generar reporte TCN cada 1 minuto y 30 segundos"""
         try:
             now = datetime.now()
 
-            # Verificar si es hora de generar reporte (cada 3 minutos)
+            # Verificar si es hora de generar reporte (cada 1 minuto y 30 segundos)
             should_generate = False
 
             if self.last_tcn_report_time is None:
                 should_generate = True
             else:
                 time_since_last = (now - self.last_tcn_report_time).total_seconds()
-                if time_since_last >= 180:  # 3 minutos
+                if time_since_last >= 90:  # 1 minuto y 30 segundos
                     should_generate = True
 
             if should_generate:
-                print("📊 Generando reporte TCN profesional...")
+                print("📊 Generando reporte TCN profesional (cada 1m 30s)...")
 
                 # Verificar que portfolio_manager esté inicializado
                 if not self.portfolio_manager:
@@ -1265,15 +1265,18 @@ class SimpleProfessionalTradingManager:
                 'volatility_level': 'MEDIUM'
             }
 
-        # ✅ ADAPTATIVO: Umbral de confianza inteligente según contexto de mercado
-        base_threshold = float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.70')) * 100  # Convertir a porcentaje
+        # ✅ CENTRALIZADO: Umbral de confianza desde .env con ajustes por régimen
+        base_threshold = float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.65')) * 100  # Convertir a porcentaje
 
-        # Relajar umbral general en mercados BULLISH claros
-        if market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.9:
-            threshold = base_threshold * 0.8  # 70% * 0.8 = 56% para mercado muy bullish
+        # Ajustar umbral según régimen de mercado
+        if market_context['regime'] == 'BEARISH':
+            threshold = base_threshold * 1.1  # ✅ BEARISH: +10% sobre base
+            print(f"🎯 UMBRAL BEARISH: {threshold:.1f}% (base: {base_threshold:.1f}%) - Mercado BEARISH {market_context['confidence']:.1%}")
+        elif market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.9:
+            threshold = base_threshold * 0.9  # 90% del umbral base para mercado muy bullish
             print(f"🎯 UMBRAL ADAPTATIVO: {threshold:.1f}% (base: {base_threshold:.1f}%) - Mercado BULLISH {market_context['confidence']:.1%}")
         elif market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.7:
-            threshold = base_threshold * 0.85  # 70% * 0.85 = 59.5% para mercado bullish
+            threshold = base_threshold * 0.95  # 95% del umbral base para mercado bullish
             print(f"🎯 UMBRAL ADAPTATIVO: {threshold:.1f}% (base: {base_threshold:.1f}%) - Mercado BULLISH {market_context['confidence']:.1%}")
         else:
             threshold = base_threshold
@@ -1325,32 +1328,35 @@ class SimpleProfessionalTradingManager:
                         confidence_level = min(confidence_level, 65.0)
 
                 # ✅ NUEVO: Aplicar filtro de contexto de mercado
-                filtered_signal, context_reason = self._apply_market_context_filter(
-                    signal, confidence_level, market_context, symbol
-                )
+                try:
+                    filtered_signal, context_reason = self._apply_market_context_filter(
+                        signal, confidence_level, market_context, symbol
+                    )
 
-                if filtered_signal != signal:
-                    print(f"🛡️ FILTRO DE CONTEXTO aplicado en {symbol}: {signal} → {filtered_signal} ({context_reason})")
-                    signal = filtered_signal
+                    if filtered_signal != signal:
+                        print(f"🛡️ FILTRO DE CONTEXTO aplicado en {symbol}: {signal} → {filtered_signal} ({context_reason})")
+                        signal = filtered_signal
+                except Exception as e:
+                    print(f"⚠️ Error en filtro de contexto para {symbol}: {e}")
+                    # Continuar con la señal original si hay error
 
                 # ✅ CORREGIDO: Procesar señales válidas independientemente de si han cambiado
                 # Actualizar registro de última señal
                 self.last_signals[symbol] = signal
                 print(f"💡 Señal TCN para {symbol}: {signal} (Confianza: {confidence_level:.2f}%) (Umbral: {threshold:.1f}%)")
 
-                # 🔧 **CORRECCIÓN CRÍTICA** - SELL también requiere confianza mínima (ADAPTATIVO)
+                # ✅ CENTRALIZADO: SELL también requiere confianza mínima desde .env
                 # Aplicar umbral de confianza tanto para BUY como para SELL
-                base_sell_confidence = float(os.getenv('MIN_SELL_CONFIDENCE_THRESHOLD', '0.75')) * 100
-
-                # ✅ ADAPTATIVO: Relajar umbral SELL en mercados BULLISH para tomar ganancias
-                if market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.9:
-                    sell_threshold = base_sell_confidence * 0.8  # 75% * 0.8 = 60% para mercado muy bullish
-                    print(f"🎯 UMBRAL SELL ADAPTATIVO: {sell_threshold:.1f}% (base: {base_sell_confidence:.1f}%) - Mercado BULLISH {market_context['confidence']:.1%}")
+                if market_context['regime'] == 'BEARISH':
+                    sell_threshold = base_threshold * 1.1 + 5  # ✅ BEARISH: +10% base + 5% extra
+                elif market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.9:
+                    sell_threshold = base_threshold * 0.95  # 95% del umbral base para mercado muy bullish
+                    print(f"🎯 UMBRAL SELL ADAPTATIVO: {sell_threshold:.1f}% (base: {base_threshold:.1f}%) - Mercado BULLISH {market_context['confidence']:.1%}")
                 elif market_context['regime'] == 'BULLISH' and market_context['confidence'] > 0.7:
-                    sell_threshold = base_sell_confidence * 0.85  # 75% * 0.85 = 63.75% para mercado bullish
-                    print(f"🎯 UMBRAL SELL ADAPTATIVO: {sell_threshold:.1f}% (base: {base_sell_confidence:.1f}%) - Mercado BULLISH {market_context['confidence']:.1%}")
+                    sell_threshold = base_threshold  # Umbral base para mercado bullish
+                    print(f"🎯 UMBRAL SELL ADAPTATIVO: {sell_threshold:.1f}% (base: {base_threshold:.1f}%) - Mercado BULLISH {market_context['confidence']:.1%}")
                 else:
-                    sell_threshold = max(base_sell_confidence, threshold * 0.85)  # SELL requiere al menos config% o 85% del umbral BUY
+                    sell_threshold = base_threshold + 5  # +5% sobre base para SELL
 
                 if (signal == 'BUY' and confidence_level >= threshold) or (signal == 'SELL' and confidence_level >= sell_threshold):
                     log_emoji = "📈" if signal == "BUY" else "📉"
@@ -1443,7 +1449,7 @@ class SimpleProfessionalTradingManager:
             print(f"🏆 Aplicando priorización de señales...")
 
             # Orden de prioridad definido
-            PRIORITY_ORDER = ['XRPUSDT', 'BTCUSDT', 'ETHUSDT', 'BNBUSDT']
+            PRIORITY_ORDER = ['XRPUSDT', 'BTCUSDT', 'DOTUSDT', 'ETHUSDT', 'BNBUSDT']
 
             # Separar señales BUY y SELL
             buy_signals = {symbol: data for symbol, data in signals.items() if data['signal'] == 'BUY'}
@@ -1471,24 +1477,24 @@ class SimpleProfessionalTradingManager:
                 print(f"   🏆 Orden de prioridad BUY: {sorted_buy_symbols}")
 
                 # ✅ PRIVILEGIO ABSOLUTO PARA BTC
-                if 'BTCUSDT' in buy_signals:
-                    btc_signal = buy_signals['BTCUSDT']
-                    prioritized_signals['BTCUSDT'] = btc_signal
-                    print(f"   👑 BTC PRIVILEGIADO: Señal BUY de BTCUSDT tiene prioridad absoluta")
+                if 'XRPUSDT' in buy_signals:
+                    btc_signal = buy_signals['XRPUSDT']
+                    prioritized_signals['XRPUSDT'] = btc_signal
+                    print(f"   👑 XRPUSDT PRIVILEGIADO: Señal BUY de XRPUSDT tiene prioridad absoluta")
 
                     # Verificar si hay balance suficiente para otros después de BTC
-                    btc_confidence = btc_signal['confidence']
-                    estimated_btc_size = min(18.0, max(10.0, (btc_confidence/100) * 20.0))
-                    estimated_btc_value = (self.current_balance * estimated_btc_size / 100)
-                    remaining_balance = self.current_balance - estimated_btc_value
+                    xrp_confidence = btc_signal['confidence']
+                    estimated_xrp_size = min(18.0, max(10.0, (xrp_confidence/100) * 20.0))
+                    estimated_xrp_value = (self.current_balance * estimated_xrp_size / 100)
+                    remaining_balance = self.current_balance - estimated_xrp_value
 
-                    print(f"   💰 Balance estimado después de BTC: ${remaining_balance:.2f}")
+                    print(f"   💰 Balance estimado después de XRPUSDT: ${remaining_balance:.2f}")
 
                     # Solo agregar otras señales BUY si queda balance significativo
                     min_position_value = 11.0
                     if remaining_balance >= min_position_value * 1.5:  # Buffer del 50%
                         # Agregar siguientes en orden de prioridad
-                        for symbol in sorted_buy_symbols[1:]:  # Saltar BTC ya agregado
+                        for symbol in sorted_buy_symbols[1:]:  # Saltar XRPUSDT ya agregado
                             if symbol in buy_signals:
                                 prioritized_signals[symbol] = buy_signals[symbol]
                                 print(f"   ✅ Agregado {symbol} (prioridad {PRIORITY_ORDER.index(symbol) + 1})")
@@ -1496,7 +1502,7 @@ class SimpleProfessionalTradingManager:
                         print(f"   ⏸️ Otras señales BUY pausadas - Balance insuficiente después de BTC")
 
                 else:
-                    # No hay BTC, procesar en orden de prioridad normal
+                    # No hay XRPUSDT, procesar en orden de prioridad normal
                     for symbol in sorted_buy_symbols:
                         prioritized_signals[symbol] = buy_signals[symbol]
                         print(f"   ✅ Agregado {symbol} (prioridad {PRIORITY_ORDER.index(symbol) + 1 if symbol in PRIORITY_ORDER else 'N/A'})")
@@ -1685,6 +1691,9 @@ class SimpleProfessionalTradingManager:
         """
 
         try:
+            # ✅ CENTRALIZADO: Definir base_threshold al inicio para uso global
+            base_threshold = float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.65')) * 100
+            
             # Extraer información del contexto
             regime = market_context.get('regime', 'NEUTRAL')
             market_confidence = market_context.get('confidence', 0.0)
@@ -1702,35 +1711,40 @@ class SimpleProfessionalTradingManager:
             # 🔴 FILTROS BEARISH RELAJADOS - Sistema gradual por intensidad (MUCHO MÁS PERMISIVO)
             if regime == 'BEARISH' and market_confidence > 0.8:  # Solo aplicar si confianza muy alta
 
-                # ✅ RELAJADO SIGNIFICATIVAMENTE: Umbrales graduales por intensidad del mercado bearish
+                # ✅ CENTRALIZADO: AJUSTE BEARISH
+                bearish_threshold = base_threshold * 1.1  # ✅ BEARISH: +10% sobre base
+                
                 if market_confidence > 0.9:  # BEARISH MUY FUERTE
                     buy_thresholds = {
-                        'BTCUSDT': 65,   # ✅ RELAJADO: De 75% a 65% para BTC
-                        'ETHUSDT': 65,   # ✅ RELAJADO: De 78% a 65% para ETH
-                        'BNBUSDT': 65,   # ✅ RELAJADO: De 78% a 65% para BNB
-                        'XRPUSDT': 65    # ✅ RELAJADO: De 78% a 65% para XRP
+                        'BTCUSDT': bearish_threshold,   # ✅ BEARISH: +10% sobre base
+                        'ETHUSDT': bearish_threshold,   # ✅ BEARISH: +10% sobre base
+                        'BNBUSDT': bearish_threshold,   # ✅ BEARISH: +10% sobre base
+                        'XRPUSDT': bearish_threshold,   # ✅ BEARISH: +10% sobre base
+                        'DOTUSDT': bearish_threshold    # ✅ BEARISH: +10% sobre base
                     }
-                    sell_threshold = 70   # ✅ RELAJADO: De 75% a 70%
+                    sell_threshold = bearish_threshold + 5   # ✅ BEARISH: +10% base + 5%
                     intensity_level = "MUY_FUERTE"
 
                 elif market_confidence > 0.85:  # BEARISH FUERTE
                     buy_thresholds = {
-                        'BTCUSDT': 60,   # ✅ RELAJADO: De 72% a 60% para BTC
-                        'ETHUSDT': 60,   # ✅ RELAJADO: De 75% a 60% para ETH
-                        'BNBUSDT': 60,   # ✅ RELAJADO: De 75% a 60% para BNB
-                        'XRPUSDT': 60    # ✅ RELAJADO: De 75% a 60% para XRP
+                        'BTCUSDT': bearish_threshold,   # ✅ BEARISH: +10% sobre base
+                        'ETHUSDT': bearish_threshold,   # ✅ BEARISH: +10% sobre base
+                        'BNBUSDT': bearish_threshold,   # ✅ BEARISH: +10% sobre base
+                        'XRPUSDT': bearish_threshold,   # ✅ BEARISH: +10% sobre base
+                        'DOTUSDT': bearish_threshold    # ✅ BEARISH: +10% sobre base
                     }
-                    sell_threshold = 65   # ✅ RELAJADO: De 75% a 65%
+                    sell_threshold = bearish_threshold + 5   # ✅ BEARISH: +10% base + 5%
                     intensity_level = "FUERTE"
 
                 else:  # BEARISH MODERADO
                     buy_thresholds = {
-                        'BTCUSDT': 55,   # ✅ RELAJADO: De 70% a 55% para BTC
-                        'ETHUSDT': 55,   # ✅ RELAJADO: De 72% a 55% para ETH
-                        'BNBUSDT': 55,   # ✅ RELAJADO: De 72% a 55% para BNB
-                        'XRPUSDT': 55    # ✅ RELAJADO: De 72% a 55% para XRP
+                        'BTCUSDT': bearish_threshold,   # ✅ BEARISH: +10% sobre base
+                        'ETHUSDT': bearish_threshold,   # ✅ BEARISH: +10% sobre base
+                        'BNBUSDT': bearish_threshold,   # ✅ BEARISH: +10% sobre base
+                        'XRPUSDT': bearish_threshold,   # ✅ BEARISH: +10% sobre base
+                        'DOTUSDT': bearish_threshold    # ✅ BEARISH: +10% sobre base
                     }
-                    sell_threshold = 60   # ✅ RELAJADO: De 75% a 60%
+                    sell_threshold = bearish_threshold + 5   # ✅ BEARISH: +10% base + 5%
                     intensity_level = "MODERADO"
 
                 # ✅ NUEVO: Factor de correlación con BTC (RELAJADO)
@@ -1750,111 +1764,105 @@ class SimpleProfessionalTradingManager:
                     filter_reason += f" + Relax temporal automático ({time_relaxation_factor:.1f}x)"
 
                 if signal == 'BUY':
-                    required_confidence = buy_thresholds.get(symbol, 70)  # ✅ RELAJADO: De 85% a 70%
+                    required_confidence = buy_thresholds.get(symbol, base_threshold)  # ✅ CENTRALIZADO: Usar .env
 
                     if confidence >= required_confidence:
-                        filter_reason = f"{symbol.replace('USDT', '')} permitido en BEARISH {intensity_level} por alta confianza ({confidence:.1f}% > {required_confidence}%)"
+                        filter_reason = f"{symbol.replace('USDT', '')} permitido en BEARISH {intensity_level} por alta confianza ({confidence:.1f}% > {required_confidence:.1f}%)"
                     else:
                         signal = 'HOLD'
-                        filter_reason = f"Mercado BEARISH {intensity_level} (score: {market_score:.2f}) - {symbol} BUY requiere >{required_confidence}% confianza (actual: {confidence:.1f}%)"
+                        filter_reason = f"Mercado BEARISH {intensity_level} (score: {market_score:.2f}) - {symbol} BUY requiere >{required_confidence:.1f}% confianza (actual: {confidence:.1f}%)"
 
                 elif signal == 'SELL':
-                    # ✅ RELAJADO: SELL en bearish requiere confianza razonable
+                    # ✅ CENTRALIZADO: SELL en bearish requiere confianza razonable
                     if confidence < sell_threshold:
                         signal = 'HOLD'
-                        filter_reason = f"SELL en BEARISH {intensity_level} requiere >{sell_threshold:.0f}% confianza (actual: {confidence:.1f}%)"
+                        filter_reason = f"SELL en BEARISH {intensity_level} requiere >{sell_threshold:.1f}% confianza (actual: {confidence:.1f}%)"
                     else:
                         filter_reason = f"SELL favorecido en mercado BEARISH {intensity_level} con confianza {confidence:.1f}%"
 
-            # 🟢 FILTROS BULLISH - Aprovechar momentum alcista (RELAJADOS)
+            # 🟢 FILTROS BULLISH - Aprovechar momentum alcista (CENTRALIZADOS)
             elif regime == 'BULLISH' and market_confidence > 0.7:
                 if signal == 'BUY':
-                    # ✅ RELAJADO: En bullish, ser más agresivo con BUY
-                    if market_confidence > 0.9:  # Mercado BULLISH muy confiable
-                        min_buy_confidence = 60  # ✅ RELAJADO: De 75% a 60%
-                    else:
-                        min_buy_confidence = 65  # ✅ RELAJADO: De 80% a 65%
-
+                    # ✅ CENTRALIZADO: En bullish, usar umbral base del .env
+                    min_buy_confidence = base_threshold * 0.9  # 90% del umbral base para bullish
+                    
                     if confidence < min_buy_confidence:
                         signal = 'HOLD'
-                        filter_reason = f"BUY en BULLISH requiere >{min_buy_confidence}% confianza"
+                        filter_reason = f"BUY en BULLISH requiere >{min_buy_confidence:.1f}% confianza"
                     else:
                         filter_reason = f"BUY favorecido en mercado BULLISH (conf: {market_confidence:.1%})"
 
                 elif signal == 'SELL':
-                    # ✅ RELAJADO: En bullish, relajar SELL para tomar ganancias
-                    if market_confidence > 0.7:  # Mercado BULLISH muy confiable
-                        min_sell_confidence = 65  # ✅ RELAJADO: De 75% a 65%
-                    else:
-                        min_sell_confidence = 70  # ✅ RELAJADO: De 80% a 70%
-
+                    # ✅ CENTRALIZADO: En bullish, usar umbral base del .env
+                    min_sell_confidence = base_threshold + 5  # +5% sobre base para SELL
+                    
                     if confidence < min_sell_confidence:
                         signal = 'HOLD'
-                        filter_reason = f"Mercado BULLISH (score: {market_score:.2f}) - SELL requiere >{min_sell_confidence}% confianza (actual: {confidence:.1f}%)"
+                        filter_reason = f"Mercado BULLISH (score: {market_score:.2f}) - SELL requiere >{min_sell_confidence:.1f}% confianza (actual: {confidence:.1f}%)"
                     else:
                         filter_reason = f"SELL permitido en BULLISH para tomar ganancias ({confidence:.1f}%)"
 
-            # 🟡 FILTROS DE VOLATILIDAD - Ajustar según volatilidad del mercado (RELAJADOS)
+            # 🟡 FILTROS DE VOLATILIDAD - Ajustar según volatilidad del mercado (CENTRALIZADOS)
             if volatility == 'HIGH' and fear_factor > 0.8:
-                # ✅ RELAJADO: En mercado BULLISH, la volatilidad puede ser oportunidad
+                # ✅ CENTRALIZADO: En mercado BULLISH, la volatilidad puede ser oportunidad
                 if regime == 'BULLISH' and market_confidence > 0.9:
                     # En mercado muy bullish, relajar filtros de volatilidad
                     volatility_thresholds = {
-                        'BTCUSDT': 60,   # ✅ RELAJADO: De 70% a 60% para BTC
-                        'ETHUSDT': 60,   # ✅ RELAJADO: De 70% a 60% para ETH
-                        'BNBUSDT': 60,   # ✅ RELAJADO: De 70% a 60% para BNB
-                        'XRPUSDT': 60    # ✅ RELAJADO: De 70% a 60% para XRP
+                        'BTCUSDT': base_threshold * 0.9,   # ✅ CENTRALIZADO: 90% del umbral base
+                        'ETHUSDT': base_threshold * 0.9,   # ✅ CENTRALIZADO: 90% del umbral base
+                        'BNBUSDT': base_threshold * 0.9,   # ✅ CENTRALIZADO: 90% del umbral base
+                        'XRPUSDT': base_threshold * 0.9    # ✅ CENTRALIZADO: 90% del umbral base
                     }
                     vol_adjustment = "RELAJADO_BULLISH"
                 else:
-                    # ✅ RELAJADO: Umbrales normales para otros contextos
+                    # ✅ CENTRALIZADO: Umbrales con +5% para alta volatilidad
                     volatility_thresholds = {
-                        'BTCUSDT': 55,   # ✅ RELAJADO: De 68% a 55% para BTC
-                        'ETHUSDT': 55,   # ✅ RELAJADO: De 68% a 55% para ETH
-                        'BNBUSDT': 55,   # ✅ RELAJADO: De 68% a 55% para BNB
-                        'XRPUSDT': 55    # ✅ RELAJADO: De 68% a 55% para XRP
+                        'BTCUSDT': base_threshold * 1.05,   # ✅ VOLATILIDAD: +5% sobre base
+                        'ETHUSDT': base_threshold * 1.05,   # ✅ VOLATILIDAD: +5% sobre base
+                        'BNBUSDT': base_threshold * 1.05,   # ✅ VOLATILIDAD: +5% sobre base
+                        'XRPUSDT': base_threshold * 1.05    # ✅ VOLATILIDAD: +5% sobre base
                     }
-                    vol_adjustment = "NORMAL"
+                    vol_adjustment = "ALTA_VOLATILIDAD"
 
                 if signal == 'BUY':
-                    required_vol_confidence = volatility_thresholds.get(symbol, 70)  # ✅ RELAJADO: De 80% a 70%
+                    required_vol_confidence = volatility_thresholds.get(symbol, base_threshold)  # ✅ CENTRALIZADO: Usar .env
                     if confidence < required_vol_confidence:
                         signal = 'HOLD'
-                        filter_reason = f"Alta volatilidad ({vol_adjustment}) - {symbol} BUY requiere >{required_vol_confidence}% confianza"
+                        filter_reason = f"Alta volatilidad ({vol_adjustment}) - {symbol} BUY requiere >{required_vol_confidence:.1f}% confianza"
                 elif signal == 'SELL':
-                    # ✅ RELAJADO: En bullish extremo, relajar SELL en volatilidad
+                    # ✅ CENTRALIZADO: En bullish extremo, relajar SELL en volatilidad
                     if regime == 'BULLISH' and market_confidence > 0.9:
-                        min_sell_vol_conf = 65  # ✅ RELAJADO: De 80% a 65%
+                        min_sell_vol_conf = base_threshold  # ✅ CENTRALIZADO: Usar umbral base
                     else:
-                        min_sell_vol_conf = 70  # ✅ RELAJADO: De 75% a 70%
+                        min_sell_vol_conf = base_threshold * 1.05 + 5  # ✅ VOLATILIDAD: +5% base + 5% extra
 
                     if confidence < min_sell_vol_conf:
                         signal = 'HOLD'
-                        filter_reason = f"Alta volatilidad ({vol_adjustment}) - SELL requiere >{min_sell_vol_conf:.0f}% confianza (actual: {confidence:.1f}%)"
+                        filter_reason = f"Alta volatilidad ({vol_adjustment}) - SELL requiere >{min_sell_vol_conf:.1f}% confianza (actual: {confidence:.1f}%)"
 
-            # 🔵 FILTROS ESPECÍFICOS POR ACTIVO (RELAJADOS)
+            # 🔵 FILTROS ESPECÍFICOS POR ACTIVO (CENTRALIZADOS)
             if symbol == 'BTCUSDT':
-                # ✅ RELAJADO: BTC como líder - permitir señales más flexibles
+                # ✅ CENTRALIZADO: BTC como líder - permitir señales más flexibles
                 btc_trend = market_context.get('btc_trend_score', 0)
                 if signal == 'BUY' and btc_trend < -0.4:  # Solo en tendencia MUY bajista
-                    if confidence < 60:  # ✅ RELAJADO: De 70% a 60%
+                    if confidence < base_threshold * 0.9:  # ✅ CENTRALIZADO: 90% del umbral base
                         signal = 'HOLD'
-                        filter_reason = f"BTC en tendencia muy bajista fuerte (trend: {btc_trend:.2f}) - BUY requiere >60% confianza"
+                        filter_reason = f"BTC en tendencia muy bajista fuerte (trend: {btc_trend:.2f}) - BUY requiere >{base_threshold * 0.9:.1f}% confianza"
                     else:
                         filter_reason = f"BTC BUY permitido pese a tendencia bajista por alta confianza ({confidence:.1f}%)"
 
             elif symbol in ['ETHUSDT', 'BNBUSDT', 'XRPUSDT']:
-                # ✅ RELAJADO: ALTCOINS - Umbrales menos restrictivos por underperformance
+                # ✅ CENTRALIZADO: ALTCOINS - Umbrales menos restrictivos por underperformance
                 altcoin_strength = market_context.get('altcoin_strength', 0)
                 if signal == 'BUY' and altcoin_strength < -0.2:  # Altcoins underperforming
-                    # ✅ RELAJADO: Umbrales específicos para cada altcoin
+                    # ✅ CENTRALIZADO: Umbrales específicos para cada altcoin
                     altcoin_thresholds = {
-                        'ETHUSDT': 60,   # ✅ RELAJADO: De 70% a 60% para ETH
-                        'BNBUSDT': 60,   # ✅ RELAJADO: De 70% a 60% para BNB
-                        'XRPUSDT': 60    # ✅ RELAJADO: De 70% a 60% para XRP
+                        'ETHUSDT': base_threshold * 0.9,   # ✅ CENTRALIZADO: 90% del umbral base
+                        'BNBUSDT': base_threshold * 0.9,   # ✅ CENTRALIZADO: 90% del umbral base
+                        'XRPUSDT': base_threshold * 0.9    # ✅ CENTRALIZADO: 90% del umbral base
                     }
 
-                    required_alt_confidence = altcoin_thresholds.get(symbol, 60)
+                    required_alt_confidence = altcoin_thresholds.get(symbol, base_threshold * 0.9)
 
                     if confidence >= required_alt_confidence:
                         filter_reason = f"{symbol.replace('USDT', '')} permitido por alta confianza ({confidence:.1f}% > {required_alt_confidence}%) pese a underperformance"
@@ -2511,10 +2519,10 @@ class SimpleProfessionalTradingManager:
             # ✅ CONFIGURACIÓN: Límites específicos por par
             SYMBOL_LIMITS = {
                 'BTCUSDT': 20.0,  # BTC máximo 25% del portafolio
-                'ETHUSDT': 30.0,  # ETH máximo 25% del portafolio
-                'BNBUSDT': 10.0,  # BNB máximo 20% del portafolio
+                'ETHUSDT': 20.0,  # ETH máximo 25% del portafolio
+                'BNBUSDT': 30.0,  # BNB máximo 20% del portafolio
                 'XRPUSDT': 30.0,  # XRP máximo 30% del portafolio
-                'DOTUSDT': 40.0   # DOT máximo 30% del portafolio
+                'DOTUSDT': 30.0   # DOT máximo 30% del portafolio
             }
 
             # ✅ PRIORIZACIÓN: Orden de preferencia para señales simultáneas
