@@ -1,0 +1,50 @@
+{
+  "BTCUSDT_29ord_45804273698": {
+    "symbol": "BTCUSDT",
+    "trailing_stop_active": true,
+    "trailing_stop_price": 113069.95518,
+    "highest_price_since_entry": 113752.47,
+    "lowest_price_since_entry": null,
+    "trailing_movements": 16,
+    "last_trailing_update": "2025-07-10T13:55:02.758632",
+    "entry_price": 111098.77,
+    "updated_at": "2025-07-10T14:48:50.844463",
+    "cache_updated_at": "2025-07-10T14:48:50.844463"
+  },
+  "BTCUSDT_22ord_45953629943": {
+    "symbol": "BTCUSDT",
+    "trailing_stop_active": true,
+    "trailing_stop_price": 119648.61144499999,
+    "highest_price_since_entry": 119904.12,
+    "lowest_price_since_entry": null,
+    "trailing_movements": 1,
+    "last_trailing_update": "2025-07-16T14:45:40.294266",
+    "entry_price": 118640.17,
+    "updated_at": "2025-07-16T15:11:17.213950",
+    "cache_updated_at": "2025-07-16T15:11:17.213950"
+  },
+  "BTCUSDT_26ord_46141581205": {
+    "symbol": "BTCUSDT",
+    "trailing_stop_active": false,
+    "trailing_stop_price": null,
+    "highest_price_since_entry": 119316.72,
+    "lowest_price_since_entry": null,
+    "trailing_movements": 0,
+    "last_trailing_update": "2025-07-17T00:54:21.439265",
+    "entry_price": 118412.45000000003,
+    "updated_at": "2025-07-17T14:04:08.794112",
+    "cache_updated_at": "2025-07-17T14:04:08.794112"
+  },
+  "BNBUSDT_62ord_8415155812": {
+    "symbol": "BNBUSDT",
+    "trailing_stop_active": false,
+    "trailing_stop_price": null,
+    "highest_price_since_entry": 733.97,
+    "lowest_price_since_entry": null,
+    "trailing_movements": 0,
+    "last_trailing_update": "2025-07-18T18:33:34.233003",
+    "entry_price": 733.61,
+    "updated_at": "2025-07-18T20:55:17.244705",
+    "cache_updated_at": "2025-07-18T20:55:17.244705"
+  }
+}

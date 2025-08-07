@@ -1,0 +1,4 @@
+cd desktop   
+cd Binancebot 
+& c:/Users/emman/Desktop/BinanceBot/.venv/Scripts/Activate.ps1 
+python runtradingadaptive.py       
