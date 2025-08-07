@@ -37,6 +37,8 @@ class CentralizedFeaturesEngine:
         self.feature_sets = {
             'tcn_definitivo': self._get_tcn_definitivo_features(),
             'tcn_final': self._get_tcn_final_features(),
+            'optimized_crypto': self._get_optimized_crypto_features(),
+            'ultra_optimized': self._get_ultra_optimized_features(),
             'full_set': self._get_full_features_set()
         }
 
@@ -96,6 +98,91 @@ class CentralizedFeaturesEngine:
             'volatility_5', 'volatility_10', 'volatility_15', 'volatility_20', 'volatility_30',
             'hl_volatility_5', 'hl_volatility_10', 'hl_volatility_15', 'hl_volatility_20', 'hl_volatility_30',
             'volatility_normalized_10', 'volatility_normalized_15', 'volatility_normalized_20', 'volatility_normalized_30'
+        ]
+
+    def _get_optimized_crypto_features(self) -> List[str]:
+        """
+        🎯 FEATURES OPTIMIZADAS PARA CRYPTO TRADING (25 features)
+        
+        Selección basada en:
+        - ✅ Mayor predictibilidad en criptomonedas
+        - ✅ Menor correlación entre features
+        - ✅ Mejor rendimiento en backtesting
+        - ✅ Estabilidad en diferentes market regimes
+        """
+        return [
+            # === MOMENTUM CORE (6 features) ===
+            'rsi_14',           # Momentum principal (sobreventa/sobrecompra)
+            'macd',             # Tendencia y momentum
+            'macd_signal',      # Señal de confirmación
+            'stoch_k',          # Momentum oscilador
+            'roc_10',           # Rate of change (corto plazo)
+            'momentum_10',      # Momentum directo
+            
+            # === TREND CORE (5 features) ===
+            'sma_20',           # Tendencia principal
+            'ema_20',           # Tendencia suavizada
+            'adx_14',           # Fuerza de tendencia
+            'plus_di',          # Dirección positiva
+            'minus_di',         # Dirección negativa
+            
+            # === VOLATILITY CORE (4 features) ===
+            'bb_position',      # Posición en bandas de Bollinger
+            'bb_width',         # Ancho de bandas (volatilidad)
+            'atr_14',           # True range (volatilidad real)
+            'natr_14',          # Normalized ATR
+            
+            # === VOLUME CORE (3 features) ===
+            'obv',              # On Balance Volume
+            'volume_ratio',     # Ratio de volumen
+            'mfi_14',           # Money Flow Index
+            
+            # === PRICE ACTION (4 features) ===
+            'price_change_5',   # Cambio de precio 5 períodos
+            'price_change_10',  # Cambio de precio 10 períodos
+            'hl_ratio',         # Ratio High/Low
+            'price_position',   # Posición relativa del precio
+            
+            # === MARKET STRUCTURE (3 features) ===
+            'higher_high',      # Patrón de máximos crecientes
+            'lower_low',        # Patrón de mínimos decrecientes
+            'efficiency_ratio'  # Eficiencia del movimiento
+        ]
+
+    def _get_ultra_optimized_features(self) -> List[str]:
+        """
+        🚀 FEATURES ULTRA OPTIMIZADAS (15 features)
+        
+        Las mejores de las mejores:
+        - ✅ Máxima predictibilidad
+        - ✅ Mínima correlación
+        - ✅ Máxima estabilidad
+        """
+        return [
+            # === MOMENTUM ELITE (4 features) ===
+            'rsi_14',           # Momentum principal
+            'macd',             # Tendencia y momentum
+            'stoch_k',          # Oscilador de momentum
+            'roc_10',           # Rate of change
+            
+            # === TREND ELITE (3 features) ===
+            'sma_20',           # Tendencia principal
+            'adx_14',           # Fuerza de tendencia
+            'plus_di',          # Dirección de tendencia
+            
+            # === VOLATILITY ELITE (3 features) ===
+            'bb_position',      # Posición en bandas
+            'atr_14',           # Volatilidad real
+            'bb_width',         # Ancho de bandas
+            
+            # === VOLUME ELITE (2 features) ===
+            'obv',              # On Balance Volume
+            'mfi_14',           # Money Flow Index
+            
+            # === PRICE ACTION ELITE (3 features) ===
+            'price_change_5',   # Cambio de precio
+            'hl_ratio',         # Ratio High/Low
+            'efficiency_ratio'  # Eficiencia del movimiento
         ]
 
     def _get_tcn_final_features(self) -> List[str]:

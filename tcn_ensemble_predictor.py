@@ -37,6 +37,7 @@ class TCNEnsemblePredictor:
         self.feature_columns = {}  # {symbol: {timeframe: columns}}
         self.hybrid_metrics = {}  # {symbol: {timeframe: metrics}}
         self.model_windows = {}  # {symbol: {timeframe: lookback_window}} - NUEVO
+        self.model_feature_sets = {}  # {symbol: {timeframe: feature_set}} - NUEVO
 
         self.symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'DOTUSDT']
         self.timeframes = []  # Se autodetectará dinámicamente
@@ -320,7 +321,7 @@ class TCNEnsemblePredictor:
                         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
                         df = df.set_index('timestamp').sort_index()
 
-                        # Calcular features reales
+                        # Calcular features reales (usar tcn_definitivo para detección de ventana)
                         features = features_engine.calculate_features(df, feature_set='tcn_definitivo')
 
                         if not features.empty and len(features) >= test_window:
@@ -1834,6 +1835,7 @@ class TCNEnsemblePredictor:
             self.feature_columns[symbol] = {}
             self.hybrid_metrics[symbol] = {}
             self.model_windows[symbol] = {}  # Inicializar ventanas por modelo
+            self.model_feature_sets[symbol] = {}  # 🎯 NUEVO: Feature sets por modelo
             self.mutual_information_cache[symbol] = {}  # 🎯 NUEVO: Cache de información mutua
 
             # 🎯 USAR TIMEFRAMES ESPECÍFICOS DETECTADOS PARA ESTE SÍMBOLO
@@ -1883,8 +1885,25 @@ class TCNEnsemblePredictor:
                         config_path = f'{model_dir}/config.json'
                         if os.path.exists(config_path):
                             import json
-                            with open(config_path, 'r') as f:
-                                model_config = json.load(f)
+                            try:
+                                with open(config_path, 'r') as f:
+                                    model_config = json.load(f)
+                                print(f"✅ Configuración cargada para {symbol} - {timeframe}")
+                            except json.JSONDecodeError as e:
+                                print(f"⚠️  Archivo config.json corrupto para {symbol} - {timeframe}: {e}")
+                                print(f"🔧 Usando configuración por defecto")
+                                model_config = {
+                                    'prediction_horizon': 6,
+                                    'lookback_window': 32,
+                                    'accuracy': 0.5
+                                }
+                            except Exception as e:
+                                print(f"⚠️  Error cargando config.json para {symbol} - {timeframe}: {e}")
+                                model_config = {
+                                    'prediction_horizon': 6,
+                                    'lookback_window': 32,
+                                    'accuracy': 0.5
+                                }
 
                     # Cargar mejor modelo disponible
                     model_path = f'{model_dir}/best_model.h5'
@@ -1969,6 +1988,38 @@ class TCNEnsemblePredictor:
                             print(f"✅ Feature columns cargadas (formato antiguo): {len(self.feature_columns[symbol][timeframe])} features")
                     else:
                         print(f"⚠️ Features no encontradas para {symbol} - {timeframe}")
+
+                    # 🎯 DETECTAR FEATURE SET USADO POR EL MODELO
+                    feature_set_detected = 'tcn_definitivo'  # Por defecto
+                    
+                    # Intentar detectar desde el nombre del directorio del modelo
+                    if model_type == 'adaptive_tcn' and model_dir:
+                        dir_name = os.path.basename(model_dir)
+                        if '_optimized_crypto_' in dir_name:
+                            feature_set_detected = 'optimized_crypto'
+                        elif '_ultra_optimized_' in dir_name:
+                            feature_set_detected = 'ultra_optimized'
+                        elif '_tcn_definitivo_' in dir_name:
+                            feature_set_detected = 'tcn_definitivo'
+                    
+                    # Intentar detectar desde la configuración del modelo
+                    if model_type == 'adaptive_tcn' and 'feature_set' in model_config:
+                        feature_set_detected = model_config['feature_set']
+                    
+                    # Intentar detectar desde el número de features
+                    if symbol in self.feature_columns and timeframe in self.feature_columns[symbol]:
+                        num_features = len(self.feature_columns[symbol][timeframe])
+                        if num_features <= 15:
+                            feature_set_detected = 'ultra_optimized'
+                        elif num_features <= 25:
+                            feature_set_detected = 'optimized_crypto'
+                        elif num_features <= 88:
+                            feature_set_detected = 'tcn_definitivo'
+                        else:
+                            feature_set_detected = 'tcn_definitivo'  # Por defecto
+                    
+                    self.model_feature_sets[symbol][timeframe] = feature_set_detected
+                    print(f"🎯 Feature set detectado: {feature_set_detected} ({len(self.feature_columns[symbol][timeframe])} features)")
 
                     # Cargar métricas híbridas
                     metrics_path = f'{model_dir}/hybrid_metrics.pkl'
@@ -2270,8 +2321,11 @@ class TCNEnsemblePredictor:
             return None
 
         try:
-            # Crear features usando el motor centralizado
-            features = self.features_engine.calculate_features(df, feature_set='tcn_definitivo')
+            # 🎯 OBTENER FEATURE SET ESPECÍFICO PARA ESTE MODELO
+            feature_set = self.model_feature_sets.get(symbol, {}).get(timeframe, 'tcn_definitivo')
+            
+            # Crear features usando el motor centralizado con el feature set correcto
+            features = self.features_engine.calculate_features(df, feature_set=feature_set)
             if features.empty:
                 print(f"❌ Error calculando features para {symbol} - {timeframe}")
                 return None
