@@ -271,6 +271,40 @@ class ProfessionalPortfolioManager:
             print(f"❌ Error obteniendo balances: {e}")
             return {}
 
+    async def get_valid_symbols(self) -> set:
+        """🔍 Obtener símbolos válidos de Binance Exchange Info"""
+        try:
+            # Verificar caché (válido por 1 hora)
+            if hasattr(self, '_valid_symbols_cache') and hasattr(self, '_cache_timestamp'):
+                if time.time() - self._cache_timestamp < 3600:  # 1 hora
+                    return self._valid_symbols_cache
+            
+            print("🔄 Obteniendo símbolos válidos de Binance...")
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get('https://api.binance.com/api/v3/exchangeInfo') as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        valid_symbols = set()
+                        
+                        for symbol_info in data['symbols']:
+                            if symbol_info['status'] == 'TRADING':  # Solo símbolos activos
+                                valid_symbols.add(symbol_info['symbol'])
+                        
+                        # Guardar en caché
+                        self._valid_symbols_cache = valid_symbols
+                        self._cache_timestamp = time.time()
+                        
+                        print(f"✅ Obtenidos {len(valid_symbols)} símbolos válidos")
+                        return valid_symbols
+                    else:
+                        print(f"❌ Error obteniendo exchange info: {response.status}")
+                        return set()
+                        
+        except Exception as e:
+            print(f"❌ Error obteniendo símbolos válidos: {e}")
+            return set()
+
     async def get_order_history(self, symbol: Optional[str] = None, days_back: Optional[int] = None) -> List[TradeOrder]:
         """📋 Obtener historial de órdenes ejecutadas"""
         try:
@@ -283,6 +317,13 @@ class ProfessionalPortfolioManager:
             orders = []
 
             if symbol:
+                # Obtener símbolos válidos primero
+                valid_symbols = await self.get_valid_symbols()
+                
+                if symbol not in valid_symbols:
+                    print(f"⚠️ Símbolo {symbol} no está disponible en Binance")
+                    return []
+                
                 # Obtener órdenes para un símbolo específico
                 params = {
                     'symbol': symbol,
@@ -308,16 +349,33 @@ class ProfessionalPortfolioManager:
                         orders.append(trade_order)
             else:
                 # Obtener órdenes para todos los símbolos activos
+                print("🔄 Validando símbolos antes de obtener historial...")
                 balances = await self.get_account_balances()
+                valid_symbols = await self.get_valid_symbols()
+                
+                valid_assets_count = 0
+                invalid_assets = []
 
                 for asset in balances.keys():
                     if asset != 'USDT':
-                        try:
-                            symbol_orders = await self.get_order_history(f"{asset}USDT", days_back)
-                            orders.extend(symbol_orders)
-                        except Exception as e:
-                            print(f"⚠️ Error obteniendo órdenes para {asset}USDT: {e}")
-                            continue
+                        trading_symbol = f"{asset}USDT"
+                        
+                        if trading_symbol in valid_symbols:
+                            try:
+                                symbol_orders = await self.get_order_history(trading_symbol, days_back)
+                                orders.extend(symbol_orders)
+                                valid_assets_count += 1
+                            except Exception as e:
+                                print(f"⚠️ Error obteniendo órdenes para {trading_symbol}: {e}")
+                                continue
+                        else:
+                            invalid_assets.append(asset)
+                            print(f"🚫 Saltando {asset} - no tiene par USDT válido en Binance")
+
+                print(f"✅ Procesados {valid_assets_count} activos válidos")
+                if invalid_assets:
+                    print(f"🚫 Activos sin par USDT válido: {', '.join(invalid_assets[:10])}" + 
+                          (f" y {len(invalid_assets)-10} más..." if len(invalid_assets) > 10 else ""))
 
             return sorted(orders, key=lambda x: x.time, reverse=True)
 
